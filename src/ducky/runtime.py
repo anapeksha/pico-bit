@@ -135,6 +135,7 @@ class DuckyInterpreter:
 
         elif kind == 'command':
             self._execute_command(stmt)
+            self._sleep_default_delay(stmt['command'])
             self._remember_action(stmt)
 
         else:

@@ -30,8 +30,11 @@ from ducky import (
 from hid import HIDKeyboard
 from server import start
 
-# Hold GP0 to GND at boot to enter server / setup mode (same as pico-ducky).
-_setup_pin: machine.Pin = machine.Pin(0, machine.Pin.IN, machine.Pin.PULL_UP)
+# Hold GP22 to GND at boot to enter server / setup mode.
+# GP22 is unconnected on the Cytron Maker Pi Pico Mini — safe to use as a
+# pull-up input. GP0 is the onboard USER button on that board, which reads
+# LOW at boot if pressed or if the board has a hardware pull-down.
+_setup_pin: machine.Pin = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)
 _INITIAL_DELAY_S: float = 3.0
 _EDUCATIONAL_MODE: bool = EDUCATIONAL_MODE
 

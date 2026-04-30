@@ -48,6 +48,7 @@ indent-style = "space"
 
 [tool.ruff.lint]
 select = ["B", "E", "F", "I", "SIM", "UP"]
+ignore = ["SIM105"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["ducky"]

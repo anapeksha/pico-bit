@@ -3,8 +3,6 @@ USB HID keyboard helpers for MicroPython on the Raspberry Pi Pico 2.
 """
 
 import time
-from contextlib import suppress
-
 import machine
 
 MOD_NONE = 0x00
@@ -439,8 +437,10 @@ class HIDKeyboard:
         self._send()
 
     def _send(self):
-        with suppress(OSError):
+        try:
             self._dev.submit_xfer(0x81, self._report)
+        except OSError:
+            pass
         time.sleep(0.005)
 
 
