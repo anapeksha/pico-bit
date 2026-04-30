@@ -9,6 +9,7 @@ def test_build_cleans_dist_to_single_boot_file() -> None:
     root = Path(__file__).resolve().parents[1]
     dist = root / 'dist'
     stale = dist / 'stale.bin'
+    dist.mkdir(exist_ok=True)
     stale.write_bytes(b'x')
 
     subprocess.run([sys.executable, 'build.py'], cwd=root, check=True)
