@@ -1,8 +1,6 @@
-# pico-bit
+# Pico Bit
 
-<p align="center">
-  <img src="images/pico-bit.jpeg" alt="Pico Bit asset">
-</p>
+<img src="images/pico-bit.jpeg" alt="Pico Bit asset">
 
 `pico-bit` is an MicroPython project for the Raspberry Pi Pico 2 family that:
 
