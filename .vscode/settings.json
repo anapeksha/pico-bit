@@ -1,0 +1,9 @@
+{
+    "python.languageServer": "Pylance",
+    "python.terminal.activateEnvironment": false,
+    "micropico.openOnStart": true,
+    "[python]": {
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnSave": true
+    }
+}

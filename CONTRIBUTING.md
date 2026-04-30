@@ -1,0 +1,85 @@
+# Contributing
+
+Thanks for helping improve `pico-bit`.
+
+## Ground Rules
+
+- Keep the project friendly to contributors who are new to MicroPython.
+- Prefer small, reviewable changes over broad rewrites.
+- Preserve Raspberry Pi Pico 2 and Pico 2 W compatibility.
+- Treat parser and runtime behavior changes as user-facing changes that need tests.
+
+## Development Setup
+
+1. Install Poetry.
+2. Install the project dependencies:
+
+```bash
+poetry install
+```
+
+## Before You Open a Change
+
+Run the local checks:
+
+```bash
+poetry run pytest
+poetry run pyright
+poetry run ruff check .
+poetry run ruff format --check .
+poetry run python build.py
+```
+
+For board-specific bundles, you can also use:
+
+```bash
+poetry run python build.py --ap-ssid "Lab Pico" --ap-password "keyboard42"
+```
+
+If you intentionally change formatting, run:
+
+```bash
+poetry run ruff format .
+```
+
+## Code Organization
+
+- Put DuckyScript parsing work in `src/ducky/lexer.py` and `src/ducky/parser.py`.
+- Put runtime execution behavior in `src/ducky/runtime.py`.
+- Keep hardware-facing code in `src/hid.py`, `src/main.py`, and `src/server.py`.
+- Keep host-side tests in the top-level `tests/` directory.
+
+## Tests
+
+Please add or update tests when you change:
+
+- lexer tokenization,
+- parser validation rules,
+- runtime command behavior,
+- payload discovery,
+- or bundler output behavior.
+
+## Bundled Output
+
+`dist/boot.py` is generated output.
+
+When source changes affect the deployable runtime, rebuild it with:
+
+```bash
+poetry run python build.py
+```
+
+## Documentation
+
+Update `README.md` when you change:
+
+- setup mode behavior,
+- required hardware assumptions,
+- toolchain commands,
+- or deployment steps.
+
+## Security and Responsible Use
+
+This repository is for educational use and legitimate automation research.
+
+Do not submit changes that assume or encourage unauthorized use on systems you do not own or administer.

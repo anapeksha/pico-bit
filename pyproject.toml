@@ -1,0 +1,57 @@
+[tool.poetry]
+name = "pico-bit"
+version = "0.1.0"
+description = "MicroPython DuckyScript interpreter and single-file boot bundler for Raspberry Pi Pico 2."
+authors = ["pico-bit contributors"]
+license = "GPL-3.0-only"
+readme = "README.md"
+package-mode = false
+
+[tool.poetry.dependencies]
+python = ">=3.11,<3.15"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.0"
+pyright = "^1.1.405"
+ruff = "^0.14.0"
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]
+
+[tool.pyright]
+typeCheckingMode = "basic"
+reportMissingModuleSource = false
+include = ["build.py", "src", "tests"]
+exclude = [
+    "dist",
+    ".venv",
+    "venv",
+    "**/__pycache__",
+    "**/node_modules",
+    "**/.*",
+]
+stubPath = "stubs"
+executionEnvironments = [
+    { root = ".", extraPaths = ["src"] },
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+extend-exclude = ["dist", "venv", "node_modules"]
+
+[tool.ruff.format]
+quote-style = "single"
+indent-style = "space"
+
+[tool.ruff.lint]
+select = ["B", "E", "F", "I", "SIM", "UP"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["ducky"]
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
