@@ -1,5 +1,7 @@
 # Pico Bit
 
+<img src="images/pico-bit.jpeg" alt="Pico Bit home">
+
 `pico-bit` is a MicroPython DuckyScript interpreter for the Raspberry Pi Pico 2 family. It validates and runs `payload.dd`, can expose a browser-based setup portal on Wi-Fi-capable boards, and bundles the whole runtime into a single `dist/boot.py`.
 
 The project is meant to be approachable for MicroPython users and contributors who want a Pico Ducky style workflow without switching to CircuitPython.
