@@ -1,15 +1,13 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
     branches:
       - main
 
 jobs:
-  checks:
+  validate:
+    name: Validate
     runs-on: ubuntu-latest
 
     steps:
