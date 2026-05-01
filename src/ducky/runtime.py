@@ -7,6 +7,14 @@ import time
 
 import machine
 
+if hasattr(time, 'sleep_ms'):
+    _sleep_ms = time.sleep_ms  # type: ignore[attr-defined]
+else:
+
+    def _sleep_ms(ms):
+        time.sleep(ms / 1000)
+
+
 from hid import (
     MOD_ALIASES,
     MOD_NONE,
@@ -210,7 +218,7 @@ class DuckyInterpreter:
         line_no = stmt['line_no']
 
         if command == 'DELAY':
-            time.sleep(self._eval_int(argument, line_no) / 1000)
+            _sleep_ms(self._eval_int(argument, line_no))
             return
 
         if command in ('DEFAULTDELAY', 'DEFAULT_DELAY'):
@@ -317,7 +325,7 @@ class DuckyInterpreter:
 
     def _sleep_default_delay(self, command):
         if command not in NO_DELAY_COMMANDS and self.default_delay_ms > 0:
-            time.sleep(self.default_delay_ms / 1000)
+            _sleep_ms(self.default_delay_ms)
 
     def _execute_hold(self, combo, line_no):
         modifier, keycodes = self._parse_combo(combo, line_no)
@@ -520,9 +528,9 @@ class DuckyInterpreter:
         if self._button is None:
             self._button = machine.Pin(15, machine.Pin.IN, machine.Pin.PULL_UP)
         while self._button.value():
-            time.sleep(0.05)
+            _sleep_ms(50)
         while not self._button.value():
-            time.sleep(0.05)
+            _sleep_ms(50)
 
     def _set_led(self, enabled):
         if self._led is None:

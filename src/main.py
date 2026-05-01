@@ -1,76 +1,86 @@
 """
 Entry point for picoDucky (MicroPython / RP2350).
 
-Boot mode is selected by the logic level on GP0 at power-on:
-
-* **GP0 → GND** (setup mode): starts the WiFi AP and web server so you can
-  edit ``payload.dd`` over the browser. Connect to the configured setup-mode
-  network and open ``http://192.168.4.1``.
-
-* **GP0 floating / high** (payload mode): waits for the USB HID interface to
-  be recognised by the host, delays :data:`_INITIAL_DELAY_S` seconds (giving
-  the host time to settle), then executes ``payload.dd``.  If the file is
-  absent a message is printed and the device idles.
-
-To reprogram the Pico hold the BOOTSEL button while connecting USB (the CDC
-REPL is disabled in payload mode because ``builtin_driver`` is set to 0).
+Boot-mode pin: GP22.
+  GP22 -> GND  : setup mode (WiFi AP + browser editor at 192.168.4.1)
+  GP22 floating: payload mode (executes payload.dd over USB HID)
 """
-
-import time
 
 import machine
 
-from device_config import EDUCATIONAL_MODE
-from ducky import (
-    DuckyScriptError,
-    find_payload,
-    run_script,
-    validate_script,
-)
-from hid import HIDKeyboard
-from server import start
+from status_led import STATUS_LED
 
-# Hold GP22 to GND at boot to enter server / setup mode.
-# GP22 is unconnected on the Cytron Maker Pi Pico Mini — safe to use as a
-# pull-up input. GP0 is the onboard USER button on that board, which reads
-# LOW at boot if pressed or if the board has a hardware pull-down.
 _setup_pin: machine.Pin = machine.Pin(22, machine.Pin.IN, machine.Pin.PULL_UP)
-_INITIAL_DELAY_S: float = 3.0
-_EDUCATIONAL_MODE: bool = EDUCATIONAL_MODE
+_INITIAL_DELAY_MS: int = 10000
 
-kbd: HIDKeyboard = HIDKeyboard()
+STATUS_LED.show('boot')
 
-if not _setup_pin.value():
-    # ── Server mode ──────────────────────────────────────────────────────────
-    # Boots WiFi AP, serves web UI at http://192.168.4.1
-    # Release GP0 after connecting – it is only read at boot.
-    start(kbd)
 
-else:
-    # ── Payload mode ─────────────────────────────────────────────────────────
-    print('Payload mode: waiting for USB...')
-    while not kbd.is_open():
-        time.sleep(0.01)
+def _run() -> None:
+    from device_config import EDUCATIONAL_MODE
+    from ducky import (
+        DuckyScriptError,
+        find_payload,
+        run_script,
+        validate_script,
+    )
+    from server import start
 
-    print(f'USB ready, firing in {_INITIAL_DELAY_S}s...')
-    time.sleep(_INITIAL_DELAY_S)
-
-    payload_path = find_payload()
-    if payload_path:
+    if not _setup_pin.value():
+        STATUS_LED.show('setup_entered')
         try:
-            with open(payload_path) as f:
-                script: str = f.read()
-            print(f'Running {payload_path}')
-            validate_script(script)
-            run_script(kbd, script, educational_mode=_EDUCATIONAL_MODE)
-        except DuckyScriptError as exc:
-            print(f'Payload error: {exc}')
+            start()
         except OSError:
-            print('Unable to read payload.dd.')
-            pass
-    else:
-        print('No payload.dd found.')
+            STATUS_LED.halt('setup_ap_failed')
+        except Exception:
+            STATUS_LED.halt('setup_server_failed')
+        return
 
-    print('Done.')
+    from hid import HIDKeyboard
+
+    kbd = HIDKeyboard()
+    STATUS_LED.show('hid_constructed')
+    STATUS_LED.show('payload_entered')
+
+    STATUS_LED.on()
+    if kbd.wait_open(_INITIAL_DELAY_MS):
+        STATUS_LED.off()
+        STATUS_LED.show('usb_enumerated')
+    else:
+        STATUS_LED.halt('usb_enum_timeout')
+        return
+
+    try:
+        payload_path = find_payload()
+    except Exception:
+        STATUS_LED.halt('payload_find_failed')
+        return
+
+    if not payload_path:
+        STATUS_LED.halt('payload_missing')
+        return
+
+    STATUS_LED.show('payload_ready')
+    try:
+        with open(payload_path) as f:
+            script = f.read()
+    except OSError:
+        STATUS_LED.halt('payload_read_failed')
+        return
+
+    try:
+        validate_script(script)
+        run_script(kbd, script, educational_mode=EDUCATIONAL_MODE)
+    except DuckyScriptError:
+        STATUS_LED.halt('script_error')
+        return
+
+    STATUS_LED.show('payload_complete')
     while True:
-        time.sleep(0.1)
+        STATUS_LED.pause(100)
+
+
+try:
+    _run()
+except Exception:
+    STATUS_LED.halt('unhandled')

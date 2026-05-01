@@ -1,7 +1,7 @@
 """
-WiFi access-point HTTP server for picoDucky setup mode.
+WiFi access-point HTTP server for pico-bit setup mode.
 
-When GP0 is held low at boot, the device brings up a WPA2 access point
+When GP22 is held low at boot, the device brings up an access point
 configured in :mod:`device_config` and serves a browser-based editor at
 ``http://192.168.4.1``.  The UI lets you view, edit, save, and immediately
 run the DuckyScript payload stored as ``payload.dd`` on the Pico's filesystem.
@@ -27,9 +27,21 @@ from ducky import (
     run_script,
     validate_script,
 )
-from hid import HIDKeyboard
+from status_led import STATUS_LED
 
 PORT: int = 80
+_USB_ENUM_TIMEOUT_MS = 5000
+_AP_CHANNEL = 6
+_kbd = None
+_ap_password_in_use = AP_PASSWORD
+
+if hasattr(time, 'sleep_ms'):
+    _sleep_ms = time.sleep_ms  # type: ignore[attr-defined]
+else:
+
+    def _sleep_ms(ms: int) -> None:
+        time.sleep(ms / 1000)
+
 
 _DEFAULT_PAYLOAD: str = (
     'REM picoDucky default payload\nDELAY 1000\nGUI SPACE\nDELAY 800\nSTRING Calculator\nENTER\n'
@@ -194,7 +206,7 @@ _HTML: str = ''.join(
         '<section class="panel">\n'
         '<h2 class="panel__title">Workflow</h2>\n'
         '<ol class="steps">\n'
-        '<li>Boot with GP0 held to ground.</li>\n'
+        '<li>Boot with GP22 held to ground.</li>\n'
         '<li>Join the Pico access point.</li>\n'
         '<li>Edit or paste your DuckyScript.</li>\n'
         '<li>Save the file or run it after validation.</li>\n'
@@ -400,11 +412,157 @@ def _page(message: str = '', notice: str = 'success') -> str:
         notice=notice_html,
         payload=_esc(payload),
         ap_ssid=_esc(AP_SSID),
-        ap_password=_esc(AP_PASSWORD),
+        ap_password=_esc(_ap_password_in_use or 'Open network'),
         mode_label=_esc(mode_label),
         mode_short=_esc(mode_short),
         mode_description=_esc(mode_description),
     )
+
+
+def _ap_interface_id() -> int:
+    """Return the AP interface constant across MicroPython network variants."""
+    wlan_type = getattr(network, 'WLAN', None)
+    if wlan_type is not None and hasattr(wlan_type, 'IF_AP'):
+        return wlan_type.IF_AP
+    return network.AP_IF
+
+
+def _wlan_security(name: str, default: int) -> int:
+    for owner in (getattr(network, 'WLAN', None), network):
+        if owner is not None and hasattr(owner, name):
+            return getattr(owner, name)
+    return default
+
+
+def _ap_config_attempts() -> list[tuple[str, dict[str, object]]]:
+    attempts: list[tuple[str, dict[str, object]]] = []
+    secure_password = AP_PASSWORD.strip()
+    if secure_password:
+        attempts.extend(
+            [
+                (
+                    'wpa2',
+                    {
+                        'ssid': AP_SSID,
+                        'channel': _AP_CHANNEL,
+                        'security': _wlan_security('SEC_WPA2', 3),
+                        'key': secure_password,
+                    },
+                ),
+                (
+                    'mixed-wpa',
+                    {
+                        'ssid': AP_SSID,
+                        'channel': _AP_CHANNEL,
+                        'security': _wlan_security('SEC_WPA_WPA2', 4),
+                        'key': secure_password,
+                    },
+                ),
+                (
+                    'wpa2-minimal',
+                    {
+                        'ssid': AP_SSID,
+                        'key': secure_password,
+                    },
+                ),
+                (
+                    'key-only',
+                    {
+                        'ssid': AP_SSID,
+                        'channel': _AP_CHANNEL,
+                        'key': secure_password,
+                    },
+                ),
+                (
+                    'legacy-password',
+                    {
+                        'essid': AP_SSID,
+                        'channel': _AP_CHANNEL,
+                        'password': secure_password,
+                    },
+                ),
+                (
+                    'legacy-password-minimal',
+                    {
+                        'essid': AP_SSID,
+                        'password': secure_password,
+                    },
+                ),
+            ]
+        )
+    attempts.extend(
+        [
+            (
+                'open',
+                {
+                    'ssid': AP_SSID,
+                    'channel': _AP_CHANNEL,
+                    'security': _wlan_security('SEC_OPEN', 0),
+                },
+            ),
+            (
+                'open-minimal',
+                {
+                    'ssid': AP_SSID,
+                },
+            ),
+            (
+                'legacy-open',
+                {
+                    'essid': AP_SSID,
+                    'channel': _AP_CHANNEL,
+                },
+            ),
+            (
+                'legacy-open-minimal',
+                {
+                    'essid': AP_SSID,
+                },
+            ),
+        ]
+    )
+    return attempts
+
+
+def _wlan_constant(name: str) -> object | None:
+    for owner in (getattr(network, 'WLAN', None), network):
+        if owner is not None and hasattr(owner, name):
+            return getattr(owner, name)
+    return None
+
+
+def _configure_ap(ap: network.WLAN, kwargs: dict[str, object], activate_first: bool) -> str | None:
+    if activate_first:
+        ap.active(True)
+        _sleep_ms(200)
+        ap.config(**kwargs)
+    else:
+        ap.config(**kwargs)
+        ap.active(True)
+
+    pm_none = _wlan_constant('PM_NONE')
+    if pm_none is not None:
+        try:
+            ap.config(pm=pm_none)
+        except (AttributeError, OSError, TypeError, ValueError):
+            pass
+
+    return _wait_for_ap(ap)
+
+
+def _wait_for_ap(ap: network.WLAN) -> str | None:
+    for _ in range(50):
+        if ap.active():
+            break
+        _sleep_ms(100)
+    if not ap.active():
+        return None
+    for _ in range(30):
+        ip = ap.ifconfig()[0]
+        if ip and ip != '0.0.0.0':
+            return ip
+        _sleep_ms(100)
+    return None
 
 
 def _start_ap() -> str:
@@ -412,35 +570,73 @@ def _start_ap() -> str:
     Bring up the WiFi access point and return the assigned IP address.
 
     :returns: IP address string (typically ``'192.168.4.1'``).
+    :raises OSError: if the CYW43 chip is unavailable or never becomes active.
     """
-    ap = network.WLAN(network.AP_IF)
-    ap.active(True)
-    ap.config(ssid=AP_SSID, password=AP_PASSWORD)
-    for _ in range(50):
-        if ap.active():
-            break
-        time.sleep(0.1)
-    return ap.ifconfig()[0]
+    global _ap_password_in_use
+    ap = network.WLAN(_ap_interface_id())
+    last_error = 'no AP config attempts were made'
+    attempt_index = 0
+
+    for mode_name, kwargs in _ap_config_attempts():
+        for activate_first in (False, True):
+            if attempt_index:
+                STATUS_LED.show('setup_ap_retry')
+            attempt_index += 1
+            try:
+                ap.active(False)
+            except OSError:
+                pass
+            _sleep_ms(150)
+            try:
+                ip = _configure_ap(ap, kwargs, activate_first=activate_first)
+                if ip:
+                    uses_password = 'key' in kwargs or 'password' in kwargs
+                    _ap_password_in_use = AP_PASSWORD if uses_password else ''
+                    return ip
+                order = 'active-first' if activate_first else 'config-first'
+                last_error = f'{mode_name}/{order}: interface never became ready'
+            except (AttributeError, OSError, TypeError, ValueError) as exc:
+                order = 'active-first' if activate_first else 'config-first'
+                last_error = f'{mode_name}/{order}: {exc}'
+
+    raise OSError(f'AP failed to come active: {last_error}')
 
 
-def start(kbd: HIDKeyboard) -> None:
+def _ensure_keyboard():
+    """Create the HID keyboard lazily so setup mode does not depend on USB init."""
+    global _kbd
+    if _kbd is None:
+        from hid import HIDKeyboard
+
+        _kbd = HIDKeyboard()
+    if not _kbd.wait_open(_USB_ENUM_TIMEOUT_MS):
+        raise OSError('USB HID did not enumerate within 5 s')
+    return _kbd
+
+
+def start() -> None:
     """
     Start the setup-mode HTTP server (blocking).
 
     Brings up the WiFi AP, binds a TCP socket on port 80, and enters the
     request loop.  Individual request errors are printed and discarded so
     the server remains alive.
-
-    :param kbd: Active :class:`hid.HIDKeyboard` instance passed to
-                :func:`ducky.run_script` when ``/run`` is requested.
     """
-    ip: str = _start_ap()
-    print(f'AP: {AP_SSID}  pass: {AP_PASSWORD}  →  http://{ip}')
+    STATUS_LED.show('setup_ap_starting')
+    _start_ap()
+    STATUS_LED.show('setup_ap_ready')
 
     srv: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    srv.bind(('0.0.0.0', PORT))
-    srv.listen(3)
+    try:
+        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        srv.bind(('0.0.0.0', PORT))
+        srv.listen(3)
+    except OSError as exc:
+        srv.close()
+        raise RuntimeError('setup server bind failed') from exc
+
+    STATUS_LED.show('setup_server_ready')
+    STATUS_LED.on()
 
     while True:
         try:
@@ -462,10 +658,13 @@ def start(kbd: HIDKeyboard) -> None:
                 script: str = _read_payload()
                 try:
                     validate_script(script)
+                    kbd = _ensure_keyboard()
                     run_script(kbd, script, educational_mode=EDUCATIONAL_MODE)
                     _send(conn, '200 OK', 'text/html', _page('Payload executed', 'success'))
                 except DuckyScriptError as exc:
                     _send(conn, '200 OK', 'text/html', _page(f'Error: {exc}', 'error'))
+                except OSError as exc:
+                    _send(conn, '200 OK', 'text/html', _page(f'USB error: {exc}', 'error'))
 
             elif path == '/save' and method == 'POST':
                 content: str = _parse_form(body).get('p', '').replace('\r\n', '\n')

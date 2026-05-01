@@ -28,6 +28,12 @@ class Pin:
             self._value = new_value
         return self._value
 
+    def on(self) -> None:
+        self._value = 1
+
+    def off(self) -> None:
+        self._value = 0
+
 
 class USBDevice:
     BUILTIN_NONE = 0
@@ -54,6 +60,12 @@ network = cast(Any, types.ModuleType('network'))
 
 
 class WLAN:
+    IF_AP = 0
+    PM_NONE = 0
+    SEC_OPEN = 0
+    SEC_WPA2 = 3
+    SEC_WPA_WPA2 = 4
+
     def __init__(self, _interface: int):
         self._active = False
 

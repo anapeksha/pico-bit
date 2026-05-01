@@ -3,7 +3,16 @@ USB HID keyboard helpers for MicroPython on the Raspberry Pi Pico 2.
 """
 
 import time
+
 import machine
+
+if hasattr(time, 'sleep_ms'):
+    _sleep_ms = time.sleep_ms  # type: ignore[attr-defined]
+else:
+
+    def _sleep_ms(ms):
+        time.sleep(ms / 1000)
+
 
 MOD_NONE = 0x00
 MOD_CTRL = 0x01
@@ -23,71 +32,76 @@ _MOD_RIGHT_SHIFT = 0xE5
 _MOD_RIGHT_ALT = 0xE6
 _MOD_RIGHT_GUI = 0xE7
 
+# Canonical HID Boot Keyboard descriptor — matches MicroPython's official
+# usb.device.keyboard exactly (Logical/Usage Max = 101, the highest valid
+# keycode in Usage Page 0x07). Earlier versions used 255 which required
+# 16-bit encoding; macOS occasionally rejects nonstandard variants, so we
+# match upstream byte-for-byte.
 _REPORT_DESC = bytes(
     [
         0x05,
-        0x01,
+        0x01,  # Usage Page (Generic Desktop)
         0x09,
-        0x06,
+        0x06,  # Usage (Keyboard)
         0xA1,
-        0x01,
+        0x01,  # Collection (Application)
         0x05,
-        0x07,
+        0x07,  # Usage Page (Keyboard/Keypad)
         0x19,
-        0xE0,
+        0xE0,  # Usage Minimum (Left Control)
         0x29,
-        0xE7,
+        0xE7,  # Usage Maximum (Right GUI)
         0x15,
-        0x00,
+        0x00,  # Logical Minimum (0)
         0x25,
-        0x01,
+        0x01,  # Logical Maximum (1)
         0x75,
-        0x01,
+        0x01,  # Report Size (1)
         0x95,
-        0x08,
+        0x08,  # Report Count (8)
         0x81,
-        0x02,
+        0x02,  # Input (Data, Var, Abs) — modifier byte
         0x95,
-        0x01,
+        0x01,  # Report Count (1)
         0x75,
-        0x08,
+        0x08,  # Report Size (8)
         0x81,
-        0x01,
+        0x01,  # Input (Constant) — reserved
         0x95,
-        0x05,
+        0x05,  # Report Count (5)
         0x75,
-        0x01,
+        0x01,  # Report Size (1)
         0x05,
-        0x08,
+        0x08,  # Usage Page (LEDs)
         0x19,
-        0x01,
+        0x01,  # Usage Minimum (Num Lock)
         0x29,
-        0x05,
+        0x05,  # Usage Maximum (Kana)
         0x91,
-        0x02,
+        0x02,  # Output (Data, Var, Abs)
         0x95,
-        0x01,
+        0x01,  # Report Count (1)
         0x75,
-        0x03,
+        0x03,  # Report Size (3)
         0x91,
-        0x01,
+        0x01,  # Output (Constant) — LED padding
         0x95,
-        0x06,
+        0x06,  # Report Count (6)
         0x75,
-        0x08,
+        0x08,  # Report Size (8)
         0x15,
-        0x00,
+        0x00,  # Logical Minimum (0)
         0x25,
-        0xFF,
+        0x65,  # Logical Maximum (101)
         0x05,
-        0x07,
+        0x07,  # Usage Page (Keyboard/Keypad)
         0x19,
-        0x00,
+        0x00,  # Usage Minimum (0)
         0x29,
-        0xFF,
+        0x65,  # Usage Maximum (101)
         0x81,
-        0x00,
-        0xC0,
+        0x00,  # Input (Data, Array)
+        0xC0,  # End Collection
     ]
 )
 
@@ -158,7 +172,10 @@ _CONFIG_DESC = bytes(
     ]
 )
 
-_STRING_DESCS = ['Microsoft', 'Wired Keyboard 600', '000000000001']
+# Descriptor index 0 is the language descriptor. Returning None there tells
+# MicroPython to provide the default English language descriptor, while indexes
+# 1..3 map to iManufacturer/iProduct/iSerial from _DEVICE_DESC.
+_STRING_DESCS = [None, 'Microsoft', 'Wired Keyboard 600', '000000000001']
 
 
 def _letter_keycode(ch):
@@ -360,6 +377,9 @@ def resolve_key_token(token):
 class HIDKeyboard:
     def __init__(self):
         self._ready = False
+        self._xfer_busy = False
+        self._submit_failures = 0
+        self._submit_total = 0
         self._report = bytearray(8)
         self._held_modifiers = 0
         self._held_keys = []
@@ -371,26 +391,67 @@ class HIDKeyboard:
             wv = request[2] | (request[3] << 8)
             if stage == 1:
                 if bm == 0x81 and req == 0x06 and (wv >> 8) == 0x22:
+                    # Host requested the HID report descriptor — enumeration is
+                    # actively in progress; mark ready here because SET_INTERFACE
+                    # (which triggers open_itf_cb) is optional and macOS skips it.
+                    self._ready = True
                     return _REPORT_DESC
                 if bm & 0x60 == 0x20:
                     return True
             return True
 
-        def _open_itf_cb(_):
+        def _open_itf_cb(*_args):
             self._ready = True
 
-        self._dev.builtin_driver = 0
+        def _reset_cb(*_args):
+            self._ready = False
+            self._xfer_busy = False
+
+        def _xfer_cb(*_args):
+            self._xfer_busy = False
+
+        # IMPORTANT: When MicroPython boots, the built-in CDC driver is
+        # already active and the host has already enumerated us as a CDC
+        # device for the REPL. Just rewriting the config and calling
+        # active(True) is a no-op for the host — it still thinks we're CDC.
+        # We must explicitly disconnect (active(False) -> tud_disconnect())
+        # and pause long enough for the host to register the disconnect,
+        # then reconnect with the new descriptors. macOS in particular
+        # caches enumeration state aggressively; without a real disconnect
+        # it never re-reads the descriptors and the HID interface is
+        # invisible.
+        try:
+            self._dev.active(False)
+        except OSError:
+            pass
+        _sleep_ms(150)
+        self._dev.builtin_driver = self._dev.BUILTIN_NONE
         self._dev.config(
             _DEVICE_DESC,
             _CONFIG_DESC,
             desc_strs=_STRING_DESCS,
             control_xfer_cb=_control_cb,
             open_itf_cb=_open_itf_cb,
+            reset_cb=_reset_cb,
+            xfer_cb=_xfer_cb,
         )
         self._dev.active(True)
 
     def is_open(self):
         return self._ready
+
+    def wait_open(self, timeout_ms=5000):
+        """Block until the host has enumerated the HID interface, or timeout."""
+        elapsed = 0
+        step = 50
+        while not self._ready and elapsed < timeout_ms:
+            _sleep_ms(step)
+            elapsed += step
+        return self._ready
+
+    def stats(self):
+        """Return (total_submits, failed_submits) — useful for diagnostics."""
+        return (self._submit_total, self._submit_failures)
 
     def press(self, *keycodes):
         mod = self._held_modifiers
@@ -437,11 +498,41 @@ class HIDKeyboard:
         self._send()
 
     def _send(self):
-        try:
-            self._dev.submit_xfer(0x81, self._report)
-        except OSError:
-            pass
-        time.sleep(0.005)
+        self._submit_total += 1
+        # If the host hasn't finished enumerating yet, there's nowhere for the
+        # report to go. Wait briefly so the very first keystrokes after boot
+        # don't get lost.
+        if not self._ready:
+            self.wait_open(2000)
+
+        # Wait for the previous transfer to complete before queuing a new one.
+        # bInterval is 10 ms, so a normal completion should arrive within
+        # 10–15 ms; allow up to 50 ms before giving up on this particular key.
+        elapsed = 0
+        while self._xfer_busy and elapsed < 50:
+            _sleep_ms(2)
+            elapsed += 2
+
+        # Submit the new transfer. submit_xfer raises OSError when the
+        # endpoint is still busy or the device isn't configured.
+        for _ in range(10):
+            try:
+                self._xfer_busy = True
+                self._dev.submit_xfer(0x81, self._report)
+                break
+            except OSError:
+                self._xfer_busy = False
+                _sleep_ms(3)
+        else:
+            self._submit_failures += 1
+            return
+
+        # Block until the host actually polls and reads the report, so
+        # subsequent press/release sequences don't get coalesced or dropped.
+        elapsed = 0
+        while self._xfer_busy and elapsed < 50:
+            _sleep_ms(2)
+            elapsed += 2
 
 
 def _mod_to_keycodes(modifier):
@@ -470,9 +561,9 @@ def send_keys(kbd, modifier, keycodes):
     if not pressed and not modifier:
         return
     kbd.press(*_mod_to_keycodes(modifier), *pressed)
-    time.sleep(0.01)
+    _sleep_ms(20)
     kbd.send_held_state()
-    time.sleep(0.03)
+    _sleep_ms(20)
 
 
 def hold_keys(kbd, modifier, keycodes):
@@ -496,4 +587,4 @@ def type_string(kbd, text, char_delay_ms=0):
         if keycode:
             send_key(kbd, modifier, keycode)
             if char_delay_ms > 0:
-                time.sleep(char_delay_ms / 1000)
+                _sleep_ms(char_delay_ms)
