@@ -30,8 +30,8 @@ def test_build_injects_runtime_config_overrides() -> None:
             'Studio Pico',
             '--ap-password',
             'keyboard42',
-            '--educational-mode',
-            'false',
+            '--allow-unsafe',
+            'true',
         ],
         cwd=root,
         check=True,
@@ -40,7 +40,7 @@ def test_build_injects_runtime_config_overrides() -> None:
     bundled = (dist / 'boot.py').read_text(encoding='utf-8')
     assert "AP_SSID: str = 'Studio Pico'" in bundled
     assert "AP_PASSWORD: str = 'keyboard42'" in bundled
-    assert 'EDUCATIONAL_MODE: bool = False' in bundled
+    assert 'ALLOW_UNSAFE: bool = True' in bundled
 
 
 def test_build_emits_ruff_clean_bundle() -> None:

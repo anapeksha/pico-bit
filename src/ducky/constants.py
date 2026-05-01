@@ -1,9 +1,5 @@
-"""
-Shared constants for the DuckyScript parser and runtime.
-"""
-
 PAYLOAD_FILE = 'payload.dd'
-EDUCATIONAL_MODE_DEFAULT = True
+ALLOW_UNSAFE_DEFAULT = False
 
 RANDOM_CHAR_SETS = {
     'RANDOM_LOWERCASE_LETTER': 'abcdefghijklmnopqrstuvwxyz',

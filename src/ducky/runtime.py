@@ -1,7 +1,3 @@
-"""
-Educational-mode DuckyScript runtime.
-"""
-
 import random
 import time
 
@@ -27,7 +23,7 @@ from hid import (
 )
 
 from .constants import (
-    EDUCATIONAL_MODE_DEFAULT,
+    ALLOW_UNSAFE_DEFAULT,
     NO_DELAY_COMMANDS,
     RANDOM_CHAR_SETS,
     SAFE_INTERNAL_DEFAULTS,
@@ -40,9 +36,9 @@ from .parser import parse_script
 
 
 class DuckyInterpreter:
-    def __init__(self, kbd, educational_mode=True):
+    def __init__(self, kbd, allow_unsafe=ALLOW_UNSAFE_DEFAULT):
         self.kbd = kbd
-        self.educational_mode = educational_mode
+        self.allow_unsafe = allow_unsafe
         self.default_delay_ms = 0
         self.default_char_delay_ms = 0
         self.variables = {}
@@ -541,16 +537,18 @@ class DuckyInterpreter:
         self._led.value(1 if enabled else 0)
 
     def _raise_unsafe(self, line_no, feature):
-        if self.educational_mode:
-            raise UnsafeFeatureError(line_no, f'{feature} is blocked in educational mode')
+        if not self.allow_unsafe:
+            raise UnsafeFeatureError(
+                line_no, f'{feature} is blocked unless allow_unsafe is enabled'
+            )
         raise DuckyRuntimeError(line_no, f'{feature} is not implemented on this MicroPython target')
 
 
-def run_script(kbd, script, educational_mode=EDUCATIONAL_MODE_DEFAULT):
+def run_script(kbd, script, allow_unsafe=ALLOW_UNSAFE_DEFAULT):
     statements = parse_script(script)
     while True:
         try:
-            interpreter = DuckyInterpreter(kbd, educational_mode=educational_mode)
+            interpreter = DuckyInterpreter(kbd, allow_unsafe=allow_unsafe)
             interpreter.run(statements)
             return
         except RestartPayload:

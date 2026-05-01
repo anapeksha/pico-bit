@@ -1,25 +1,9 @@
-"""
-WiFi access-point HTTP server for pico-bit setup mode.
-
-When GP22 is held low at boot, the device brings up an access point
-configured in :mod:`device_config` and serves a browser-based editor at
-``http://192.168.4.1``.  The UI lets you view, edit, save, and immediately
-run the DuckyScript payload stored as ``payload.dd`` on the Pico's filesystem.
-
-Routes
-------
-``GET  /``       — Main page: textarea showing current payload.dd content.
-``GET  /run``    — Execute the current payload.dd via the HID keyboard.
-``POST /save``   — Persist the submitted textarea content to payload.dd,
-                   then redirect to ``/``.
-"""
-
 import socket
 import time
 
 import network
 
-from device_config import AP_PASSWORD, AP_SSID, EDUCATIONAL_MODE
+from device_config import ALLOW_UNSAFE, AP_PASSWORD, AP_SSID
 from ducky import (
     PAYLOAD_FILE,
     DuckyScriptError,
@@ -376,17 +360,16 @@ def _write_payload(content: str) -> None:
 
 
 def _mode_strings() -> tuple[str, str, str]:
-    """Return UI copy describing the current runtime mode."""
-    if EDUCATIONAL_MODE:
+    if ALLOW_UNSAFE:
         return (
-            'Educational mode',
-            'Educational runtime',
-            'Educational mode is enabled, so higher-risk runtime features remain blocked.',
+            'Unsafe mode allowed',
+            'Unsafe runtime enabled',
+            'Allow unsafe is enabled, so supported unsafe runtime features may execute.',
         )
     return (
-        'Full runtime mode',
-        'Full runtime',
-        'Educational mode is disabled, so the runtime will execute its supported feature set.',
+        'Safe mode',
+        'Unsafe runtime blocked',
+        'Allow unsafe is disabled, so higher-risk runtime features stay blocked.',
     )
 
 
@@ -659,7 +642,7 @@ def start() -> None:
                 try:
                     validate_script(script)
                     kbd = _ensure_keyboard()
-                    run_script(kbd, script, educational_mode=EDUCATIONAL_MODE)
+                    run_script(kbd, script, allow_unsafe=ALLOW_UNSAFE)
                     _send(conn, '200 OK', 'text/html', _page('Payload executed', 'success'))
                 except DuckyScriptError as exc:
                     _send(conn, '200 OK', 'text/html', _page(f'Error: {exc}', 'error'))

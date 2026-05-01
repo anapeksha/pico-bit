@@ -27,13 +27,13 @@ poetry run pytest
 poetry run pyright
 poetry run ruff check .
 poetry run ruff format --check .
-poetry run python build.py
+poetry run python3 build.py
 ```
 
 For board-specific bundles, you can also use:
 
 ```bash
-poetry run python build.py --ap-ssid "Lab Pico" --ap-password "keyboard42"
+poetry run python3 build.py --ap-ssid "Lab Pico" --ap-password "keyboard42"
 ```
 
 If you intentionally change formatting, run:
@@ -66,7 +66,7 @@ Please add or update tests when you change:
 When source changes affect the deployable runtime, rebuild it with:
 
 ```bash
-poetry run python build.py
+poetry run python3 build.py
 ```
 
 ## Documentation
@@ -80,6 +80,6 @@ Update `README.md` when you change:
 
 ## Security and Responsible Use
 
-This repository is for educational use and legitimate automation research.
+This repository is for legitimate automation research, learning, and hardware experimentation.
 
 Do not submit changes that assume or encourage unauthorized use on systems you do not own or administer.

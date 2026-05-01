@@ -1,11 +1,3 @@
-"""
-Entry point for picoDucky (MicroPython / RP2350).
-
-Boot-mode pin: GP22.
-  GP22 -> GND  : setup mode (WiFi AP + browser editor at 192.168.4.1)
-  GP22 floating: payload mode (executes payload.dd over USB HID)
-"""
-
 import machine
 
 from status_led import STATUS_LED
@@ -17,7 +9,7 @@ STATUS_LED.show('boot')
 
 
 def _run() -> None:
-    from device_config import EDUCATIONAL_MODE
+    from device_config import ALLOW_UNSAFE
     from ducky import (
         DuckyScriptError,
         find_payload,
@@ -70,7 +62,7 @@ def _run() -> None:
 
     try:
         validate_script(script)
-        run_script(kbd, script, educational_mode=EDUCATIONAL_MODE)
+        run_script(kbd, script, allow_unsafe=ALLOW_UNSAFE)
     except DuckyScriptError:
         STATUS_LED.halt('script_error')
         return
