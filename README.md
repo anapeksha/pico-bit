@@ -104,16 +104,22 @@ Defaults are defined in `src/device_config.py`.
 3. Copy `payload.dd` to the board filesystem.
 4. Reboot the board.
 
-## Boot Modes
+## Boot Flow
 
-`src/main.py` checks `GP22` once at startup:
+On every boot the board:
 
-- `GP22` held to `GND`: setup mode
-- `GP22` floating or high: payload mode
+1. starts the Wi-Fi AP and browser editor
+2. initializes USB HID
+3. waits for the host to enumerate the keyboard
+4. searches for `payload.dd`
+5. validates the script
+6. runs it only if parsing succeeds
 
-## Payload Mode
+The HTTP server stays available in the background while the payload runs.
 
-In payload mode the board:
+## Payload Execution
+
+The board:
 
 1. initializes USB HID
 2. waits for the host to enumerate the keyboard
@@ -123,9 +129,9 @@ In payload mode the board:
 
 Parse failures stop execution before runtime.
 
-## Setup Mode
+## Browser Editor
 
-Setup mode starts the web server in `src/server.py`.
+The browser editor lives in `src/server.py` and starts on every boot.
 
 Current defaults:
 
@@ -135,12 +141,11 @@ Current defaults:
 
 To use it:
 
-1. Hold `GP22` to `GND`.
-2. Power-cycle or reset the board.
-3. Join the access point.
-4. Open `http://192.168.4.1`.
-5. Edit `payload.dd` in the browser.
-6. Save it or run it from the page.
+1. Power-cycle or reset the board.
+2. Join the access point.
+3. Open `http://192.168.4.1`.
+4. Edit `payload.dd` in the browser.
+5. Save it or run it from the page.
 
 The web UI validates the script before execution and reports parser or runtime errors in the page.
 

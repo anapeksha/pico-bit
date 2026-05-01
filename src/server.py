@@ -15,11 +15,7 @@ from status_led import STATUS_LED
 
 PORT: int = 80
 _USB_ENUM_TIMEOUT_MS = 5000
-_AP_CHANNEL = 6
-_AP_MAX_CLIENTS = 4
 _DEFAULT_AP_IP = '192.168.4.1'
-_kbd = None
-_ap_password_in_use = AP_PASSWORD
 
 if hasattr(time, 'sleep_ms'):
     _sleep_ms = time.sleep_ms  # type: ignore[attr-defined]
@@ -192,7 +188,7 @@ _HTML: str = ''.join(
         '<section class="panel">\n'
         '<h2 class="panel__title">Workflow</h2>\n'
         '<ol class="steps">\n'
-        '<li>Boot with GP22 held to ground.</li>\n'
+        '<li>Power on the Pico.</li>\n'
         '<li>Join the Pico access point.</li>\n'
         '<li>Edit or paste your DuckyScript.</li>\n'
         '<li>Save the file or run it after validation.</li>\n'
@@ -201,8 +197,8 @@ _HTML: str = ''.join(
         '<section class="panel">\n'
         '<h2 class="panel__title">Notes</h2>\n'
         '<p class="panel__body">The board scans for <code>payload.dd</code>, stores it on-device, '
-        'and uses '
-        'the same script in both browser setup mode and boot-time payload mode.</p>\n'
+        'and keeps '
+        'the browser portal available while the boot payload runs.</p>\n'
         '</section>\n'
         '</aside>\n'
         '</main>\n'
@@ -212,18 +208,16 @@ _HTML: str = ''.join(
     )
 )
 
+__all__ = ['SetupServer', 'SERVER', 'start']
+
 
 def _esc(s: str) -> str:
-    """Escape HTML special characters for safe insertion into the template."""
+    """Escape text for the HTML template."""
     return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 
 def _urldecode(s: str) -> str:
-    """
-    Decode a URL-encoded string (``application/x-www-form-urlencoded``).
-
-    Handles ``%XX`` percent-encoding and ``+`` → space substitution.
-    """
+    """Decode a form-encoded string."""
     out: list[str] = []
     i: int = 0
     while i < len(s):
@@ -240,29 +234,17 @@ def _urldecode(s: str) -> str:
 
 
 def _parse_form(body: str) -> dict[str, str]:
-    """
-    Parse a URL-encoded form body into a key → value dictionary.
-
-    :param body: Raw request body string (``k=v&k2=v2``).
-    """
+    """Parse a small x-www-form-urlencoded body."""
     params: dict[str, str] = {}
     for pair in body.split('&'):
         if '=' in pair:
-            k, v = pair.split('=', 1)
-            params[_urldecode(k)] = _urldecode(v)
+            key, value = pair.split('=', 1)
+            params[_urldecode(key)] = _urldecode(value)
     return params
 
 
 def _recv(conn: socket.socket) -> str:
-    """
-    Read a complete HTTP request from *conn* and return it as a string.
-
-    Reads until the header separator ``\\r\\n\\r\\n`` is found, then waits
-    for the full body according to ``Content-Length`` before returning.
-    Silently swallows socket timeouts so the main loop stays alive.
-
-    :param conn: Accepted client socket (timeout set to 3 s internally).
-    """
+    """Read one HTTP request, including any declared body."""
     conn.settimeout(3.0)
     buf: bytes = b''
     try:
@@ -274,11 +256,11 @@ def _recv(conn: socket.socket) -> str:
             if b'\r\n\r\n' in buf:
                 sep: int = buf.index(b'\r\n\r\n') + 4
                 header_block: str = buf[:sep].decode('utf-8', 'ignore')
-                cl: int = 0
+                content_length: int = 0
                 for line in header_block.split('\r\n'):
                     if line.lower().startswith('content-length:'):
-                        cl = int(line.split(':', 1)[1].strip())
-                if len(buf) - sep >= cl:
+                        content_length = int(line.split(':', 1)[1].strip())
+                if len(buf) - sep >= content_length:
                     break
     except OSError:
         pass
@@ -286,379 +268,269 @@ def _recv(conn: socket.socket) -> str:
 
 
 def _parse(raw: str) -> tuple[str, str, str]:
-    """
-    Extract the HTTP method, path, and body from a raw request string.
-
-    Query strings are stripped from the path.  Returns ``('GET', '/', '')``
-    on a malformed or empty request.
-
-    :param raw: Full raw HTTP request as a string.
-    :returns:   ``(method, path, body)`` tuple.
-    """
+    """Split a raw request into method, path, and body."""
     lines: list[str] = raw.split('\r\n')
     parts: list[str] = lines[0].split(' ') if lines else []
-    method: str = parts[0] if len(parts) > 0 else 'GET'
+    method: str = parts[0] if parts else 'GET'
     path: str = parts[1].split('?')[0] if len(parts) > 1 else '/'
     body: str = ''
     try:
-        idx: int = raw.index('\r\n\r\n')
-        body = raw[idx + 4 :]
+        body = raw[raw.index('\r\n\r\n') + 4 :]
     except ValueError:
         pass
     return method, path, body
 
 
 def _send(conn: socket.socket, status: str, ctype: str, body: str | bytes) -> None:
-    """
-    Send an HTTP response and close the write side.
-
-    :param conn:   Client socket.
-    :param status: HTTP status line value (e.g. ``'200 OK'``).
-    :param ctype:  ``Content-Type`` header value.
-    :param body:   Response body; strings are UTF-8 encoded automatically.
-    """
+    """Send an HTTP response."""
     if isinstance(body, str):
         body = body.encode()
-    hdr: str = (
+    headers: str = (
         f'HTTP/1.1 {status}\r\n'
         f'Content-Type: {ctype}\r\n'
         f'Content-Length: {len(body)}\r\n'
         'Connection: close\r\n\r\n'
     )
-    conn.sendall(hdr.encode() + body)
+    conn.sendall(headers.encode() + body)
 
 
 def _redirect(conn: socket.socket, loc: str) -> None:
-    """
-    Send an HTTP 303 redirect response.
-
-    :param conn: Client socket.
-    :param loc:  ``Location`` header value (absolute or relative URL).
-    """
+    """Send a 303 redirect."""
     conn.sendall(f'HTTP/1.1 303 See Other\r\nLocation: {loc}\r\nConnection: close\r\n\r\n'.encode())
 
 
-def _read_payload() -> str:
-    """
-    Read ``payload.dd`` from the filesystem.
+class SetupServer:
+    """Setup-mode portal for editing and running payload.dd."""
 
-    :returns: File contents, or :data:`_DEFAULT_PAYLOAD` if the file is absent.
-    """
-    try:
-        with open(find_payload() or PAYLOAD_FILE) as f:
-            return f.read()
-    except OSError:
-        return _DEFAULT_PAYLOAD
+    def __init__(self, port: int = PORT) -> None:
+        self.port = port
+        self._ap = None
+        self._kbd = None
+        self._ap_password_in_use = AP_PASSWORD
+        self._run_lock = None
+        self._server_socket = None
+        self._server_thread_started = False
+        self._thread_mod = None
 
+    def _read_payload(self) -> str:
+        """Load payload.dd, or fall back to the bundled starter script."""
+        try:
+            with open(find_payload() or PAYLOAD_FILE) as f:
+                return f.read()
+        except OSError:
+            return _DEFAULT_PAYLOAD
 
-def _write_payload(content: str) -> None:
-    """
-    Overwrite ``payload.dd`` with *content*.
+    def _write_payload(self, content: str) -> None:
+        """Persist the current payload text."""
+        with open(find_payload() or PAYLOAD_FILE, 'w') as f:
+            f.write(content)
 
-    :param content: New DuckyScript payload text.
-    """
-    with open(find_payload() or PAYLOAD_FILE, 'w') as f:
-        f.write(content)
-
-
-def _mode_strings() -> tuple[str, str, str]:
-    if ALLOW_UNSAFE:
+    def _mode_strings(self) -> tuple[str, str, str]:
+        """Return the labels shown for the current runtime mode."""
+        if ALLOW_UNSAFE:
+            return (
+                'Unsafe mode allowed',
+                'Unsafe runtime enabled',
+                'Allow unsafe is enabled, so supported unsafe runtime features may execute.',
+            )
         return (
-            'Unsafe mode allowed',
-            'Unsafe runtime enabled',
-            'Allow unsafe is enabled, so supported unsafe runtime features may execute.',
+            'Safe mode',
+            'Unsafe runtime blocked',
+            'Allow unsafe is disabled, so higher-risk runtime features stay blocked.',
         )
-    return (
-        'Safe mode',
-        'Unsafe runtime blocked',
-        'Allow unsafe is disabled, so higher-risk runtime features stay blocked.',
-    )
 
-
-def _page(message: str = '', notice: str = 'success') -> str:
-    """
-    Render the main HTML page, optionally showing a status message.
-
-    :param message: Plain-text status message shown near the top of the page.
-    :param notice:  Notice style token (``success`` or ``error``).
-    :returns:   Rendered HTML string.
-    """
-    payload: str = _read_payload()
-    mode_label: str
-    mode_short: str
-    mode_description: str
-    mode_label, mode_short, mode_description = _mode_strings()
-    notice_html: str = ''
-    if message:
-        safe_notice = _esc(notice)
-        safe_message = _esc(message)
-        notice_html = f'<div class="notice notice--{safe_notice}">{safe_message}</div>'
-    return _HTML.format(
-        notice=notice_html,
-        payload=_esc(payload),
-        ap_ssid=_esc(AP_SSID),
-        ap_password=_esc(_ap_password_in_use or 'Open network'),
-        mode_label=_esc(mode_label),
-        mode_short=_esc(mode_short),
-        mode_description=_esc(mode_description),
-    )
-
-
-def _ap_interface_id() -> int:
-    """Return the AP interface constant across MicroPython network variants."""
-    wlan_type = getattr(network, 'WLAN', None)
-    if wlan_type is not None and hasattr(wlan_type, 'IF_AP'):
-        return wlan_type.IF_AP
-    return network.AP_IF
-
-
-def _wlan_security(name: str, default: int) -> int:
-    for owner in (getattr(network, 'WLAN', None), network):
-        if owner is not None and hasattr(owner, name):
-            return getattr(owner, name)
-    return default
-
-
-def _ap_config_attempts() -> list[tuple[str, str, dict[str, object]]]:
-    attempts: list[tuple[str, str, dict[str, object]]] = []
-    secure_password = AP_PASSWORD.strip()
-    if secure_password:
-        attempts.extend(
-            [
-                (
-                    'wpa2',
-                    'ssid',
-                    {
-                        'channel': _AP_CHANNEL,
-                        'security': _wlan_security('SEC_WPA2', 3),
-                        'key': secure_password,
-                    },
-                ),
-                (
-                    'mixed-wpa',
-                    'ssid',
-                    {
-                        'channel': _AP_CHANNEL,
-                        'security': _wlan_security('SEC_WPA_WPA2', 4),
-                        'key': secure_password,
-                    },
-                ),
-                (
-                    'wpa2-minimal',
-                    'ssid',
-                    {'security': _wlan_security('SEC_WPA2', 3), 'key': secure_password},
-                ),
-                (
-                    'key-only',
-                    'ssid',
-                    {'channel': _AP_CHANNEL, 'key': secure_password},
-                ),
-                (
-                    'legacy-password',
-                    'essid',
-                    {'channel': _AP_CHANNEL, 'password': secure_password},
-                ),
-                (
-                    'legacy-password-minimal',
-                    'essid',
-                    {'password': secure_password},
-                ),
-            ]
+    def _page(self, message: str = '', notice: str = 'success') -> str:
+        """Render the setup page."""
+        mode_label, mode_short, mode_description = self._mode_strings()
+        notice_html = ''
+        if message:
+            notice_html = f'<div class="notice notice--{_esc(notice)}">{_esc(message)}</div>'
+        return _HTML.format(
+            notice=notice_html,
+            payload=_esc(self._read_payload()),
+            ap_ssid=_esc(AP_SSID),
+            ap_password=_esc(self._ap_password_in_use or 'Open network'),
+            mode_label=_esc(mode_label),
+            mode_short=_esc(mode_short),
+            mode_description=_esc(mode_description),
         )
-    attempts.extend(
-        [
-            (
-                'open',
-                'ssid',
-                {'channel': _AP_CHANNEL, 'security': _wlan_security('SEC_OPEN', 0)},
-            ),
-            (
-                'open-minimal',
-                'ssid',
-                {},
-            ),
-            (
-                'legacy-open',
-                'essid',
-                {'channel': _AP_CHANNEL},
-            ),
-            (
-                'legacy-open-minimal',
-                'essid',
-                {},
-            ),
-        ]
-    )
-    return attempts
 
-
-def _wlan_constant(name: str) -> object | None:
-    for owner in (getattr(network, 'WLAN', None), network):
-        if owner is not None and hasattr(owner, name):
-            return getattr(owner, name)
-    return None
-
-
-def _configure_ap(
-    ap: network.WLAN,
-    ssid_param: str,
-    extra_kwargs: dict[str, object],
-    activate_first: bool,
-) -> str | None:
-    if activate_first:
-        ap.active(True)
-        _sleep_ms(200)
-
-    ap.config(**{ssid_param: AP_SSID})
-    try:
-        ap.config(max_clients=_AP_MAX_CLIENTS)
-    except (AttributeError, OSError, TypeError, ValueError):
-        pass
-    if extra_kwargs:
-        ap.config(**extra_kwargs)
-
-    pm_none = _wlan_constant('PM_NONE')
-    if pm_none is not None:
+    def _start_ap(self) -> str:
+        """Start the AP and return its IP address."""
+        ap = network.WLAN(network.AP_IF)
+        self._ap = ap
         try:
-            ap.config(pm=pm_none)
-        except (AttributeError, OSError, TypeError, ValueError):
+            ap.active(False)
+        except OSError:
             pass
+        _sleep_ms(150)
 
-    if not activate_first:
+        # Match abc.py exactly: essid=... and config before active(True).
+        if AP_PASSWORD.strip():
+            ap.config(essid=AP_SSID, password=AP_PASSWORD)
+            self._ap_password_in_use = AP_PASSWORD
+        else:
+            ap.config(essid=AP_SSID)
+            self._ap_password_in_use = ''
+
         ap.active(True)
 
-    return _wait_for_ap(ap)
+        for _ in range(50):
+            if ap.active():
+                break
+            _sleep_ms(100)
+        if not ap.active():
+            raise OSError('AP failed to come active within 5 s')
 
+        for _ in range(20):
+            try:
+                ip = ap.ifconfig()[0]
+            except (AttributeError, OSError, TypeError, ValueError):
+                ip = ''
+            if ip and ip != '0.0.0.0':
+                return ip
+            _sleep_ms(100)
+        return _DEFAULT_AP_IP
 
-def _wait_for_ap(ap: network.WLAN) -> str | None:
-    for _ in range(50):
-        if ap.active():
-            break
-        _sleep_ms(100)
-    if not ap.active():
-        return None
-    for _ in range(20):
+    def _thread_module(self):
+        if self._thread_mod is None:
+            self._thread_mod = __import__('_thread')
+        return self._thread_mod
+
+    def _run_lock_obj(self):
+        if self._run_lock is None:
+            self._run_lock = self._thread_module().allocate_lock()
+        return self._run_lock
+
+    def acquire_execution(self) -> None:
+        """Serialize HID use across boot payloads and browser-triggered runs."""
+        self._run_lock_obj().acquire()
+
+    def release_execution(self) -> None:
+        self._run_lock_obj().release()
+
+    def _keyboard(self):
+        """Create HID lazily so the AP can start before USB is ready."""
+        if self._kbd is None:
+            from hid import HIDKeyboard
+
+            self._kbd = HIDKeyboard()
+        return self._kbd
+
+    def keyboard(self):
+        """Return the shared HID keyboard without waiting for enumeration."""
+        return self._keyboard()
+
+    def _ensure_keyboard(self):
+        """Return a shared keyboard once the host has enumerated HID."""
+        keyboard = self._keyboard()
+        if not keyboard.wait_open(_USB_ENUM_TIMEOUT_MS):
+            raise OSError('USB HID did not enumerate within 5 s')
+        return keyboard
+
+    def execute_script(self, script: str, allow_unsafe: bool = ALLOW_UNSAFE) -> None:
+        """Validate and run a script with exclusive access to the HID device."""
+        self.acquire_execution()
         try:
-            ip = ap.ifconfig()[0]
-        except (AttributeError, OSError, TypeError, ValueError):
-            ip = ''
-        if ip and ip != '0.0.0.0':
-            return ip
-        _sleep_ms(100)
-    return _DEFAULT_AP_IP
+            validate_script(script)
+            keyboard = self._ensure_keyboard()
+            run_script(keyboard, script, allow_unsafe=allow_unsafe)
+        finally:
+            self.release_execution()
 
+    def _prepare_server(self) -> None:
+        """Start the AP and bind the listening socket once."""
+        if self._server_socket is not None:
+            return
 
-def _start_ap() -> str:
-    """
-    Bring up the WiFi access point and return the assigned IP address.
+        STATUS_LED.show('setup_ap_starting')
+        self._start_ap()
+        STATUS_LED.show('setup_ap_ready')
 
-    :returns: IP address string (typically ``'192.168.4.1'``).
-    :raises OSError: if the CYW43 chip is unavailable or never becomes active.
-    """
-    global _ap_password_in_use
-    last_error = 'no AP config attempts were made'
-    attempt_index = 0
+        srv: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            srv.bind(('0.0.0.0', self.port))
+            srv.listen(3)
+            srv.settimeout(0.2)
+        except OSError as exc:
+            srv.close()
+            raise RuntimeError('setup server bind failed') from exc
 
-    for mode_name, ssid_param, extra_kwargs in _ap_config_attempts():
-        for activate_first in (False, True):
-            if attempt_index:
-                STATUS_LED.show('setup_ap_retry')
-            attempt_index += 1
-            ap = network.WLAN(_ap_interface_id())
+        self._server_socket = srv
+        STATUS_LED.show('setup_server_ready')
+        STATUS_LED.on()
+
+    def _serve_forever(self) -> None:
+        """Serve requests until the process exits."""
+        srv = self._server_socket
+        if srv is None:
+            raise RuntimeError('server socket not prepared')
+
+        while True:
             try:
-                ap.active(False)
+                conn, _ = srv.accept()
             except OSError:
-                pass
-            _sleep_ms(150)
+                continue
+
             try:
-                ip = _configure_ap(ap, ssid_param, extra_kwargs, activate_first=activate_first)
-                if ip:
-                    uses_password = 'key' in extra_kwargs or 'password' in extra_kwargs
-                    _ap_password_in_use = AP_PASSWORD if uses_password else ''
-                    return ip
-                order = 'active-first' if activate_first else 'config-first'
-                last_error = f'{mode_name}/{order}: interface never became ready'
-            except (AttributeError, OSError, TypeError, ValueError) as exc:
-                order = 'active-first' if activate_first else 'config-first'
-                last_error = f'{mode_name}/{order}: {exc}'
+                self._handle_request(conn)
+            except Exception as exc:
+                print('request error:', exc)
+            finally:
+                conn.close()
 
-    raise OSError(f'AP failed to come active: {last_error}')
+    def _run_payload(self) -> tuple[str, str]:
+        """Validate and run the saved payload."""
+        script = self._read_payload()
+        try:
+            self.execute_script(script, allow_unsafe=ALLOW_UNSAFE)
+            return 'Payload executed', 'success'
+        except DuckyScriptError as exc:
+            return f'Error: {exc}', 'error'
+        except OSError as exc:
+            return f'USB error: {exc}', 'error'
+
+    def _handle_request(self, conn: socket.socket) -> None:
+        """Route one browser request."""
+        method, path, body = _parse(_recv(conn))
+
+        if path == '/':
+            _send(conn, '200 OK', 'text/html', self._page())
+            return
+
+        if path == '/run':
+            message, notice = self._run_payload()
+            _send(conn, '200 OK', 'text/html', self._page(message, notice))
+            return
+
+        if path == '/save' and method == 'POST':
+            content = _parse_form(body).get('p', '').replace('\r\n', '\n')
+            self._write_payload(content)
+            _redirect(conn, '/')
+            return
+
+        _send(conn, '404 Not Found', 'text/plain', '404')
+
+    def start(self) -> None:
+        """Start the setup AP and serve requests forever."""
+        if self._server_thread_started:
+            raise RuntimeError('setup server is already running in the background')
+        self._prepare_server()
+        self._serve_forever()
+
+    def start_background(self) -> None:
+        """Start the AP and serve requests on a background thread."""
+        if self._server_thread_started:
+            return
+        self._prepare_server()
+        self._thread_module().start_new_thread(self._serve_forever, ())
+        self._server_thread_started = True
 
 
-def _ensure_keyboard():
-    """Create the HID keyboard lazily so setup mode does not depend on USB init."""
-    global _kbd
-    if _kbd is None:
-        from hid import HIDKeyboard
-
-        _kbd = HIDKeyboard()
-    if not _kbd.wait_open(_USB_ENUM_TIMEOUT_MS):
-        raise OSError('USB HID did not enumerate within 5 s')
-    return _kbd
+SERVER = SetupServer()
 
 
 def start() -> None:
-    """
-    Start the setup-mode HTTP server (blocking).
-
-    Brings up the WiFi AP, binds a TCP socket on port 80, and enters the
-    request loop.  Individual request errors are printed and discarded so
-    the server remains alive.
-    """
-    STATUS_LED.show('setup_ap_starting')
-    _start_ap()
-    STATUS_LED.show('setup_ap_ready')
-
-    srv: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    try:
-        srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        srv.bind(('0.0.0.0', PORT))
-        srv.listen(3)
-    except OSError as exc:
-        srv.close()
-        raise RuntimeError('setup server bind failed') from exc
-
-    STATUS_LED.show('setup_server_ready')
-    STATUS_LED.on()
-
-    while True:
-        try:
-            conn, _ = srv.accept()
-        except OSError:
-            continue
-
-        try:
-            raw: str = _recv(conn)
-            method: str
-            path: str
-            body: str
-            method, path, body = _parse(raw)
-
-            if path == '/':
-                _send(conn, '200 OK', 'text/html', _page())
-
-            elif path == '/run':
-                script: str = _read_payload()
-                try:
-                    validate_script(script)
-                    kbd = _ensure_keyboard()
-                    run_script(kbd, script, allow_unsafe=ALLOW_UNSAFE)
-                    _send(conn, '200 OK', 'text/html', _page('Payload executed', 'success'))
-                except DuckyScriptError as exc:
-                    _send(conn, '200 OK', 'text/html', _page(f'Error: {exc}', 'error'))
-                except OSError as exc:
-                    _send(conn, '200 OK', 'text/html', _page(f'USB error: {exc}', 'error'))
-
-            elif path == '/save' and method == 'POST':
-                content: str = _parse_form(body).get('p', '').replace('\r\n', '\n')
-                _write_payload(content)
-                _redirect(conn, '/')
-
-            else:
-                _send(conn, '404 Not Found', 'text/plain', '404')
-
-        except Exception as e:
-            print('request error:', e)
-            pass
-        finally:
-            conn.close()
+    """Backward-compatible entry point for setup mode."""
+    SERVER.start()
