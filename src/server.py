@@ -16,6 +16,8 @@ from status_led import STATUS_LED
 PORT: int = 80
 _USB_ENUM_TIMEOUT_MS = 5000
 _AP_CHANNEL = 6
+_AP_MAX_CLIENTS = 4
+_DEFAULT_AP_IP = '192.168.4.1'
 _kbd = None
 _ap_password_in_use = AP_PASSWORD
 
@@ -417,16 +419,16 @@ def _wlan_security(name: str, default: int) -> int:
     return default
 
 
-def _ap_config_attempts() -> list[tuple[str, dict[str, object]]]:
-    attempts: list[tuple[str, dict[str, object]]] = []
+def _ap_config_attempts() -> list[tuple[str, str, dict[str, object]]]:
+    attempts: list[tuple[str, str, dict[str, object]]] = []
     secure_password = AP_PASSWORD.strip()
     if secure_password:
         attempts.extend(
             [
                 (
                     'wpa2',
+                    'ssid',
                     {
-                        'ssid': AP_SSID,
                         'channel': _AP_CHANNEL,
                         'security': _wlan_security('SEC_WPA2', 3),
                         'key': secure_password,
@@ -434,8 +436,8 @@ def _ap_config_attempts() -> list[tuple[str, dict[str, object]]]:
                 ),
                 (
                     'mixed-wpa',
+                    'ssid',
                     {
-                        'ssid': AP_SSID,
                         'channel': _AP_CHANNEL,
                         'security': _wlan_security('SEC_WPA_WPA2', 4),
                         'key': secure_password,
@@ -443,33 +445,23 @@ def _ap_config_attempts() -> list[tuple[str, dict[str, object]]]:
                 ),
                 (
                     'wpa2-minimal',
-                    {
-                        'ssid': AP_SSID,
-                        'key': secure_password,
-                    },
+                    'ssid',
+                    {'security': _wlan_security('SEC_WPA2', 3), 'key': secure_password},
                 ),
                 (
                     'key-only',
-                    {
-                        'ssid': AP_SSID,
-                        'channel': _AP_CHANNEL,
-                        'key': secure_password,
-                    },
+                    'ssid',
+                    {'channel': _AP_CHANNEL, 'key': secure_password},
                 ),
                 (
                     'legacy-password',
-                    {
-                        'essid': AP_SSID,
-                        'channel': _AP_CHANNEL,
-                        'password': secure_password,
-                    },
+                    'essid',
+                    {'channel': _AP_CHANNEL, 'password': secure_password},
                 ),
                 (
                     'legacy-password-minimal',
-                    {
-                        'essid': AP_SSID,
-                        'password': secure_password,
-                    },
+                    'essid',
+                    {'password': secure_password},
                 ),
             ]
         )
@@ -477,30 +469,23 @@ def _ap_config_attempts() -> list[tuple[str, dict[str, object]]]:
         [
             (
                 'open',
-                {
-                    'ssid': AP_SSID,
-                    'channel': _AP_CHANNEL,
-                    'security': _wlan_security('SEC_OPEN', 0),
-                },
+                'ssid',
+                {'channel': _AP_CHANNEL, 'security': _wlan_security('SEC_OPEN', 0)},
             ),
             (
                 'open-minimal',
-                {
-                    'ssid': AP_SSID,
-                },
+                'ssid',
+                {},
             ),
             (
                 'legacy-open',
-                {
-                    'essid': AP_SSID,
-                    'channel': _AP_CHANNEL,
-                },
+                'essid',
+                {'channel': _AP_CHANNEL},
             ),
             (
                 'legacy-open-minimal',
-                {
-                    'essid': AP_SSID,
-                },
+                'essid',
+                {},
             ),
         ]
     )
@@ -514,14 +499,23 @@ def _wlan_constant(name: str) -> object | None:
     return None
 
 
-def _configure_ap(ap: network.WLAN, kwargs: dict[str, object], activate_first: bool) -> str | None:
+def _configure_ap(
+    ap: network.WLAN,
+    ssid_param: str,
+    extra_kwargs: dict[str, object],
+    activate_first: bool,
+) -> str | None:
     if activate_first:
         ap.active(True)
         _sleep_ms(200)
-        ap.config(**kwargs)
-    else:
-        ap.config(**kwargs)
-        ap.active(True)
+
+    ap.config(**{ssid_param: AP_SSID})
+    try:
+        ap.config(max_clients=_AP_MAX_CLIENTS)
+    except (AttributeError, OSError, TypeError, ValueError):
+        pass
+    if extra_kwargs:
+        ap.config(**extra_kwargs)
 
     pm_none = _wlan_constant('PM_NONE')
     if pm_none is not None:
@@ -529,6 +523,9 @@ def _configure_ap(ap: network.WLAN, kwargs: dict[str, object], activate_first: b
             ap.config(pm=pm_none)
         except (AttributeError, OSError, TypeError, ValueError):
             pass
+
+    if not activate_first:
+        ap.active(True)
 
     return _wait_for_ap(ap)
 
@@ -540,12 +537,15 @@ def _wait_for_ap(ap: network.WLAN) -> str | None:
         _sleep_ms(100)
     if not ap.active():
         return None
-    for _ in range(30):
-        ip = ap.ifconfig()[0]
+    for _ in range(20):
+        try:
+            ip = ap.ifconfig()[0]
+        except (AttributeError, OSError, TypeError, ValueError):
+            ip = ''
         if ip and ip != '0.0.0.0':
             return ip
         _sleep_ms(100)
-    return None
+    return _DEFAULT_AP_IP
 
 
 def _start_ap() -> str:
@@ -556,24 +556,24 @@ def _start_ap() -> str:
     :raises OSError: if the CYW43 chip is unavailable or never becomes active.
     """
     global _ap_password_in_use
-    ap = network.WLAN(_ap_interface_id())
     last_error = 'no AP config attempts were made'
     attempt_index = 0
 
-    for mode_name, kwargs in _ap_config_attempts():
+    for mode_name, ssid_param, extra_kwargs in _ap_config_attempts():
         for activate_first in (False, True):
             if attempt_index:
                 STATUS_LED.show('setup_ap_retry')
             attempt_index += 1
+            ap = network.WLAN(_ap_interface_id())
             try:
                 ap.active(False)
             except OSError:
                 pass
             _sleep_ms(150)
             try:
-                ip = _configure_ap(ap, kwargs, activate_first=activate_first)
+                ip = _configure_ap(ap, ssid_param, extra_kwargs, activate_first=activate_first)
                 if ip:
-                    uses_password = 'key' in kwargs or 'password' in kwargs
+                    uses_password = 'key' in extra_kwargs or 'password' in extra_kwargs
                     _ap_password_in_use = AP_PASSWORD if uses_password else ''
                     return ip
                 order = 'active-first' if activate_first else 'config-first'

@@ -144,6 +144,35 @@ To use it:
 
 The web UI validates the script before execution and reports parser or runtime errors in the page.
 
+## LED Reference
+
+The onboard LED is used as a status indicator during boot, setup, and payload execution.
+
+Setup-mode stages:
+
+- `boot`: 3 fast blinks
+- `setup_entered`: 6 medium blinks
+- `setup_ap_starting`: 1 short blink
+- `setup_ap_retry`: 2 quick blinks for each retry
+- `setup_ap_ready`: 1 long blink when the AP comes up
+- `setup_server_ready`: 2 medium blinks, then the LED stays on solid while the AP and web server are running
+
+Common payload-mode stages:
+
+- `hid_constructed`: 1 long blink
+- `payload_entered`: 2 long blinks
+- `usb_enumerated`: 3 long blinks
+- `payload_ready`: 4 long blinks
+- `payload_complete`: 2 slow blinks
+
+Fatal errors loop forever with repeating blink counts:
+
+- `setup_ap_failed`: 7 blinks
+- `setup_server_failed`: 8 blinks
+- `usb_enum_timeout`: 1 short blink
+- `script_error`: 4 blinks
+- `payload_missing`: 10 blinks
+
 ## Runtime Safety
 
 `ALLOW_UNSAFE` is `False` by default.

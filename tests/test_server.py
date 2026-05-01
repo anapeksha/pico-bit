@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import sys
 import types
+from typing import Any, cast
 
 import server
 
@@ -48,10 +49,11 @@ def test_start_ap_uses_micropython_ap_interface_and_key(monkeypatch) -> None:
 
     assert ip == '192.168.4.1'
     assert events[0] == ('init', 7)
+    assert ('config', {'ssid': server.AP_SSID}) in events
+    assert ('config', {'max_clients': server._AP_MAX_CLIENTS}) in events
     assert (
         'config',
         {
-            'ssid': server.AP_SSID,
             'channel': server._AP_CHANNEL,
             'security': 3,
             'key': server.AP_PASSWORD,
@@ -94,9 +96,10 @@ def test_start_ap_falls_back_to_open_network(monkeypatch) -> None:
 
     assert ip == '192.168.4.1'
     assert server._ap_password_in_use == ''
+    assert ('config', {'ssid': server.AP_SSID}) in events
     assert (
         'config',
-        {'ssid': server.AP_SSID, 'channel': server._AP_CHANNEL, 'security': 0},
+        {'channel': server._AP_CHANNEL, 'security': 0},
     ) in events
 
 
@@ -129,6 +132,21 @@ def test_start_ap_can_retry_with_active_first(monkeypatch) -> None:
     ip = server._start_ap()
 
     assert ip == '192.168.4.1'
+
+
+def test_wait_for_ap_returns_default_ip_when_interface_is_active(monkeypatch) -> None:
+    class FakeWLAN:
+        def active(self, value: bool | None = None) -> bool:
+            return True
+
+        def ifconfig(self) -> tuple[str, str, str, str]:
+            raise OSError('ip config not ready yet')
+
+    monkeypatch.setattr(server, '_sleep_ms', lambda _ms: None)
+
+    ip = server._wait_for_ap(cast(Any, FakeWLAN()))
+
+    assert ip == server._DEFAULT_AP_IP
 
 
 def test_ensure_keyboard_is_lazy(monkeypatch) -> None:
