@@ -136,6 +136,7 @@ class SetupServer:
         self.port = port
         self._ap = None
         self._ap_ip = _DEFAULT_AP_IP
+        self._allow_unsafe = bool(ALLOW_UNSAFE)
         self._kbd = None
         self._ap_password_in_use = AP_PASSWORD
         self._payload_seeded = False
@@ -164,8 +165,14 @@ class SetupServer:
         self._payload_seeded = False
         return payload_path
 
+    def _safe_mode_enabled(self) -> bool:
+        return not self._allow_unsafe
+
+    def _set_safe_mode(self, enabled: bool) -> None:
+        self._allow_unsafe = not enabled
+
     def _mode_strings(self) -> tuple[str, str, str]:
-        if ALLOW_UNSAFE:
+        if self._allow_unsafe:
             return (
                 'Unsafe mode allowed',
                 'Unsafe runtime enabled',
@@ -212,7 +219,9 @@ class SetupServer:
             'mode_label': mode_label,
             'mode_short': mode_short,
             'notice': notice,
+            'allow_unsafe': self._allow_unsafe,
             'payload': self._read_payload(),
+            'safe_mode_enabled': self._safe_mode_enabled(),
             'seeded': self._payload_seeded,
         }
 
@@ -352,7 +361,9 @@ class SetupServer:
             raise OSError('USB HID did not enumerate within 5 s')
         return keyboard
 
-    async def execute_script(self, script: str, allow_unsafe: bool = ALLOW_UNSAFE) -> None:
+    async def execute_script(self, script: str, allow_unsafe: bool | None = None) -> None:
+        if allow_unsafe is None:
+            allow_unsafe = self._allow_unsafe
         async with self._run_lock_obj():
             validate_script(script)
             keyboard = await self._ensure_keyboard()
@@ -383,7 +394,7 @@ class SetupServer:
 
     async def _run_payload(self, script: str) -> tuple[str, str]:
         try:
-            await self.execute_script(script, allow_unsafe=ALLOW_UNSAFE)
+            await self.execute_script(script)
             return 'Payload executed.', 'success'
         except DuckyScriptError as exc:
             return f'Error: {exc}', 'error'
@@ -453,6 +464,36 @@ class SetupServer:
                 request,
                 '200 OK',
                 {'message': 'payload.dd saved.', 'notice': 'success'},
+            )
+            return
+
+        if request['method'] == 'POST' and request['path'] == '/api/safe-mode':
+            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            enabled = data.get('enabled')
+            if not isinstance(enabled, bool):
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {'message': 'safe mode enabled must be a boolean.', 'notice': 'error'},
+                )
+                return
+
+            self._set_safe_mode(enabled)
+            mode_label, mode_short, mode_description = self._mode_strings()
+            await self._send_json(
+                writer,
+                request,
+                '200 OK',
+                {
+                    'allow_unsafe': self._allow_unsafe,
+                    'message': 'Safe mode enabled.' if enabled else 'Safe mode disabled.',
+                    'mode_description': mode_description,
+                    'mode_label': mode_label,
+                    'mode_short': mode_short,
+                    'notice': 'success',
+                    'safe_mode_enabled': self._safe_mode_enabled(),
+                },
             )
             return
 

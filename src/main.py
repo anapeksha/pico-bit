@@ -21,7 +21,6 @@ async def _start_server():
 
 
 async def _run_payload(server) -> str | None:
-    from device_config import ALLOW_UNSAFE
     from ducky import DuckyScriptError, ensure_payload, validate_script
 
     await STATUS_LED.show('payload_entered')
@@ -52,7 +51,7 @@ async def _run_payload(server) -> str | None:
         await STATUS_LED.show('usb_enumerated')
         await STATUS_LED.show('payload_ready')
         validate_script(script)
-        await server.execute_script(script, allow_unsafe=ALLOW_UNSAFE)
+        await server.execute_script(script)
     except DuckyScriptError:
         return 'script_error'
     except OSError:

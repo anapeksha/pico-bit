@@ -3,6 +3,7 @@ const payloadField = document.getElementById('payload');
 const saveButton = document.getElementById('save');
 const runButton = document.getElementById('run');
 const refreshButton = document.getElementById('refresh');
+const unsafeToggle = document.getElementById('unsafe-toggle');
 
 function setNotice(message, tone = 'quiet') {
   if (!notice) {
@@ -52,14 +53,21 @@ async function requestJson(path, options = {}) {
   return data;
 }
 
+function applyMode(state) {
+  setBoundText('mode_label', (state.mode_label || '').split(' ')[0]);
+  setBoundText('mode_short', state.mode_short);
+  setBoundText('mode_description', state.mode_description);
+  if (unsafeToggle) {
+    unsafeToggle.checked = !!state.allow_unsafe;
+  }
+}
+
 async function loadBootstrap() {
   const state = await requestJson('/api/bootstrap');
   payloadField.value = state.payload || '';
   setBoundText('ap_ssid', state.ap_ssid);
   setBoundText('ap_password', state.ap_password || 'Open network');
-  setBoundText('mode_label', (state.mode_label || '').split(' ')[0]);
-  setBoundText('mode_short', state.mode_short);
-  setBoundText('mode_description', state.mode_description);
+  applyMode(state);
   setBoundText('seeded', state.seeded ? 'Yes' : 'No');
   setBoundText('hid_state', state.keyboard_ready ? 'Ready' : 'Waiting');
   setBoundText('auth_label', state.auth_enabled ? 'Enabled' : 'Disabled');
@@ -68,6 +76,25 @@ async function loadBootstrap() {
     state.seeded ? 'Seeded on boot' : 'Saved on device',
   );
   setNotice(state.message || '', state.notice || 'quiet');
+}
+
+async function toggleUnsafe(unsafeOn) {
+  setBusy(unsafeToggle, true);
+  try {
+    const result = await requestJson('/api/safe-mode', {
+      method: 'POST',
+      body: JSON.stringify({ enabled: !unsafeOn }),
+    });
+    applyMode(result);
+    setNotice(result.message, result.notice || 'success');
+  } catch (error) {
+    if (unsafeToggle) {
+      unsafeToggle.checked = !unsafeOn;
+    }
+    setNotice(error.message, 'error');
+  } finally {
+    setBusy(unsafeToggle, false);
+  }
 }
 
 async function savePayload() {
@@ -117,6 +144,12 @@ if (saveButton) {
 if (runButton) {
   runButton.addEventListener('click', () => {
     runPayload();
+  });
+}
+
+if (unsafeToggle) {
+  unsafeToggle.addEventListener('change', () => {
+    toggleUnsafe(unsafeToggle.checked);
   });
 }
 

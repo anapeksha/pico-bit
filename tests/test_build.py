@@ -21,6 +21,7 @@ def test_build_cleans_dist_to_single_boot_file() -> None:
 def test_build_injects_runtime_config_overrides() -> None:
     root = Path(__file__).resolve().parents[1]
     dist = root / 'dist'
+    payload_seed = (root / 'payload.dd').read_text(encoding='utf-8')
 
     subprocess.run(
         [
@@ -41,6 +42,8 @@ def test_build_injects_runtime_config_overrides() -> None:
     assert "AP_SSID: str = 'Studio Pico'" in bundled
     assert "AP_PASSWORD: str = 'keyboard42'" in bundled
     assert 'ALLOW_UNSAFE: bool = True' in bundled
+    assert 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' in payload_seed
+    assert 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' in bundled
 
 
 def test_build_emits_ruff_clean_bundle() -> None:

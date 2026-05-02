@@ -10,7 +10,19 @@
     <nav class="topbar">
       <div class="topbar__brand">Pico Bit</div>
       <div class="topbar__fill"></div>
-      <span class="badge badge--accent" data-bind="mode_short">Safe mode</span>
+      <label class="switch" for="unsafe-toggle">
+        <span class="switch__label">Unsafe mode</span>
+        <input
+          type="checkbox"
+          id="unsafe-toggle"
+          class="switch__input"
+          role="switch"
+          aria-label="Toggle unsafe mode"
+        />
+        <span class="switch__track" aria-hidden="true">
+          <span class="switch__thumb"></span>
+        </span>
+      </label>
     </nav>
 
     <main class="layout">

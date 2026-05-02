@@ -80,7 +80,22 @@ def test_bootstrap_state_reports_payload_and_auth(monkeypatch) -> None:
     assert state['seeded'] is True
     assert state['auth_enabled'] is True
     assert state['ap_password'] == 'Open network'
+    assert state['allow_unsafe'] is False
     assert state['message'] == 'payload.dd was seeded on this boot.'
+    assert state['safe_mode_enabled'] is True
+
+
+def test_bootstrap_state_reports_unsafe_runtime_when_enabled(monkeypatch) -> None:
+    portal = server.SetupServer()
+    portal._allow_unsafe = True
+    monkeypatch.setattr(portal, '_read_payload', lambda: 'REM test\n')
+
+    state = portal._bootstrap_state()
+
+    assert state['allow_unsafe'] is True
+    assert state['mode_label'] == 'Unsafe mode allowed'
+    assert state['mode_short'] == 'Unsafe runtime enabled'
+    assert state['safe_mode_enabled'] is False
 
 
 def test_start_is_idempotent(monkeypatch) -> None:
@@ -289,6 +304,34 @@ def test_execute_script_serializes_hid_use(monkeypatch) -> None:
     ]
 
 
+def test_execute_script_uses_runtime_safe_mode_by_default(monkeypatch) -> None:
+    events: list[object] = []
+    portal = server.SetupServer()
+    portal._allow_unsafe = True
+
+    class FakeLock:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, _exc_type, _exc, _tb):
+            return False
+
+    async def fake_ensure_keyboard():
+        return object()
+
+    async def fake_run_script(_keyboard, script, allow_unsafe=False):
+        events.append((script, allow_unsafe))
+
+    monkeypatch.setattr(portal, '_run_lock_obj', lambda: FakeLock())
+    monkeypatch.setattr(portal, '_ensure_keyboard', fake_ensure_keyboard)
+    monkeypatch.setattr(server, 'validate_script', lambda _script: None)
+    monkeypatch.setattr(server, 'run_script', fake_run_script)
+
+    asyncio.run(portal.execute_script('STRING hi\n'))
+
+    assert events == [('STRING hi\n', True)]
+
+
 def test_dispatch_redirects_to_login_when_not_authorized(monkeypatch) -> None:
     portal = server.SetupServer()
     writer = FakeWriter()
@@ -351,6 +394,53 @@ def test_api_bootstrap_returns_json_when_authorized(monkeypatch) -> None:
     assert '200 OK' in head
     assert 'application/json' in head
     assert json.loads(body)['payload'] == 'REM hi\n'
+
+
+def test_api_safe_mode_updates_runtime_state(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    monkeypatch.setattr(portal, '_read_payload', lambda: 'REM hi\n')
+
+    request = _make_request(
+        'POST',
+        '/api/safe-mode',
+        body=b'{"enabled": false}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
+    assert portal._allow_unsafe is True
+    assert payload['allow_unsafe'] is True
+    assert payload['message'] == 'Safe mode disabled.'
+    assert payload['mode_short'] == 'Unsafe runtime enabled'
+    assert payload['safe_mode_enabled'] is False
+
+
+def test_api_safe_mode_requires_boolean_flag() -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    request = _make_request(
+        'POST',
+        '/api/safe-mode',
+        body=b'{"enabled": "nope"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '400 Bad Request' in head
+    assert payload == {
+        'message': 'safe mode enabled must be a boolean.',
+        'notice': 'error',
+    }
 
 
 def test_stop_closes_server_and_ap() -> None:

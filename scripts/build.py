@@ -13,6 +13,7 @@ from .asset_pipeline import sync_web_assets
 from .build_support import (
     OverrideInjector,
     build_config_overrides,
+    build_module_overrides,
     build_mpy_tree,
     prepare_source_tree,
 )
@@ -378,7 +379,7 @@ def build_bundle(build_overrides=None):
 
 def build(build_overrides=None) -> None:
     if build_overrides is None:
-        build_overrides = {}
+        build_overrides = build_module_overrides(ROOT)
 
     sync_web_assets()
     build_bundle(build_overrides)
@@ -386,7 +387,7 @@ def build(build_overrides=None) -> None:
     source_dir = prepare_source_tree(
         build_dir=BUILD_DIR,
         root_src_dir=SRC_DIR,
-        overrides=build_overrides.get('device_config', {}),
+        overrides_by_module=build_overrides,
     )
     build_mpy_tree(
         compiler_cmd=[sys.executable, '-m', 'mpy_cross'],
@@ -427,4 +428,4 @@ def run_build(argv=None):
         config_overrides = build_config_overrides(args)
     except ValueError as exc:
         parser.error(str(exc))
-    build({'device_config': config_overrides} if config_overrides else {})
+    build(build_module_overrides(ROOT, device_config_overrides=config_overrides))

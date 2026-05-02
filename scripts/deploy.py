@@ -5,12 +5,14 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import tomllib
 from pathlib import Path
 
 from .asset_pipeline import sync_web_assets
 from .build_support import (
     OverrideValue,
     build_config_overrides,
+    build_module_overrides,
     build_mpy_tree,
     prepare_source_tree,
 )
@@ -25,6 +27,7 @@ MANIFEST = ROOT / 'frozen' / 'manifest.py'
 DEFAULT_BOARD = 'RPI_PICO2_W'
 DEFAULT_MICROPYTHON_REF = 'v1.28.0'
 DEFAULT_REPO = 'https://github.com/micropython/micropython.git'
+PYPROJECT = ROOT / 'pyproject.toml'
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -49,7 +52,42 @@ def _build_repo_mpy_cross() -> Path:
     return MICROPYTHON_DIR / 'mpy-cross' / 'build' / 'mpy-cross'
 
 
-def build_firmware(board: str, ref: str, overrides: dict[str, OverrideValue]) -> Path:
+def pyproject_version(pyproject_path: Path = PYPROJECT) -> str | None:
+    if not pyproject_path.exists():
+        return None
+
+    data = tomllib.loads(pyproject_path.read_text(encoding='utf-8'))
+    version = data.get('tool', {}).get('poetry', {}).get('version')
+    if not isinstance(version, str):
+        return None
+
+    version = version.strip()
+    return version or None
+
+
+def resolve_artifact_version(
+    release_version: str | None,
+    pyproject_path: Path = PYPROJECT,
+) -> str | None:
+    if release_version is not None:
+        release_version = release_version.strip()
+        if release_version:
+            return release_version
+    return pyproject_version(pyproject_path)
+
+
+def release_filename(board: str, artifact_version: str | None) -> str:
+    if artifact_version:
+        return f'pico-bit-{board}-{artifact_version}.uf2'
+    return f'pico-bit-{board}.uf2'
+
+
+def build_firmware(
+    board: str,
+    ref: str,
+    overrides: dict[str, OverrideValue],
+    artifact_version: str | None,
+) -> Path:
     _run(
         [
             'make',
@@ -65,11 +103,12 @@ def build_firmware(board: str, ref: str, overrides: dict[str, OverrideValue]) ->
         raise FileNotFoundError(f'Expected firmware at {firmware}')
 
     DIST_DIR.mkdir(exist_ok=True)
-    release_name = f'pico-bit-{board}-{ref}.uf2'
+    release_name = release_filename(board, artifact_version)
     output = DIST_DIR / release_name
     output.write_bytes(firmware.read_bytes())
 
     metadata = {
+        'artifact_version': artifact_version,
         'board': board,
         'config_overrides': overrides,
         'firmware': release_name,
@@ -100,6 +139,7 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--portal-password')
     parser.add_argument('--cors-allowed-origin')
     parser.add_argument('--cors-allow-credentials')
+    parser.add_argument('--release-version')
     return parser
 
 
@@ -118,10 +158,12 @@ def run_deploy(argv: list[str] | None = None) -> int:
 
     _ensure_micropython_checkout(args.repo_url, args.micropython_ref)
     mpy_cross = _build_repo_mpy_cross()
+    module_overrides = build_module_overrides(ROOT, device_config_overrides=overrides)
+    artifact_version = resolve_artifact_version(args.release_version)
     source_dir = prepare_source_tree(
         build_dir=BUILD_DIR,
         root_src_dir=SRC_DIR,
-        overrides=overrides,
+        overrides_by_module=module_overrides,
     )
     build_mpy_tree(
         compiler_cmd=[str(mpy_cross)],
@@ -129,5 +171,5 @@ def run_deploy(argv: list[str] | None = None) -> int:
         source_dir=source_dir,
         cwd=ROOT,
     )
-    build_firmware(args.board, args.micropython_ref, overrides)
+    build_firmware(args.board, args.micropython_ref, overrides, artifact_version)
     return 0

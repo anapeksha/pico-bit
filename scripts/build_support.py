@@ -12,6 +12,8 @@ from typing import TypeAlias
 from .asset_pipeline import sync_web_assets
 
 OverrideValue: TypeAlias = str | bool | int | float | complex | bytes | None
+ModuleOverrides: TypeAlias = dict[str, dict[str, OverrideValue]]
+PAYLOAD_SEED_FILE = 'payload.dd'
 OVERRIDE_ENV = {
     'ALLOW_UNSAFE': 'PICO_BIT_ALLOW_UNSAFE',
     'AP_PASSWORD': 'PICO_BIT_AP_PASSWORD',
@@ -119,7 +121,26 @@ def build_config_overrides(args: argparse.Namespace) -> dict[str, OverrideValue]
     return overrides
 
 
-def render_device_config(source: str, overrides: dict[str, OverrideValue]) -> str:
+def payload_seed_text(root: Path) -> str:
+    return (root / PAYLOAD_SEED_FILE).read_text(encoding='utf-8')
+
+
+def build_module_overrides(
+    root: Path,
+    *,
+    device_config_overrides: dict[str, OverrideValue] | None = None,
+) -> ModuleOverrides:
+    overrides: ModuleOverrides = {
+        'ducky.constants': {
+            'DEFAULT_PAYLOAD': payload_seed_text(root),
+        }
+    }
+    if device_config_overrides:
+        overrides['device_config'] = dict(device_config_overrides)
+    return overrides
+
+
+def render_module_source(source: str, overrides: dict[str, OverrideValue]) -> str:
     if not overrides:
         return source
     tree = ast.parse(source)
@@ -128,11 +149,29 @@ def render_device_config(source: str, overrides: dict[str, OverrideValue]) -> st
     return ast.unparse(updated) + '\n'
 
 
+def render_device_config(source: str, overrides: dict[str, OverrideValue]) -> str:
+    return render_module_source(source, overrides)
+
+
+def _module_source_path(source_root: Path, module_name: str) -> Path:
+    parts = module_name.split('.')
+    module_path = source_root.joinpath(*parts)
+    package_init = module_path / '__init__.py'
+    if package_init.exists():
+        return package_init
+
+    module_file = module_path.with_suffix('.py')
+    if module_file.exists():
+        return module_file
+
+    raise FileNotFoundError(f'module {module_name!r} not found under {source_root}')
+
+
 def prepare_source_tree(
     *,
     build_dir: Path,
     root_src_dir: Path,
-    overrides: dict[str, OverrideValue],
+    overrides_by_module: ModuleOverrides | None = None,
 ) -> Path:
     build_dir.mkdir(exist_ok=True)
     sync_web_assets()
@@ -140,13 +179,14 @@ def prepare_source_tree(
     configured_src = source_root / 'src'
     shutil.copytree(root_src_dir, configured_src)
 
-    if overrides:
-        device_config = configured_src / 'device_config.py'
-        source = device_config.read_text(encoding='utf-8')
-        device_config.write_text(
-            render_device_config(source, overrides),
-            encoding='utf-8',
-        )
+    if overrides_by_module:
+        for module_name, overrides in overrides_by_module.items():
+            module_path = _module_source_path(configured_src, module_name)
+            source = module_path.read_text(encoding='utf-8')
+            module_path.write_text(
+                render_module_source(source, overrides),
+                encoding='utf-8',
+            )
 
     return configured_src
 
