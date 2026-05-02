@@ -2,7 +2,7 @@
 
 <img src="images/pico-bit.jpeg" alt="Pico Bit home">
 
-`pico-bit` is a MicroPython DuckyScript runtime for Raspberry Pi Pico 2 boards. It runs a USB HID keyboard payload from `payload.dd`, starts a Wi-Fi injector portal on Pico 2 W hardware, and keeps the payload editable on the device.
+`pico-bit` is a MicroPython DuckyScript runtime for the Raspberry Pi Pico 2 W (`RPI_PICO2_W`) only. It runs a USB HID keyboard payload from `payload.dd`, starts a Wi-Fi injector portal, and keeps the payload editable on the device.
 
 ## What It Does
 
@@ -13,8 +13,8 @@
 
 ## Hardware
 
-- Recommended board: Raspberry Pi Pico 2 W
-- The browser injector needs Wi-Fi, so Pico 2 W is the main target
+- Supported board: Raspberry Pi Pico 2 W (`RPI_PICO2_W`) only
+- Other Pico 2 variants are not supported by this project
 - Use the Pico's own USB data port for HID, not a carrier-only power port
 
 ## Default Access
