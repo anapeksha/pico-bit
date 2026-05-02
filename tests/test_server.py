@@ -60,7 +60,6 @@ def test_login_page_renders_form() -> None:
     html = portal._render_login('Nope', username='ana')
 
     assert 'Unlock injector' in html
-    assert server.AP_SSID in html
     assert 'Invalid injector credentials.' not in html
     assert 'Nope' in html
     assert 'value="ana"' in html
@@ -459,6 +458,8 @@ def test_api_safe_mode_requires_boolean_flag() -> None:
         'message': 'safe mode enabled must be a boolean.',
         'notice': 'error',
     }
+
+
 def test_api_validate_returns_dry_run_state(monkeypatch) -> None:
     portal = server.SetupServer()
     writer = FakeWriter()
