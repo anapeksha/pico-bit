@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "pico-bit"
-version = "0.1.0"
+version = "0.0.1"
 description = "MicroPython DuckyScript runtime and frozen-firmware toolchain for Raspberry Pi Pico 2."
 authors = ["pico-bit contributors"]
 license = "GPL-3.0-only"
