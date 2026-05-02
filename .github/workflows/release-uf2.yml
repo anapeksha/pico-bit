@@ -7,8 +7,13 @@ on:
   workflow_dispatch:
     inputs:
       release_tag:
-        description: Existing v* tag to rebuild and upload assets to
+        description: Existing v* tag whose release assets will be replaced
         required: true
+        type: string
+      build_ref:
+        description: Branch or commit to build from (defaults to main)
+        required: false
+        default: main
         type: string
 
 permissions:
@@ -34,7 +39,7 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
