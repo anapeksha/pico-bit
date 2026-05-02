@@ -47,7 +47,9 @@
         </div>
         <div class="stat">
           <div class="stat__label">Host HID</div>
-          <div class="stat__value" data-bind="hid_state">Waiting</div>
+          <div class="stat__value" data-bind="hid_state" aria-live="polite">
+            Waiting
+          </div>
         </div>
       </div>
 
@@ -58,7 +60,13 @@
             <span class="badge" data-bind="payload_state">Saved on device</span>
           </div>
 
-          <div class="notice notice--hidden" id="notice"></div>
+          <div
+            class="notice notice--hidden"
+            id="notice"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
+          ></div>
 
           <div class="editor__stage">
             <div
@@ -72,6 +80,7 @@
                 id="editor-markers"
                 aria-hidden="true"
               ></div>
+              <label for="payload" class="sr-only">Payload script</label>
               <textarea
                 id="payload"
                 class="editor__input"
@@ -81,13 +90,20 @@
                 autocorrect="off"
                 placeholder="REM Write your payload here"
                 wrap="off"
+                aria-describedby="editor-status"
               ></textarea>
             </div>
           </div>
 
           <div class="editor__footer">
             <div class="editor__status" id="editor-status">
-              <span class="badge" data-bind="validation_badge">Checking…</span>
+              <span
+                class="badge"
+                data-bind="validation_badge"
+                aria-live="polite"
+                aria-atomic="true"
+                >Checking…</span
+              >
               <span class="editor__status-text" data-bind="validation_summary">
                 Dry run runs before save and execution.
               </span>
@@ -202,7 +218,12 @@
 
           <div class="panel">
             <p class="panel__title">Recent runs</p>
-            <div class="history" id="run-history">
+            <div
+              class="history"
+              id="run-history"
+              aria-live="polite"
+              aria-label="Recent runs"
+            >
               <p class="history__empty">No payloads have run yet.</p>
             </div>
           </div>
@@ -217,6 +238,7 @@
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-title"
+        aria-describedby="modal-subtitle"
       >
         <div class="modal__header">
           <div class="modal__heading">
