@@ -102,13 +102,13 @@ def test_release_filename_uses_optional_version_suffix() -> None:
     assert DEPLOY.release_filename('RPI_PICO2_W', None) == 'pico-bit-RPI_PICO2_W.uf2'
 
 
-def test_render_device_config_preserves_derived_portal_password() -> None:
+def test_render_device_config_keeps_portal_password_independent() -> None:
     source = (ROOT / 'src' / 'device_config.py').read_text(encoding='utf-8')
 
     rendered = BUILD_SUPPORT.render_device_config(source, {'AP_PASSWORD': 'keyboard42'})
 
     assert "AP_PASSWORD: str = 'keyboard42'" in rendered
-    assert 'PORTAL_PASSWORD: str = AP_PASSWORD' in rendered
+    assert "PORTAL_PASSWORD: str = 'PicoBit24Admin'" in rendered
 
 
 def test_render_device_config_can_override_portal_login_values() -> None:
