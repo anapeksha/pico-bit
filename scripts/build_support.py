@@ -174,9 +174,14 @@ def build_mpy_tree(
 
     compiled: list[Path] = []
     for source in source_modules(source_dir):
+        source_name = source.relative_to(source_dir).as_posix()
         relative = source.relative_to(source_dir).with_suffix('.mpy')
         output = output_dir / relative
         output.parent.mkdir(parents=True, exist_ok=True)
-        subprocess.run([*compiler_cmd, str(source), '-o', str(output)], cwd=cwd, check=True)
+        subprocess.run(
+            [*compiler_cmd, '-s', source_name, '-o', str(output), str(source)],
+            cwd=cwd,
+            check=True,
+        )
         compiled.append(output)
     return compiled

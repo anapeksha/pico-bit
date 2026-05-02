@@ -94,3 +94,42 @@ def test_render_device_config_can_override_portal_login_values() -> None:
     assert 'PORTAL_AUTH_ENABLED: bool = False' in rendered
     assert "PORTAL_USERNAME: str = 'pico'" in rendered
     assert "PORTAL_PASSWORD: str = 'injector42'" in rendered
+
+
+def test_build_mpy_tree_embeds_relative_source_names(tmp_path, monkeypatch) -> None:
+    source_dir = tmp_path / 'src'
+    output_dir = tmp_path / 'mpy'
+    compiler_calls: list[list[str]] = []
+
+    server = source_dir / 'server.py'
+    parser = source_dir / 'ducky' / 'parser.py'
+    server.parent.mkdir(parents=True, exist_ok=True)
+    parser.parent.mkdir(parents=True, exist_ok=True)
+    server.write_text('VALUE = 1\n', encoding='utf-8')
+    parser.write_text('VALUE = 2\n', encoding='utf-8')
+
+    def fake_run(cmd: list[str], *, cwd: Path, check: bool) -> None:
+        assert check is True
+        assert cwd == ROOT
+        compiler_calls.append(cmd)
+        output = Path(cmd[cmd.index('-o') + 1])
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(b'mpy')
+
+    monkeypatch.setattr(BUILD_SUPPORT.subprocess, 'run', fake_run)
+
+    compiled = BUILD_SUPPORT.build_mpy_tree(
+        compiler_cmd=['mpy-cross'],
+        output_dir=output_dir,
+        source_dir=source_dir,
+        cwd=ROOT,
+    )
+
+    assert [path.relative_to(output_dir).as_posix() for path in compiled] == [
+        'ducky/parser.mpy',
+        'server.mpy',
+    ]
+    assert [call[call.index('-s') + 1] for call in compiler_calls] == [
+        'ducky/parser.py',
+        'server.py',
+    ]

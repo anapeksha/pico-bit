@@ -4,6 +4,15 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing v* tag to rebuild and upload assets to
+        required: true
+        type: string
+
+permissions:
+  contents: write
 
 jobs:
   build-uf2:
@@ -11,8 +20,21 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Validate manual release tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          case "${{ inputs.release_tag }}" in
+            v*) ;;
+            *)
+              echo "release_tag must start with v"
+              exit 1
+              ;;
+          esac
+
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -54,6 +76,7 @@ jobs:
       - name: Publish release assets
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           files: |
             dist/*.uf2
             dist/release.json
