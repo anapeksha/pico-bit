@@ -56,6 +56,48 @@ jobs:
       - name: Install Python dependencies
         run: poetry install --no-interaction
 
+      - name: Patch historical build helpers
+        run: |
+          poetry run python - <<'PY'
+          from pathlib import Path
+
+          old_block = """    for source in source_modules(source_dir):
+                  relative = source.relative_to(source_dir).with_suffix('.mpy')
+                  output = output_dir / relative
+                  output.parent.mkdir(parents=True, exist_ok=True)
+                  subprocess.run([*compiler_cmd, str(source), '-o', str(output)], cwd=cwd, check=True)
+                  compiled.append(output)
+          """
+
+          new_block = """    for source in source_modules(source_dir):
+                  source_name = source.relative_to(source_dir).as_posix()
+                  relative = source.relative_to(source_dir).with_suffix('.mpy')
+                  output = output_dir / relative
+                  output.parent.mkdir(parents=True, exist_ok=True)
+                  subprocess.run(
+                      [*compiler_cmd, '-s', source_name, '-o', str(output), str(source)],
+                      cwd=cwd,
+                      check=True,
+                  )
+                  compiled.append(output)
+          """
+
+          for candidate in (Path('scripts/build_support.py'), Path('build_support.py')):
+              if not candidate.exists():
+                  continue
+
+              text = candidate.read_text(encoding='utf-8')
+              if 'source_name = source.relative_to(source_dir).as_posix()' in text:
+                  print(f'{candidate}: already patched')
+                  continue
+
+              if old_block not in text:
+                  raise SystemExit(f'Could not patch {candidate}: expected block not found')
+
+              candidate.write_text(text.replace(old_block, new_block), encoding='utf-8')
+              print(f'{candidate}: patched')
+          PY
+
       - name: Verify source tree
         run: |
           if [ -d scripts ]; then
