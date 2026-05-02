@@ -45,6 +45,12 @@ async def _run_payload(server) -> str | None:
         STATUS_LED.on()
         keyboard_ready = await keyboard.wait_open(_INITIAL_DELAY_MS)
         if not keyboard_ready:
+            server.record_run(
+                script,
+                'USB error: USB HID did not enumerate within 10 s',
+                'error',
+                source='boot',
+            )
             return 'usb_enum_timeout'
 
         STATUS_LED.off()
@@ -52,11 +58,14 @@ async def _run_payload(server) -> str | None:
         await STATUS_LED.show('payload_ready')
         validate_script(script)
         await server.execute_script(script)
-    except DuckyScriptError:
+    except DuckyScriptError as exc:
+        server.record_run(script, f'Error: {exc}', 'error', source='boot')
         return 'script_error'
-    except OSError:
+    except OSError as exc:
+        server.record_run(script, f'USB error: {exc}', 'error', source='boot')
         return 'usb_enum_timeout'
 
+    server.record_run(script, 'Boot payload executed.', 'success', source='boot')
     await STATUS_LED.show('payload_complete')
     return None
 

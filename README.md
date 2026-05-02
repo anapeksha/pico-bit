@@ -20,10 +20,10 @@
 ## Default Access
 
 - AP SSID: `PicoBit`
-- AP password: `88888888`
+- AP password: `PicoBit24Net`
 - Portal URL: `http://192.168.4.1`
 - Portal username: `admin`
-- Portal password: `88888888`
+- Portal password: `PicoBit24Admin`
 
 ## Download Firmware
 
@@ -45,7 +45,7 @@ On first boot, Pico Bit creates `payload.dd` automatically if it is not already 
 ## Use The Injector
 
 1. Power the board from the Pico USB port.
-2. Join the Wi-Fi network `picoBit`.
+2. Join the Wi-Fi network `PicoBit`.
 3. Open `http://192.168.4.1`.
 4. Sign in with the default portal credentials.
 5. Edit the payload, then save it or run it from the page.

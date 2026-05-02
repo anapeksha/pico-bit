@@ -379,7 +379,7 @@ def build_bundle(build_overrides=None):
 
 def build(build_overrides=None) -> None:
     if build_overrides is None:
-        build_overrides = build_module_overrides(ROOT)
+        build_overrides = build_module_overrides(ROOT, build_dir=BUILD_DIR)
 
     sync_web_assets()
     build_bundle(build_overrides)
@@ -428,4 +428,10 @@ def run_build(argv=None):
         config_overrides = build_config_overrides(args)
     except ValueError as exc:
         parser.error(str(exc))
-    build(build_module_overrides(ROOT, device_config_overrides=config_overrides))
+    build(
+        build_module_overrides(
+            ROOT,
+            build_dir=BUILD_DIR,
+            device_config_overrides=config_overrides,
+        )
+    )

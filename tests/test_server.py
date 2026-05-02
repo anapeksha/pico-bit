@@ -71,6 +71,7 @@ def test_bootstrap_state_reports_payload_and_auth(monkeypatch) -> None:
     portal._payload_seeded = True
     portal._ap_password_in_use = ''
     monkeypatch.setattr(portal, '_read_payload', lambda: 'REM test\n')
+    monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
     monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
     monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
 
@@ -83,12 +84,14 @@ def test_bootstrap_state_reports_payload_and_auth(monkeypatch) -> None:
     assert state['allow_unsafe'] is False
     assert state['message'] == 'payload.dd was seeded on this boot.'
     assert state['safe_mode_enabled'] is True
+    assert state['validation'] == {'blocking': False}
 
 
 def test_bootstrap_state_reports_unsafe_runtime_when_enabled(monkeypatch) -> None:
     portal = server.SetupServer()
     portal._allow_unsafe = True
     monkeypatch.setattr(portal, '_read_payload', lambda: 'REM test\n')
+    monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
 
     state = portal._bootstrap_state()
 
@@ -96,6 +99,30 @@ def test_bootstrap_state_reports_unsafe_runtime_when_enabled(monkeypatch) -> Non
     assert state['mode_label'] == 'Unsafe mode allowed'
     assert state['mode_short'] == 'Unsafe runtime enabled'
     assert state['safe_mode_enabled'] is False
+
+
+def test_bootstrap_state_includes_library_groups_and_run_history(monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(portal, '_read_payload', lambda: 'REM test\n')
+    monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
+    monkeypatch.setattr(
+        portal,
+        '_payload_library_groups',
+        lambda: [{'key': 'general', 'label': 'General', 'items': [{'id': 'general/test'}]}],
+    )
+    monkeypatch.setattr(
+        portal,
+        '_recent_runs',
+        lambda: [{'sequence': 2, 'notice': 'success', 'preview': 'STRING hi'}],
+    )
+
+    state = portal._bootstrap_state()
+
+    assert state['payload_library_groups'] == [
+        {'key': 'general', 'label': 'General', 'items': [{'id': 'general/test'}]}
+    ]
+    assert state['run_history'] == [{'sequence': 2, 'notice': 'success', 'preview': 'STRING hi'}]
+    assert state['validation'] == {'blocking': False}
 
 
 def test_start_is_idempotent(monkeypatch) -> None:
@@ -332,6 +359,22 @@ def test_execute_script_uses_runtime_safe_mode_by_default(monkeypatch) -> None:
     assert events == [('STRING hi\n', True)]
 
 
+def test_run_payload_records_recent_history(monkeypatch) -> None:
+    portal = server.SetupServer()
+
+    async def fake_execute_script(script: str, allow_unsafe: bool | None = None) -> None:
+        assert script == 'STRING hi\n'
+        assert allow_unsafe is None
+
+    monkeypatch.setattr(portal, 'execute_script', fake_execute_script)
+
+    message, notice = asyncio.run(portal._run_payload('STRING hi\n'))
+
+    assert (message, notice) == ('Payload executed.', 'success')
+    assert portal._run_history[0]['source'] == 'portal'
+    assert portal._run_history[0]['preview'] == 'STRING hi'
+
+
 def test_dispatch_redirects_to_login_when_not_authorized(monkeypatch) -> None:
     portal = server.SetupServer()
     writer = FakeWriter()
@@ -400,11 +443,17 @@ def test_api_safe_mode_updates_runtime_state(monkeypatch) -> None:
     portal = server.SetupServer()
     writer = FakeWriter()
     monkeypatch.setattr(portal, '_read_payload', lambda: 'REM hi\n')
+    monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
+    monkeypatch.setattr(
+        portal,
+        '_payload_library_groups',
+        lambda: [{'key': 'general', 'label': 'General', 'items': []}],
+    )
 
     request = _make_request(
         'POST',
         '/api/safe-mode',
-        body=b'{"enabled": false}',
+        body=b'{"enabled": false, "payload": "STRING hi\\n"}',
         cookies={'pico_bit_session': 'token123'},
     )
     portal._sessions['token123'] = 'admin'
@@ -418,7 +467,11 @@ def test_api_safe_mode_updates_runtime_state(monkeypatch) -> None:
     assert payload['allow_unsafe'] is True
     assert payload['message'] == 'Safe mode disabled.'
     assert payload['mode_short'] == 'Unsafe runtime enabled'
+    assert payload['payload_library_groups'] == [
+        {'key': 'general', 'label': 'General', 'items': []}
+    ]
     assert payload['safe_mode_enabled'] is False
+    assert payload['validation'] == {'blocking': False}
 
 
 def test_api_safe_mode_requires_boolean_flag() -> None:
@@ -441,6 +494,120 @@ def test_api_safe_mode_requires_boolean_flag() -> None:
         'message': 'safe mode enabled must be a boolean.',
         'notice': 'error',
     }
+
+
+def test_api_payload_library_load_returns_template(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
+    request = _make_request(
+        'POST',
+        '/api/payload-library/load',
+        body=b'{"id": "general/open4gmail"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
+    portal._load_library_payload = (
+        lambda payload_id: 'STRING hi\n'
+        if payload_id == 'general/open4gmail'
+        else None
+    )
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
+    assert payload['payload'] == 'STRING hi\n'
+    assert payload['payload_id'] == 'general/open4gmail'
+    assert payload['validation'] == {'blocking': False}
+
+
+def test_api_validate_returns_dry_run_state(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    monkeypatch.setattr(
+        portal,
+        '_validation_state',
+        lambda script: {'blocking': False, 'summary': f'validated {script}', 'notice': 'success'},
+    )
+    request = _make_request(
+        'POST',
+        '/api/validate',
+        body=b'{"payload": "STRING hi\\n"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
+    assert payload['message'] == 'validated STRING hi\n'
+    assert payload['validation']['blocking'] is False
+
+
+def test_api_payload_rejects_blocking_validation(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    monkeypatch.setattr(
+        portal,
+        '_validation_state',
+        lambda _script: {'blocking': True, 'summary': 'Fix 1 error.', 'notice': 'error'},
+    )
+    request = _make_request(
+        'POST',
+        '/api/payload',
+        body=b'{"payload": "WAIT_FOR_CAPS_ON\\n"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '400 Bad Request' in head
+    assert payload['message'] == 'Fix 1 error.'
+    assert payload['validation']['blocking'] is True
+
+
+def test_api_run_returns_recent_history(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    monkeypatch.setattr(
+        portal,
+        '_validation_state',
+        lambda _script: {'blocking': False, 'summary': 'ready', 'notice': 'success'},
+    )
+    monkeypatch.setattr(portal, '_write_payload', lambda _payload: 'payload.dd')
+    monkeypatch.setattr(
+        portal,
+        '_run_payload',
+        lambda payload: asyncio.sleep(0, result=('Payload executed.', 'success')),
+    )
+    monkeypatch.setattr(
+        portal,
+        '_recent_runs',
+        lambda: [{'sequence': 1, 'notice': 'success', 'preview': 'STRING hi'}],
+    )
+
+    request = _make_request(
+        'POST',
+        '/api/run',
+        body=b'{"payload": "STRING hi\\n", "save": true}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
+    assert payload['run_history'] == [{'sequence': 1, 'notice': 'success', 'preview': 'STRING hi'}]
+    assert payload['validation']['blocking'] is False
 
 
 def test_stop_closes_server_and_ap() -> None:

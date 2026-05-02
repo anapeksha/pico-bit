@@ -158,7 +158,11 @@ def run_deploy(argv: list[str] | None = None) -> int:
 
     _ensure_micropython_checkout(args.repo_url, args.micropython_ref)
     mpy_cross = _build_repo_mpy_cross()
-    module_overrides = build_module_overrides(ROOT, device_config_overrides=overrides)
+    module_overrides = build_module_overrides(
+        ROOT,
+        build_dir=BUILD_DIR,
+        device_config_overrides=overrides,
+    )
     artifact_version = resolve_artifact_version(args.release_version)
     source_dir = prepare_source_tree(
         build_dir=BUILD_DIR,

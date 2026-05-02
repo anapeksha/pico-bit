@@ -3,6 +3,10 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta
+      name="description"
+      content="Edit, validate, and run payload.dd from the Pico Bit portal on Raspberry Pi Pico 2 W."
+    />
     <title>Pico Bit Injector</title>
     <link rel="stylesheet" href="/assets/portal.css" />
   </head>
@@ -29,7 +33,7 @@
       <div class="stats">
         <div class="stat">
           <div class="stat__label">Access point</div>
-          <div class="stat__value" data-bind="ap_ssid">picoBit</div>
+          <div class="stat__value" data-bind="ap_ssid">PicoBit</div>
         </div>
         <div class="stat">
           <div class="stat__label">AP password</div>
@@ -56,19 +60,44 @@
 
           <div class="notice notice--hidden" id="notice"></div>
 
-          <textarea
-            id="payload"
-            class="editor__input"
-            spellcheck="false"
-            autocapitalize="off"
-            autocomplete="off"
-            autocorrect="off"
-            placeholder="REM Write your payload here"
-          ></textarea>
+          <div class="editor__tools">
+            <div class="field">
+              <label class="field__label" for="library-select"
+                >Payload library</label
+              >
+              <select
+                id="library-select"
+                class="field__input field__input--select"
+              >
+                <option value="">No baked payload selected</option>
+              </select>
+            </div>
+            <p class="editor__hint" data-bind="library_hint">
+              Safe mode shows only baked payloads that avoid higher-risk runtime
+              features.
+            </p>
+          </div>
+
+          <div class="editor__stage">
+            <div class="editor__gutter" id="editor-gutter" aria-hidden="true"></div>
+            <div class="editor__surface">
+              <div class="editor__markers" id="editor-markers" aria-hidden="true"></div>
+              <textarea
+                id="payload"
+                class="editor__input"
+                spellcheck="false"
+                autocapitalize="off"
+                autocomplete="off"
+                autocorrect="off"
+                placeholder="REM Write your payload here"
+                wrap="off"
+              ></textarea>
+            </div>
+          </div>
 
           <div class="editor__footer">
-            <p class="editor__note" data-bind="mode_description">
-              Safe mode active — unsafe commands are blocked.
+            <p class="editor__note" data-bind="validation_summary">
+              Dry run validation checks the script before saving or running.
             </p>
             <div class="editor__actions">
               <button class="btn btn--ghost" id="refresh" type="button">
@@ -121,6 +150,47 @@
                 Sign out
               </button>
             </form>
+          </div>
+
+          <div class="panel">
+            <p class="panel__title">Dry run</p>
+            <div class="validation">
+              <div class="validation__header">
+                <span class="badge" data-bind="validation_badge">Checking…</span>
+                <span class="validation__meta" data-bind="validation_counts">0 commands</span>
+              </div>
+              <p class="panel__text" data-bind="validation_detail">
+                Validation runs before every save and execution.
+              </p>
+
+              <div class="validation__section">
+                <p class="validation__label">Issues</p>
+                <div class="validation__list" id="validation-diagnostics">
+                  <p class="validation__empty">No issues detected.</p>
+                </div>
+              </div>
+
+              <div class="validation__section">
+                <p class="validation__label">Unsafe commands</p>
+                <div class="validation__list" id="validation-unsafe">
+                  <p class="validation__empty">No unsafe commands detected.</p>
+                </div>
+              </div>
+
+              <div class="validation__section">
+                <p class="validation__label">Parsed commands</p>
+                <div class="validation__list validation__list--commands" id="validation-commands">
+                  <p class="validation__empty">No commands parsed yet.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <p class="panel__title">Recent runs</p>
+            <div class="history" id="run-history">
+              <p class="history__empty">No payloads have run yet.</p>
+            </div>
           </div>
         </aside>
       </div>

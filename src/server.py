@@ -2,6 +2,7 @@ import asyncio
 import binascii
 import json
 import os
+import time
 
 import network
 
@@ -19,18 +20,21 @@ from ducky import (
     DEFAULT_PAYLOAD,
     PAYLOAD_FILE,
     DuckyScriptError,
+    analyze_script,
     ensure_payload,
     find_payload,
     run_script,
     validate_script,
 )
 from helpers import maybe_wait_closed, sleep_ms
+from payload_library import payload_library_groups, payload_library_script
 from status_led import STATUS_LED
 from web_assets import INDEX_HTML, LOGIN_HTML, PORTAL_CSS, PORTAL_JS
 
 PORT: int = 80
 _USB_ENUM_TIMEOUT_MS = 5000
 _DEFAULT_AP_IP = '192.168.4.1'
+_RUN_HISTORY_LIMIT = 12
 _SESSION_COOKIE = 'pico_bit_session'
 _JSON_HEADERS = {'Content-Type': 'application/json; charset=utf-8'}
 _NO_STORE = {'Cache-Control': 'no-store'}
@@ -94,6 +98,13 @@ def _merge_headers(*items) -> dict[str, str]:
     return merged
 
 
+def _ticks_ms() -> int:
+    ticks_ms = getattr(time, 'ticks_ms', None)
+    if callable(ticks_ms):
+        return int(ticks_ms())
+    return int(time.monotonic() * 1000)
+
+
 async def _read_request(reader):
     request_line = await reader.readline()
     if not request_line:
@@ -141,6 +152,8 @@ class SetupServer:
         self._ap_password_in_use = AP_PASSWORD
         self._payload_seeded = False
         self._run_lock = None
+        self._run_history: list[dict[str, object]] = []
+        self._run_sequence = 0
         self._server = None
         self._sessions: dict[str, str] = {}
 
@@ -184,6 +197,50 @@ class SetupServer:
             'Safe mode is active, so higher-risk runtime features stay blocked.',
         )
 
+    def _validation_state(self, script: str) -> dict[str, object]:
+        return analyze_script(script, allow_unsafe=self._allow_unsafe)
+
+    def _payload_library_groups(self) -> list[dict[str, object]]:
+        return payload_library_groups(self._allow_unsafe)
+
+    def _load_library_payload(self, payload_id: str) -> str | None:
+        return payload_library_script(payload_id, self._allow_unsafe)
+
+    def _history_preview(self, script: str) -> str:
+        for raw_line in script.replace('\r\n', '\n').replace('\r', '\n').split('\n'):
+            stripped = raw_line.strip()
+            upper = stripped.upper()
+            if not stripped or upper == 'REM' or upper.startswith('REM ') or upper.startswith('//'):
+                continue
+            if len(stripped) > 72:
+                return stripped[:69] + '...'
+            return stripped
+        return 'Empty payload'
+
+    def _recent_runs(self) -> list[dict[str, object]]:
+        return [dict(item) for item in self._run_history]
+
+    def _record_run(self, script: str, message: str, notice: str, *, source: str) -> None:
+        self._run_sequence += 1
+        mode_label, _mode_short, _mode_description = self._mode_strings()
+        self._run_history.insert(
+            0,
+            {
+                'at_ms': _ticks_ms(),
+                'message': message,
+                'mode_label': mode_label,
+                'notice': notice,
+                'preview': self._history_preview(script),
+                'safe_mode_enabled': self._safe_mode_enabled(),
+                'sequence': self._run_sequence,
+                'source': source,
+            },
+        )
+        del self._run_history[_RUN_HISTORY_LIMIT:]
+
+    def record_run(self, script: str, message: str, notice: str, *, source: str) -> None:
+        self._record_run(script, message, notice, source=source)
+
     def _auth_enabled(self) -> bool:
         return PORTAL_AUTH_ENABLED and bool(PORTAL_PASSWORD)
 
@@ -207,6 +264,7 @@ class SetupServer:
         notice = 'quiet'
         if self._payload_seeded:
             message = 'payload.dd was seeded on this boot.'
+        payload = self._read_payload()
 
         return {
             'ap_ip': self._ap_ip,
@@ -220,9 +278,12 @@ class SetupServer:
             'mode_short': mode_short,
             'notice': notice,
             'allow_unsafe': self._allow_unsafe,
-            'payload': self._read_payload(),
+            'payload': payload,
+            'payload_library_groups': self._payload_library_groups(),
+            'run_history': self._recent_runs(),
             'safe_mode_enabled': self._safe_mode_enabled(),
             'seeded': self._payload_seeded,
+            'validation': self._validation_state(payload),
         }
 
     def _is_authorized(self, request) -> bool:
@@ -392,14 +453,16 @@ class SetupServer:
         await STATUS_LED.show('setup_server_ready')
         STATUS_LED.on()
 
-    async def _run_payload(self, script: str) -> tuple[str, str]:
+    async def _run_payload(self, script: str, *, source: str = 'portal') -> tuple[str, str]:
         try:
             await self.execute_script(script)
-            return 'Payload executed.', 'success'
+            message, notice = 'Payload executed.', 'success'
         except DuckyScriptError as exc:
-            return f'Error: {exc}', 'error'
+            message, notice = f'Error: {exc}', 'error'
         except OSError as exc:
-            return f'USB error: {exc}', 'error'
+            message, notice = f'USB error: {exc}', 'error'
+        self._record_run(script, message, notice, source=source)
+        return message, notice
 
     async def _handle_login(self, request, writer) -> None:
         if not self._auth_enabled():
@@ -457,13 +520,89 @@ class SetupServer:
 
         if request['method'] == 'POST' and request['path'] == '/api/payload':
             data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
-            payload = data.get('payload', '').replace('\r\n', '\n')
+            payload = str(data.get('payload', '')).replace('\r\n', '\n')
+            validation = self._validation_state(payload)
+            if validation['blocking']:
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {
+                        'message': validation['summary'],
+                        'notice': 'error',
+                        'validation': validation,
+                    },
+                )
+                return
+
             self._write_payload(payload)
             await self._send_json(
                 writer,
                 request,
                 '200 OK',
-                {'message': 'payload.dd saved.', 'notice': 'success'},
+                {
+                    'message': 'payload.dd saved.',
+                    'notice': 'success',
+                    'validation': validation,
+                },
+            )
+            return
+
+        if request['method'] == 'POST' and request['path'] == '/api/validate':
+            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            payload = str(data.get('payload', '')).replace('\r\n', '\n')
+            validation = self._validation_state(payload)
+            await self._send_json(
+                writer,
+                request,
+                '200 OK',
+                {
+                    'message': validation['summary'],
+                    'notice': validation['notice'],
+                    'validation': validation,
+                },
+            )
+            return
+
+        if request['method'] == 'POST' and request['path'] == '/api/payload-library/load':
+            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            payload_id = data.get('id', '')
+            if not isinstance(payload_id, str) or not payload_id.strip():
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {
+                        'message': 'payload library id must be a non-empty string.',
+                        'notice': 'error',
+                    },
+                )
+                return
+
+            payload = self._load_library_payload(payload_id.strip())
+            if payload is None:
+                await self._send_json(
+                    writer,
+                    request,
+                    '404 Not Found',
+                    {
+                        'message': 'Payload library entry is unavailable in the current mode.',
+                        'notice': 'error',
+                    },
+                )
+                return
+
+            await self._send_json(
+                writer,
+                request,
+                '200 OK',
+                {
+                    'message': 'Payload template loaded into the editor. Not saved yet.',
+                    'notice': 'success',
+                    'payload': payload,
+                    'payload_id': payload_id.strip(),
+                    'validation': self._validation_state(payload),
+                },
             )
             return
 
@@ -481,6 +620,10 @@ class SetupServer:
 
             self._set_safe_mode(enabled)
             mode_label, mode_short, mode_description = self._mode_strings()
+            payload = data.get('payload')
+            validation = None
+            if isinstance(payload, str):
+                validation = self._validation_state(payload.replace('\r\n', '\n'))
             await self._send_json(
                 writer,
                 request,
@@ -492,7 +635,9 @@ class SetupServer:
                     'mode_label': mode_label,
                     'mode_short': mode_short,
                     'notice': 'success',
+                    'payload_library_groups': self._payload_library_groups(),
                     'safe_mode_enabled': self._safe_mode_enabled(),
+                    'validation': validation,
                 },
             )
             return
@@ -500,6 +645,20 @@ class SetupServer:
         if request['method'] == 'POST' and request['path'] == '/api/run':
             data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
             payload = str(data.get('payload', self._read_payload())).replace('\r\n', '\n')
+            validation = self._validation_state(payload)
+            if validation['blocking']:
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {
+                        'message': validation['summary'],
+                        'notice': 'error',
+                        'validation': validation,
+                    },
+                )
+                return
+
             if data.get('save', True):
                 self._write_payload(payload)
             message, notice = await self._run_payload(payload)
@@ -508,7 +667,12 @@ class SetupServer:
                 writer,
                 request,
                 status,
-                {'message': message, 'notice': notice},
+                {
+                    'message': message,
+                    'notice': notice,
+                    'run_history': self._recent_runs(),
+                    'validation': validation,
+                },
             )
             return
 

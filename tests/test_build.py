@@ -71,5 +71,7 @@ def test_build_emits_compiled_mpy_tree() -> None:
     compiled = sorted(path.relative_to(dist).as_posix() for path in dist.rglob('*.mpy'))
     assert 'boot.mpy' in compiled
     assert 'main.mpy' in compiled
+    assert 'ducky/analysis.mpy' in compiled
+    assert 'payload_library.mpy' in compiled
     assert 'server.mpy' in compiled
     assert 'ducky/runtime.mpy' in compiled

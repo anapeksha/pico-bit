@@ -1,3 +1,4 @@
+from .analysis import analyze_script
 from .constants import ALLOW_UNSAFE_DEFAULT, DEFAULT_PAYLOAD, PAYLOAD_FILE
 from .errors import DuckyParseError, DuckyRuntimeError, DuckyScriptError, UnsafeFeatureError
 from .lexer import LexedLine, Token, lex_script, tokenize_expression
@@ -15,6 +16,7 @@ __all__ = [
     'PAYLOAD_FILE',
     'Token',
     'UnsafeFeatureError',
+    'analyze_script',
     'ensure_payload',
     'find_payload',
     'lex_script',
