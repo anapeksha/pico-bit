@@ -13,6 +13,7 @@ from hid import (
     send_keys,
     type_string,
 )
+from keyboard_layouts import DEFAULT_LAYOUT_CODE
 
 from .constants import (
     ALLOW_UNSAFE_DEFAULT,
@@ -30,9 +31,10 @@ _YIELD_EVERY = 16
 
 
 class DuckyInterpreter:
-    def __init__(self, kbd, allow_unsafe=ALLOW_UNSAFE_DEFAULT):
+    def __init__(self, kbd, allow_unsafe=ALLOW_UNSAFE_DEFAULT, default_layout=DEFAULT_LAYOUT_CODE):
         self.kbd = kbd
         self.allow_unsafe = allow_unsafe
+        self.default_layout = default_layout
         self.default_delay_ms = 0
         self.default_char_delay_ms = 0
         self.variables = {}
@@ -40,8 +42,6 @@ class DuckyInterpreter:
         self.extensions = {}
         self.button_handler = None
         self.last_action = None
-        self.kbd_platform = 'WIN'
-        self.kbd_layout = 'US'
         self._button = None
         self._led = None
         self._internal = {}
@@ -237,11 +237,8 @@ class DuckyInterpreter:
             return
 
         if command == 'RD_KBD':
-            args = split_atoms(argument)
-            if args:
-                self.kbd_platform = args[0].upper()
-            if len(args) > 1:
-                self.kbd_layout = args[1].upper()
+            # Target OS/layout are portal-managed on this firmware, so RD_KBD
+            # is accepted for compatibility but does not override selection.
             return
 
         if command == 'WAIT_FOR_BUTTON_PRESS':
@@ -310,9 +307,12 @@ class DuckyInterpreter:
         await self._sleep_default_delay('STRINGLN' if newline else 'STRING')
 
     async def _type_text(self, text):
-        for ch in text:
-            char_delay = self._char_delay_ms()
-            await type_string(self.kbd, ch, char_delay)
+        await type_string(
+            self.kbd,
+            text,
+            self._char_delay_ms(),
+            layout_code=self.default_layout,
+        )
 
     def _char_delay_ms(self):
         delay = max(0, self.default_char_delay_ms)
@@ -562,11 +562,20 @@ class DuckyInterpreter:
         raise DuckyRuntimeError(line_no, f'{feature} is not implemented on this MicroPython target')
 
 
-async def run_script(kbd, script: str, allow_unsafe: bool = ALLOW_UNSAFE_DEFAULT) -> None:
+async def run_script(
+    kbd,
+    script: str,
+    allow_unsafe: bool = ALLOW_UNSAFE_DEFAULT,
+    default_layout: str = DEFAULT_LAYOUT_CODE,
+) -> None:
     statements = parse_script(script)
     while True:
         try:
-            interpreter = DuckyInterpreter(kbd, allow_unsafe=allow_unsafe)
+            interpreter = DuckyInterpreter(
+                kbd,
+                allow_unsafe=allow_unsafe,
+                default_layout=default_layout,
+            )
             await interpreter.run(statements)
             return
         except RestartPayload:

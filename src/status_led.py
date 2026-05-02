@@ -17,7 +17,10 @@ class StatusLed:
         'payload_entered': (2, 350, 250, 600),
         'usb_enumerated': (3, 350, 250, 600),
         'payload_ready': (4, 350, 250, 600),
+        'payload_running': (3, 120, 90, 180),
         'payload_complete': (2, 500, 300, 0),
+        'safe_mode_changed': (2, 120, 120, 200),
+        'keyboard_layout_changed': (3, 80, 80, 220),
     }
 
     ERROR_PATTERNS = {

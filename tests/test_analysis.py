@@ -54,3 +54,12 @@ def test_analyze_script_reports_parse_errors_with_hint() -> None:
     assert result['diagnostics'][0]['code'] == 'parse_error'
     assert result['diagnostics'][0]['line'] == 1
     assert 'Close the current block' in result['diagnostics'][0]['hint']
+
+
+def test_analyze_script_warns_when_rd_kbd_is_used() -> None:
+    result = analyze_script('RD_KBD WIN DE\nSTRING hi\n', allow_unsafe=False)
+
+    assert result['blocking'] is False
+    assert result['warning_count'] == 1
+    assert result['diagnostics'][0]['code'] == 'layout_managed'
+    assert 'portal' in result['diagnostics'][0]['message'].lower()

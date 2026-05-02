@@ -80,6 +80,11 @@ def test_bootstrap_state_reports_payload_and_auth(monkeypatch) -> None:
     assert state['auth_enabled'] is True
     assert state['ap_password'] == 'Open network'
     assert state['allow_unsafe'] is False
+    assert state['keyboard_layout_code'] == 'US'
+    assert state['keyboard_layout_label'] == 'English (US)'
+    assert state['keyboard_layout_profile_code'] == 'WIN_US'
+    assert state['keyboard_os_code'] == 'WIN'
+    assert state['keyboard_target_label'] == 'Windows · English (US)'
     assert state['message'] == 'payload.dd was seeded on this boot.'
     assert state['safe_mode_enabled'] is True
 
@@ -92,6 +97,7 @@ def test_bootstrap_state_reports_unsafe_runtime_when_enabled(monkeypatch) -> Non
     state = portal._bootstrap_state()
 
     assert state['allow_unsafe'] is True
+    assert state['keyboard_layout'] == 'US'
     assert state['mode_label'] == 'Unsafe mode allowed'
     assert state['mode_short'] == 'Unsafe runtime enabled'
     assert state['safe_mode_enabled'] is False
@@ -267,6 +273,7 @@ def test_ensure_keyboard_is_lazy(monkeypatch) -> None:
 def test_execute_script_serializes_hid_use(monkeypatch) -> None:
     events: list[object] = []
     portal = server.SetupServer()
+    portal._keyboard_layout = 'WIN_DE'
     fake_keyboard = object()
 
     class FakeLock:
@@ -281,8 +288,8 @@ def test_execute_script_serializes_hid_use(monkeypatch) -> None:
     async def fake_ensure_keyboard():
         return fake_keyboard
 
-    async def fake_run_script(keyboard, script, allow_unsafe=False):
-        events.append(('run', keyboard, script, allow_unsafe))
+    async def fake_run_script(keyboard, script, allow_unsafe=False, default_layout='WIN_US'):
+        events.append(('run', keyboard, script, allow_unsafe, default_layout))
 
     monkeypatch.setattr(portal, '_run_lock_obj', lambda: FakeLock())
     monkeypatch.setattr(portal, '_ensure_keyboard', fake_ensure_keyboard)
@@ -292,13 +299,19 @@ def test_execute_script_serializes_hid_use(monkeypatch) -> None:
         lambda script: events.append(('validate', script)),
     )
     monkeypatch.setattr(server, 'run_script', fake_run_script)
+    monkeypatch.setattr(
+        server.STATUS_LED,
+        'show',
+        lambda stage: asyncio.sleep(0, result=events.append(('led', stage))),
+    )
 
     asyncio.run(portal.execute_script('STRING hi\n', allow_unsafe=True))
 
     assert events == [
         'acquire',
         ('validate', 'STRING hi\n'),
-        ('run', fake_keyboard, 'STRING hi\n', True),
+        ('led', 'payload_running'),
+        ('run', fake_keyboard, 'STRING hi\n', True, 'WIN_DE'),
         'release',
     ]
 
@@ -318,17 +331,18 @@ def test_execute_script_uses_runtime_safe_mode_by_default(monkeypatch) -> None:
     async def fake_ensure_keyboard():
         return object()
 
-    async def fake_run_script(_keyboard, script, allow_unsafe=False):
-        events.append((script, allow_unsafe))
+    async def fake_run_script(_keyboard, script, allow_unsafe=False, default_layout='WIN_US'):
+        events.append((script, allow_unsafe, default_layout))
 
     monkeypatch.setattr(portal, '_run_lock_obj', lambda: FakeLock())
     monkeypatch.setattr(portal, '_ensure_keyboard', fake_ensure_keyboard)
     monkeypatch.setattr(server, 'validate_script', lambda _script: None)
     monkeypatch.setattr(server, 'run_script', fake_run_script)
+    monkeypatch.setattr(server.STATUS_LED, 'show', lambda _stage: asyncio.sleep(0))
 
     asyncio.run(portal.execute_script('STRING hi\n'))
 
-    assert events == [('STRING hi\n', True)]
+    assert events == [('STRING hi\n', True, 'WIN_US')]
 
 
 def test_run_payload_records_recent_history(monkeypatch) -> None:
@@ -414,8 +428,14 @@ def test_api_bootstrap_returns_json_when_authorized(monkeypatch) -> None:
 def test_api_safe_mode_updates_runtime_state(monkeypatch) -> None:
     portal = server.SetupServer()
     writer = FakeWriter()
+    events: list[str] = []
     monkeypatch.setattr(portal, '_read_payload', lambda: 'REM hi\n')
     monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
+    monkeypatch.setattr(
+        server.STATUS_LED,
+        'show',
+        lambda stage: asyncio.sleep(0, result=events.append(stage)),
+    )
 
     request = _make_request(
         'POST',
@@ -436,6 +456,7 @@ def test_api_safe_mode_updates_runtime_state(monkeypatch) -> None:
     assert payload['mode_short'] == 'Unsafe runtime enabled'
     assert payload['safe_mode_enabled'] is False
     assert payload['validation'] == {'blocking': False}
+    assert events == ['safe_mode_changed']
 
 
 def test_api_safe_mode_requires_boolean_flag() -> None:
@@ -458,6 +479,90 @@ def test_api_safe_mode_requires_boolean_flag() -> None:
         'message': 'safe mode enabled must be a boolean.',
         'notice': 'error',
     }
+
+
+def test_api_keyboard_layout_updates_runtime_state(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    events: list[str] = []
+    persisted: list[str] = []
+    monkeypatch.setattr(portal, '_persist_keyboard_layout', lambda code: persisted.append(code))
+    monkeypatch.setattr(
+        server.STATUS_LED,
+        'show',
+        lambda stage: asyncio.sleep(0, result=events.append(stage)),
+    )
+    request = _make_request(
+        'POST',
+        '/api/keyboard-layout',
+        body=b'{"os": "WIN", "layout": "DE"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
+    assert portal._keyboard_layout == 'WIN_DE'
+    assert payload['keyboard_layout_code'] == 'DE'
+    assert payload['keyboard_layout_label'] == 'German (DE)'
+    assert payload['keyboard_layout_profile_code'] == 'WIN_DE'
+    assert payload['keyboard_os_code'] == 'WIN'
+    assert payload['message'] == 'Typing target set to Windows · German (DE).'
+    assert persisted == ['WIN_DE']
+    assert events == ['keyboard_layout_changed']
+
+
+def test_api_keyboard_layout_switches_os_and_uses_platform_default(monkeypatch) -> None:
+    portal = server.SetupServer()
+    portal._keyboard_layout = 'WIN_DE'
+    writer = FakeWriter()
+    persisted: list[str] = []
+    monkeypatch.setattr(portal, '_persist_keyboard_layout', lambda code: persisted.append(code))
+    monkeypatch.setattr(server.STATUS_LED, 'show', lambda _stage: asyncio.sleep(0))
+    request = _make_request(
+        'POST',
+        '/api/keyboard-layout',
+        body=b'{"os": "MAC"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
+    assert portal._keyboard_layout == 'MAC_US'
+    assert payload['keyboard_os_code'] == 'MAC'
+    assert payload['keyboard_layout_code'] == 'US'
+    assert payload['keyboard_layouts'] == [
+        {'code': 'US', 'label': 'English (US)'},
+        {'code': 'FR', 'label': 'French (FR)'},
+    ]
+    assert payload['message'] == 'Typing target set to macOS · English (US).'
+    assert persisted == ['MAC_US']
+
+
+def test_api_keyboard_layout_rejects_unknown_value() -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    request = _make_request(
+        'POST',
+        '/api/keyboard-layout',
+        body=b'{"os": "MAC", "layout": "DE"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '400 Bad Request' in head
+    assert payload['message'] == 'Unsupported keyboard layout for macOS.'
 
 
 def test_api_validate_returns_dry_run_state(monkeypatch) -> None:

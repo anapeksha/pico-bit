@@ -624,6 +624,13 @@ a {
   margin: 0 0 0.625rem;
 }
 
+.panel__hint {
+  margin: 0.65rem 0 0;
+  font-size: 11px;
+  color: var(--text-4);
+  line-height: 1.55;
+}
+
 .panel__list {
   margin: 0;
   padding-left: 1rem;

@@ -4,6 +4,8 @@ const saveButton = document.getElementById('save');
 const runButton = document.getElementById('run');
 const refreshButton = document.getElementById('refresh');
 const unsafeToggle = document.getElementById('unsafe-toggle');
+const keyboardOsSelect = document.getElementById('keyboard-os');
+const keyboardLayoutSelect = document.getElementById('keyboard-layout');
 const runHistory = document.getElementById('run-history');
 const editorGutter = document.getElementById('editor-gutter');
 const editorMarkers = document.getElementById('editor-markers');
@@ -21,6 +23,9 @@ const uiState = {
   modeDescription: '',
   padLeft: 16,
   padTop: 14,
+  changingTarget: false,
+  keyboardOses: [],
+  keyboardLayouts: [],
   running: false,
   saving: false,
   togglingUnsafe: false,
@@ -69,6 +74,12 @@ function updateControls() {
   }
   if (unsafeToggle) {
     unsafeToggle.disabled = uiState.togglingUnsafe;
+  }
+  if (keyboardOsSelect) {
+    keyboardOsSelect.disabled = uiState.changingTarget;
+  }
+  if (keyboardLayoutSelect) {
+    keyboardLayoutSelect.disabled = uiState.changingTarget;
   }
 }
 
@@ -153,6 +164,44 @@ function applyMode(state) {
   if (unsafeToggle) {
     unsafeToggle.checked = !!state.allow_unsafe;
   }
+}
+
+function renderKeyboardLayouts(state) {
+  uiState.keyboardOses = state.keyboard_oses || uiState.keyboardOses || [];
+  uiState.keyboardLayouts = state.keyboard_layouts || uiState.keyboardLayouts || [];
+  setBoundText('keyboard_layout_label', state.keyboard_layout_label || 'English (US)');
+  setBoundText('keyboard_target_label', state.keyboard_target_label || 'Windows · English (US)');
+  setBoundText(
+    'keyboard_layout_hint',
+    state.keyboard_layout_hint || 'Used for typed text and remembered on the device.',
+  );
+
+  if (keyboardOsSelect) {
+    const osSelected = state.keyboard_os_code || state.keyboard_os || 'WIN';
+    const osOptions = uiState.keyboardOses.map((item) => {
+      const option = document.createElement('option');
+      option.value = item.code;
+      option.textContent = item.label;
+      return option;
+    });
+    keyboardOsSelect.replaceChildren(...osOptions);
+    keyboardOsSelect.value = osSelected;
+  }
+
+  if (!keyboardLayoutSelect) {
+    return;
+  }
+
+  const selected = state.keyboard_layout_code || state.keyboard_layout || 'US';
+  const options = uiState.keyboardLayouts.map((item) => {
+    const option = document.createElement('option');
+    option.value = item.code;
+    option.textContent = item.label;
+    return option;
+  });
+
+  keyboardLayoutSelect.replaceChildren(...options);
+  keyboardLayoutSelect.value = selected;
 }
 
 function measureEditor() {
@@ -396,6 +445,7 @@ async function loadBootstrap() {
   setBoundText('ap_ssid', state.ap_ssid);
   setBoundText('ap_password', state.ap_password || 'Open network');
   applyMode(state);
+  renderKeyboardLayouts(state);
   renderRunHistory(state.run_history || []);
   setBoundText('seeded', state.seeded ? 'Yes' : 'No');
   setBoundText('hid_state', state.keyboard_ready ? 'Ready' : 'Waiting');
@@ -412,6 +462,35 @@ async function loadBootstrap() {
     queueValidation();
   }
   setNotice(state.message || '', state.notice || 'quiet');
+}
+
+async function changeKeyboardTarget(payload) {
+  const previousOs = keyboardOsSelect?.value || 'WIN';
+  const previousLayout = keyboardLayoutSelect?.value || 'US';
+  uiState.changingTarget = true;
+  updateControls();
+  try {
+    const result = await requestJson('/api/keyboard-layout', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+    renderKeyboardLayouts(result);
+    setNotice(result.message, result.notice || 'success');
+  } catch (error) {
+    if (keyboardOsSelect) {
+      keyboardOsSelect.value = previousOs;
+    }
+    if (keyboardLayoutSelect) {
+      keyboardLayoutSelect.value = previousLayout;
+    }
+    if (error.data) {
+      renderKeyboardLayouts(error.data);
+    }
+    setNotice(error.message, 'error');
+  } finally {
+    uiState.changingTarget = false;
+    updateControls();
+  }
 }
 
 async function toggleUnsafe(unsafeOn) {
@@ -543,6 +622,21 @@ if (runButton) {
 if (unsafeToggle) {
   unsafeToggle.addEventListener('change', () => {
     toggleUnsafe(unsafeToggle.checked);
+  });
+}
+
+if (keyboardOsSelect) {
+  keyboardOsSelect.addEventListener('change', () => {
+    changeKeyboardTarget({ os: keyboardOsSelect.value });
+  });
+}
+
+if (keyboardLayoutSelect) {
+  keyboardLayoutSelect.addEventListener('change', () => {
+    changeKeyboardTarget({
+      os: keyboardOsSelect?.value || 'WIN',
+      layout: keyboardLayoutSelect.value,
+    });
   });
 }
 

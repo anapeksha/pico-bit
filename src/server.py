@@ -27,13 +27,28 @@ from ducky import (
     run_script,
     validate_script,
 )
+from ducky.analysis import AnalysisResult
 from helpers import maybe_wait_closed, sleep_ms
+from keyboard_layouts import (
+    DEFAULT_LAYOUT_CODE,
+    compose_layout_code,
+    default_layout_code,
+    is_supported_layout,
+    is_supported_platform,
+    layout_option,
+    normalize_layout_code,
+    normalize_platform_code,
+    split_layout_code,
+    supported_layouts,
+    supported_platforms,
+)
 from status_led import STATUS_LED
 from web_assets import INDEX_HTML, LOGIN_HTML, PORTAL_CSS, PORTAL_JS
 
 PORT: int = 80
 _USB_ENUM_TIMEOUT_MS = 5000
 _DEFAULT_AP_IP = '192.168.4.1'
+_KEYBOARD_LAYOUT_FILE = 'keyboard_layout.txt'
 _RUN_HISTORY_LIMIT = 12
 _SESSION_COOKIE = 'pico_bit_session'
 _JSON_HEADERS = {'Content-Type': 'application/json; charset=utf-8'}
@@ -145,6 +160,7 @@ class SetupServer:
         self._allow_unsafe = bool(ALLOW_UNSAFE)
         self._kbd = None
         self._ap_password_in_use = AP_PASSWORD
+        self._keyboard_layout = DEFAULT_LAYOUT_CODE
         self._payload_seeded = False
         self._run_lock = None
         self._run_history: list[dict[str, object]] = []
@@ -180,6 +196,53 @@ class SetupServer:
     def _set_safe_mode(self, enabled: bool) -> None:
         self._allow_unsafe = not enabled
 
+    def _load_keyboard_layout(self) -> str:
+        try:
+            with open(_KEYBOARD_LAYOUT_FILE) as f:
+                raw = f.read().strip()
+        except OSError:
+            raw = ''
+
+        normalized = normalize_layout_code(raw or self._keyboard_layout)
+        if normalized not in {item['code'] for item in supported_layouts()}:
+            normalized = DEFAULT_LAYOUT_CODE
+        self._keyboard_layout = normalized
+        return self._keyboard_layout
+
+    def _persist_keyboard_layout(self, code: str) -> None:
+        with open(_KEYBOARD_LAYOUT_FILE, 'w') as f:
+            f.write(code + '\n')
+
+    def _set_keyboard_layout(self, code: str, *, persist: bool = False) -> str:
+        normalized = normalize_layout_code(code)
+        if not is_supported_layout(normalized):
+            raise ValueError('unsupported keyboard layout')
+        self._keyboard_layout = normalized
+        if persist:
+            self._persist_keyboard_layout(normalized)
+        return normalized
+
+    def _keyboard_layout_state(self) -> dict[str, object]:
+        option = layout_option(self._keyboard_layout)
+        platform, layout = split_layout_code(self._keyboard_layout)
+        target_label = option['platform_label'] + ' · ' + option['label']
+        return {
+            'keyboard_layout': layout,
+            'keyboard_layout_code': layout,
+            'keyboard_layout_hint': 'Used for typed text and remembered on the device.',
+            'keyboard_layout_label': option['label'],
+            'keyboard_layout_platform': option['platform'],
+            'keyboard_layout_profile': option['code'],
+            'keyboard_layout_profile_code': option['code'],
+            'keyboard_layout_short': option['layout'],
+            'keyboard_layouts': supported_layouts(platform),
+            'keyboard_os': platform,
+            'keyboard_os_code': platform,
+            'keyboard_os_label': option['platform_label'],
+            'keyboard_oses': supported_platforms(),
+            'keyboard_target_label': target_label,
+        }
+
     def _mode_strings(self) -> tuple[str, str, str]:
         if self._allow_unsafe:
             return (
@@ -193,7 +256,7 @@ class SetupServer:
             'Safe mode is active, so higher-risk runtime features stay blocked.',
         )
 
-    def _validation_state(self, script: str) -> dict[str, object]:
+    def _validation_state(self, script: str) -> AnalysisResult:
         return analyze_script(script, allow_unsafe=self._allow_unsafe)
 
     def _history_preview(self, script: str) -> str:
@@ -256,7 +319,7 @@ class SetupServer:
             message = 'payload.dd was seeded on this boot.'
         payload = self._read_payload()
 
-        return {
+        state = {
             'ap_ip': self._ap_ip,
             'ap_password': self._ap_password_in_use or 'Open network',
             'ap_ssid': AP_SSID,
@@ -269,9 +332,12 @@ class SetupServer:
             'notice': notice,
             'allow_unsafe': self._allow_unsafe,
             'payload': payload,
+            'run_history': self._recent_runs(),
             'safe_mode_enabled': self._safe_mode_enabled(),
             'seeded': self._payload_seeded,
         }
+        state.update(self._keyboard_layout_state())
+        return state
 
     def _is_authorized(self, request) -> bool:
         if not self._auth_enabled():
@@ -417,12 +483,19 @@ class SetupServer:
         async with self._run_lock_obj():
             validate_script(script)
             keyboard = await self._ensure_keyboard()
-            await run_script(keyboard, script, allow_unsafe=allow_unsafe)
+            await STATUS_LED.show('payload_running')
+            await run_script(
+                keyboard,
+                script,
+                allow_unsafe=allow_unsafe,
+                default_layout=self._keyboard_layout,
+            )
 
     async def _prepare_server(self) -> None:
         if self._server is not None:
             return
 
+        self._load_keyboard_layout()
         self._seed_payload()
 
         await STATUS_LED.show('setup_ap_starting')
@@ -566,6 +639,7 @@ class SetupServer:
                 return
 
             self._set_safe_mode(enabled)
+            await STATUS_LED.show('safe_mode_changed')
             mode_label, mode_short, mode_description = self._mode_strings()
             payload = data.get('payload')
             validation = None
@@ -585,6 +659,63 @@ class SetupServer:
                     'safe_mode_enabled': self._safe_mode_enabled(),
                     'validation': validation,
                 },
+            )
+            return
+
+        if request['method'] == 'POST' and request['path'] == '/api/keyboard-layout':
+            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            requested_os = data.get('os')
+            requested_layout = data.get('layout')
+            current_os, _current_layout = split_layout_code(self._keyboard_layout)
+
+            if requested_os is not None and not is_supported_platform(str(requested_os)):
+                response_payload: dict[str, object] = {
+                    'message': 'Unsupported operating system.',
+                    'notice': 'error',
+                }
+                response_payload.update(self._keyboard_layout_state())
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    response_payload,
+                )
+                return
+
+            platform = normalize_platform_code(str(requested_os or current_os))
+            layout_text = str(requested_layout or '').strip()
+            if layout_text:
+                normalized = compose_layout_code(platform, layout_text)
+                if not is_supported_layout(normalized):
+                    platform_label = layout_option(default_layout_code(platform))['platform_label']
+                    response_payload: dict[str, object] = {
+                        'message': f'Unsupported keyboard layout for {platform_label}.',
+                        'notice': 'error',
+                    }
+                    response_payload.update(self._keyboard_layout_state())
+                    await self._send_json(
+                        writer,
+                        request,
+                        '400 Bad Request',
+                        response_payload,
+                    )
+                    return
+            else:
+                normalized = default_layout_code(platform)
+
+            self._set_keyboard_layout(normalized, persist=True)
+            await STATUS_LED.show('keyboard_layout_changed')
+            option = layout_option(normalized)
+            response_payload: dict[str, object] = {
+                'message': f'Typing target set to {option["platform_label"]} · {option["label"]}.',
+                'notice': 'success',
+            }
+            response_payload.update(self._keyboard_layout_state())
+            await self._send_json(
+                writer,
+                request,
+                '200 OK',
+                response_payload,
             )
             return
 

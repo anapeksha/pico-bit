@@ -3,12 +3,14 @@
 import machine
 
 from helpers import sleep_ms, sleep_ms_blocking
+from keyboard_layouts import DEFAULT_LAYOUT_CODE, lookup_char_steps
 
 MOD_NONE = 0x00
 MOD_CTRL = 0x01
 MOD_SHIFT = 0x02
 MOD_ALT = 0x04
 MOD_GUI = 0x08
+MOD_ALTGR = 0x40
 
 KEY_ENTER = 0x28
 KEY_SPACE = 0x2C
@@ -343,8 +345,11 @@ def _normalize_token(token):
     return token.strip().upper().replace('_', '')
 
 
-def lookup_char(ch):
-    return _CHAR_MAP.get(ch, (MOD_NONE, 0))
+def lookup_char(ch, layout_code=DEFAULT_LAYOUT_CODE):
+    steps = lookup_char_steps(ch, layout_code)
+    if steps:
+        return steps[0]
+    return MOD_NONE, 0
 
 
 def lookup_keycode(token):
@@ -560,10 +565,10 @@ async def send_key(kbd, modifier, keycode) -> None:
     await send_keys(kbd, modifier, [keycode] if keycode else [])
 
 
-async def type_string(kbd, text, char_delay_ms=0) -> None:
+async def type_string(kbd, text, char_delay_ms=0, layout_code=DEFAULT_LAYOUT_CODE) -> None:
     for ch in text:
-        modifier, keycode = lookup_char(ch)
-        if keycode:
+        steps = lookup_char_steps(ch, layout_code)
+        for modifier, keycode in steps:
             await send_key(kbd, modifier, keycode)
             if char_delay_ms > 0:
                 await sleep_ms(char_delay_ms)

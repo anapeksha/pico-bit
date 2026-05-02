@@ -176,43 +176,52 @@ class _Bundler(ast.NodeTransformer):
         return self.generic_visit(node)
 
     def visit_FunctionDef(self, node):
+        node = self.generic_visit(node)
         node.body = self._filter_body(node.body, ensure_non_empty=True)
-        return self.generic_visit(node)
+        return node
 
     def visit_AsyncFunctionDef(self, node):
+        node = self.generic_visit(node)
         node.body = self._filter_body(node.body, ensure_non_empty=True)
-        return self.generic_visit(node)
+        return node
 
     def visit_ClassDef(self, node):
+        node = self.generic_visit(node)
         node.body = self._filter_body(node.body, ensure_non_empty=True)
-        return self.generic_visit(node)
+        return node
 
     def visit_If(self, node):
+        node = self.generic_visit(node)
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         node.orelse = self._filter_body(node.orelse)
-        return self.generic_visit(node)
+        return node
 
     def visit_For(self, node):
+        node = self.generic_visit(node)
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         node.orelse = self._filter_body(node.orelse)
-        return self.generic_visit(node)
+        return node
 
     def visit_While(self, node):
+        node = self.generic_visit(node)
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         node.orelse = self._filter_body(node.orelse)
-        return self.generic_visit(node)
+        return node
 
     def visit_With(self, node):
+        node = self.generic_visit(node)
         node.body = self._filter_body(node.body, ensure_non_empty=True)
-        return self.generic_visit(node)
+        return node
 
     def visit_Try(self, node):
+        # Recurse into children first to remove imports before filtering
+        node = self.generic_visit(node)
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         node.orelse = self._filter_body(node.orelse)
         node.finalbody = self._filter_body(node.finalbody)
         for handler in node.handlers:
             handler.body = self._filter_body(handler.body, ensure_non_empty=True)
-        return self.generic_visit(node)
+        return node
 
     def visit_Import(self, node):
         return None

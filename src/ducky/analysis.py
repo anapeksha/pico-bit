@@ -2,8 +2,25 @@ import re
 
 from .constants import UNSAFE_COMMANDS, UNSAFE_INTERNALS
 from .errors import DuckyScriptError
-from .lexer import lex_script
+from .lexer import LexedLine, lex_script
 from .parser import parse_script
+
+# MicroPython doesn't have the typing module, but we define TYPE_CHECKING
+# so type checkers can see it. At runtime, TYPE_CHECKING is always False.
+TYPE_CHECKING = False
+
+if TYPE_CHECKING:
+    # This block is only for type checkers, never executed at runtime
+    from typing import TypeAlias, TypedDict, cast
+else:
+    # Fallback implementations for MicroPython
+    TypeAlias = object
+
+    class TypedDict(dict):
+        pass
+
+    def cast(_typ, value):
+        return value
 
 _COLUMN_RE = re.compile(r' at column (\d+)$')
 _UNSAFE_INTERNAL_PREFIXES = ('_CAPSLOCK_', '_NUMLOCK_', '_SCROLLLOCK_', '_EXFIL_')
@@ -11,6 +28,67 @@ _MULTILINE_ENDINGS = {
     'STRING': 'END_STRING',
     'STRINGLN': 'END_STRINGLN',
 }
+
+
+Statement: TypeAlias = dict[str, object]
+
+
+class Branch(TypedDict):
+    line_no: int
+    condition: str
+    body: list[Statement]
+
+
+class Diagnostic(TypedDict):
+    code: str
+    column: int
+    end_column: int
+    hint: str
+    line: int
+    message: str
+    severity: str
+
+
+class UnsafeHit(Diagnostic):
+    command: str
+    allowed: bool
+
+
+class UnsafeCommand(TypedDict):
+    allowed: bool
+    command: str
+    hint: str
+    line: int
+    message: str
+    severity: str
+
+
+class ParsedCommand(TypedDict):
+    depth: int
+    detail: str
+    kind: str
+    label: str
+    line: int
+
+
+class AnalysisResult(TypedDict):
+    badge_label: str
+    badge_tone: str
+    blocking: bool
+    can_run: bool
+    can_save: bool
+    command_count: int
+    counts_label: str
+    detail: str
+    diagnostics: list[Diagnostic]
+    error_count: int
+    line_count: int
+    notice: str
+    parsed_commands: list[ParsedCommand]
+    summary: str
+    unsafe_commands: list[UnsafeCommand]
+    unsafe_count: int
+    warning_count: int
 
 
 def _line_count(script: str) -> int:
@@ -58,8 +136,8 @@ def _parse_error_hint(message: str) -> str:
 
 def _parse_error_diagnostic(
     exc: DuckyScriptError,
-    lines_by_no: dict[int, object],
-) -> dict[str, object]:
+    lines_by_no: dict[int, LexedLine],
+) -> Diagnostic:
     message, column = _strip_column_suffix(exc.message)
     line = lines_by_no.get(exc.line_no)
     if line is None:
@@ -99,8 +177,8 @@ def _unsafe_variable_hits(
     *,
     line_no: int,
     allow_unsafe: bool,
-) -> list[dict[str, object]]:
-    hits: list[dict[str, object]] = []
+) -> list[UnsafeHit]:
+    hits: list[UnsafeHit] = []
     index = 0
 
     while index < len(text):
@@ -143,9 +221,9 @@ def _unsafe_variable_hits(
     return hits
 
 
-def _unsafe_hits(script: str, *, allow_unsafe: bool) -> list[dict[str, object]]:
+def _unsafe_hits(script: str, *, allow_unsafe: bool) -> list[UnsafeHit]:
     lines = lex_script(script)
-    hits: list[dict[str, object]] = []
+    hits: list[UnsafeHit] = []
     multiline_end = ''
 
     for line in lines:
@@ -197,6 +275,35 @@ def _unsafe_hits(script: str, *, allow_unsafe: bool) -> list[dict[str, object]]:
     return hits
 
 
+def _layout_management_hits(lines: list[LexedLine]) -> list[UnsafeHit]:
+    hits: list[UnsafeHit] = []
+    for line in lines:
+        if line.is_blank or line.is_comment:
+            continue
+        if line.keyword != 'RD_KBD':
+            continue
+        start_column, end_column = _first_token_span(line.raw)
+        hits.append(
+            {
+                'code': 'layout_managed',
+                'end_column': end_column,
+                'hint': (
+                    'Choose the target operating system and keyboard layout '
+                    'from the portal. RD_KBD is ignored here.'
+                ),
+                'line': line.line_no,
+                'message': (
+                    'Target OS and keyboard layout are managed from the portal on this firmware.'
+                ),
+                'severity': 'warning',
+                'column': start_column,
+                'command': 'RD_KBD',
+                'allowed': True,
+            }
+        )
+    return hits
+
+
 def _preview(text: str, *, multiline: bool = False) -> str:
     if multiline:
         first = text.split('\n', 1)[0]
@@ -211,25 +318,33 @@ def _preview(text: str, *, multiline: bool = False) -> str:
     return text
 
 
-def _command_entry(stmt: dict[str, object], depth: int) -> dict[str, object]:
-    kind = stmt['kind']
-    line_no = int(stmt['line_no'])
+def _statement_branches(stmt: Statement) -> list[Branch]:
+    return cast(list[Branch], stmt['branches'])
+
+
+def _statement_list(value: object) -> list[Statement]:
+    return cast(list[Statement], value)
+
+
+def _command_entry(stmt: Statement, depth: int) -> ParsedCommand:
+    kind = str(stmt['kind'])
+    line_no = int(cast(int | str, stmt['line_no']))
 
     if kind == 'command':
         label = str(stmt['command'])
         detail = _preview(str(stmt['argument']))
     elif kind == 'assign':
         label = 'ASSIGN'
-        detail = f"${stmt['name']} {stmt['operator']} {stmt['expression']}"
+        detail = f'${stmt["name"]} {stmt["operator"]} {stmt["expression"]}'
     elif kind == 'if':
         label = 'IF'
-        detail = _preview(str(stmt['branches'][0]['condition']))
+        detail = _preview(_statement_branches(stmt)[0]['condition'])
     elif kind == 'while':
         label = 'WHILE'
         detail = _preview(str(stmt['condition']))
     elif kind == 'function':
         label = 'FUNCTION'
-        detail = f"{stmt['name']}()"
+        detail = f'{stmt["name"]}()'
     elif kind == 'extension':
         label = 'EXTENSION'
         detail = str(stmt['name'])
@@ -256,7 +371,7 @@ def _command_entry(stmt: dict[str, object], depth: int) -> dict[str, object]:
         detail = _preview(str(stmt['expression']))
     elif kind == 'call':
         label = 'CALL'
-        detail = f"{stmt['name']}()"
+        detail = f'{stmt["name"]}()'
     elif kind == 'hold':
         label = 'HOLD'
         detail = str(stmt['combo'])
@@ -283,24 +398,28 @@ def _command_entry(stmt: dict[str, object], depth: int) -> dict[str, object]:
 
 
 def _collect_commands(
-    statements: list[dict[str, object]],
+    statements: list[Statement],
     *,
-    commands: list[dict[str, object]],
+    commands: list[ParsedCommand],
     depth: int = 0,
 ) -> None:
     for stmt in statements:
         commands.append(_command_entry(stmt, depth))
 
-        if stmt['kind'] == 'if':
-            for branch in stmt['branches']:
+        if str(stmt['kind']) == 'if':
+            for branch in _statement_branches(stmt):
                 _collect_commands(branch['body'], commands=commands, depth=depth + 1)
-            _collect_commands(stmt['else_body'], commands=commands, depth=depth + 1)
+            _collect_commands(
+                _statement_list(stmt['else_body']),
+                commands=commands,
+                depth=depth + 1,
+            )
             continue
 
         for child_key in ('body',):
             child = stmt.get(child_key)
             if isinstance(child, list):
-                _collect_commands(child, commands=commands, depth=depth + 1)
+                _collect_commands(cast(list[Statement], child), commands=commands, depth=depth + 1)
 
 
 def _summary(*, errors: int, warnings: int, commands: int) -> tuple[str, str]:
@@ -342,12 +461,12 @@ def _badge(*, errors: int, warnings: int) -> tuple[str, str]:
     return 'Ready', 'success'
 
 
-def analyze_script(script: str, *, allow_unsafe: bool) -> dict[str, object]:
+def analyze_script(script: str, *, allow_unsafe: bool) -> AnalysisResult:
     normalized = script.replace('\r\n', '\n').replace('\r', '\n')
     line_total = _line_count(normalized)
 
     try:
-        lexed_lines = lex_script(normalized)
+        lexed_lines: list[LexedLine] = lex_script(normalized)
     except DuckyScriptError as exc:
         diagnostics = [_parse_error_diagnostic(exc, {})]
         summary, notice = _summary(errors=1, warnings=0, commands=0)
@@ -373,10 +492,10 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict[str, object]:
             'warning_count': 0,
         }
 
-    lines_by_no = {line.line_no: line for line in lexed_lines}
+    lines_by_no: dict[int, LexedLine] = {line.line_no: line for line in lexed_lines}
 
     try:
-        statements = parse_script(normalized)
+        statements: list[Statement] = parse_script(normalized)
     except DuckyScriptError as exc:
         diagnostics = [_parse_error_diagnostic(exc, lines_by_no)]
         summary, notice = _summary(errors=1, warnings=0, commands=0)
@@ -402,11 +521,13 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict[str, object]:
             'warning_count': 0,
         }
 
-    parsed_commands: list[dict[str, object]] = []
+    parsed_commands: list[ParsedCommand] = []
     _collect_commands(statements, commands=parsed_commands)
 
     unsafe_hits = _unsafe_hits(normalized, allow_unsafe=allow_unsafe)
-    diagnostics = [
+    layout_hits = _layout_management_hits(lexed_lines)
+    combined_hits = unsafe_hits + layout_hits
+    diagnostics: list[Diagnostic] = [
         {
             'code': hit['code'],
             'column': hit['column'],
@@ -416,9 +537,9 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict[str, object]:
             'message': hit['message'],
             'severity': hit['severity'],
         }
-        for hit in unsafe_hits
+        for hit in combined_hits
     ]
-    unsafe_commands = [
+    unsafe_commands: list[UnsafeCommand] = [
         {
             'allowed': hit['allowed'],
             'command': hit['command'],
