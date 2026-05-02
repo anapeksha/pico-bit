@@ -57,13 +57,16 @@ async function loadBootstrap() {
   payloadField.value = state.payload || '';
   setBoundText('ap_ssid', state.ap_ssid);
   setBoundText('ap_password', state.ap_password || 'Open network');
-  setBoundText('mode_label', state.mode_label);
+  setBoundText('mode_label', (state.mode_label || '').split(' ')[0]);
   setBoundText('mode_short', state.mode_short);
   setBoundText('mode_description', state.mode_description);
   setBoundText('seeded', state.seeded ? 'Yes' : 'No');
   setBoundText('hid_state', state.keyboard_ready ? 'Ready' : 'Waiting');
   setBoundText('auth_label', state.auth_enabled ? 'Enabled' : 'Disabled');
-  setBoundText('payload_state', state.seeded ? 'Seeded on boot' : 'Saved on device');
+  setBoundText(
+    'payload_state',
+    state.seeded ? 'Seeded on boot' : 'Saved on device',
+  );
   setNotice(state.message || '', state.notice || 'quiet');
 }
 

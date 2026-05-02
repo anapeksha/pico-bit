@@ -1,121 +1,119 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Pico Bit Injector</title>
-  <link rel="stylesheet" href="/assets/portal.css">
-</head>
-<body class="portal">
-  <div class="bg-orb bg-orb--left"></div>
-  <div class="bg-orb bg-orb--right"></div>
-  <main class="shell">
-    <header class="hero card">
-      <div class="hero__copy">
-        <p class="eyebrow">pico-bit injector</p>
-        <h1>Shape the payload. Fire it from the browser.</h1>
-        <p class="lede">
-          The Pico 2 W exposes a local control plane for <code>payload.dd</code> with
-          validation, run controls, and live device metadata.
-        </p>
-      </div>
-      <div class="hero__stats">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pico Bit Injector</title>
+    <link rel="stylesheet" href="/assets/portal.css" />
+  </head>
+  <body>
+    <nav class="topbar">
+      <div class="topbar__brand">Pico Bit</div>
+      <div class="topbar__fill"></div>
+      <span class="badge badge--accent" data-bind="mode_short">Safe mode</span>
+    </nav>
+
+    <main class="layout">
+      <div class="stats">
         <div class="stat">
-          <span class="stat__label">Access point</span>
-          <strong class="stat__value" data-bind="ap_ssid">picoBit</strong>
+          <div class="stat__label">Access point</div>
+          <div class="stat__value" data-bind="ap_ssid">picoBit</div>
         </div>
         <div class="stat">
-          <span class="stat__label">AP password</span>
-          <strong class="stat__value stat__value--mono" data-bind="ap_password">88888888</strong>
+          <div class="stat__label">AP password</div>
+          <div class="stat__value stat__value--mono" data-bind="ap_password">
+            Open network
+          </div>
         </div>
         <div class="stat">
-          <span class="stat__label">Portal auth</span>
-          <strong class="stat__value" data-bind="auth_label">Enabled</strong>
+          <div class="stat__label">Portal auth</div>
+          <div class="stat__value" data-bind="auth_label">–</div>
         </div>
         <div class="stat">
-          <span class="stat__label">Runtime mode</span>
-          <strong class="stat__value" data-bind="mode_label">Safe mode</strong>
+          <div class="stat__label">Host HID</div>
+          <div class="stat__value" data-bind="hid_state">Waiting</div>
         </div>
       </div>
-    </header>
 
-    <section class="workspace">
-      <article class="editor card">
-        <div class="editor__bar">
-          <div class="traffic">
-            <span></span><span></span><span></span>
+      <div class="workspace">
+        <div class="editor">
+          <div class="editor__bar">
+            <div class="editor__file">payload.dd</div>
+            <span class="badge" data-bind="payload_state">Saved on device</span>
           </div>
-          <div class="editor__file">payload.dd</div>
-          <div class="editor__meta">
-            <span class="chip chip--tone" data-bind="mode_short">Unsafe blocked</span>
-            <span class="chip" data-bind="payload_state">Saved on device</span>
+
+          <div class="notice notice--hidden" id="notice"></div>
+
+          <textarea
+            id="payload"
+            class="editor__input"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            autocorrect="off"
+            placeholder="REM Write your payload here"
+          ></textarea>
+
+          <div class="editor__footer">
+            <p class="editor__note" data-bind="mode_description">
+              Safe mode active — unsafe commands are blocked.
+            </p>
+            <div class="editor__actions">
+              <button class="btn btn--ghost" id="refresh" type="button">
+                Reload
+              </button>
+              <button class="btn btn--ghost" id="save" type="button">
+                Save
+              </button>
+              <button class="btn btn--primary" id="run" type="button">
+                Save &amp; run
+              </button>
+            </div>
           </div>
         </div>
 
-        <div class="notice notice--hidden" id="notice"></div>
-
-        <label class="editor__label" for="payload">Payload editor</label>
-        <textarea
-          id="payload"
-          class="editor__input"
-          spellcheck="false"
-          autocapitalize="off"
-          autocomplete="off"
-          autocorrect="off"
-          placeholder="REM Write your payload here"
-        ></textarea>
-
-        <div class="editor__footer">
-          <p class="editor__note" data-bind="mode_description">
-            Safe mode is active, so unsupported unsafe features stay blocked.
-          </p>
-          <div class="editor__actions">
-            <button class="button button--ghost" id="refresh" type="button">Reload</button>
-            <button class="button button--ghost" id="save" type="button">Save</button>
-            <button class="button" id="run" type="button">Save and run</button>
+        <aside class="sidebar">
+          <div class="panel">
+            <p class="panel__title">About</p>
+            <p class="panel__text">
+              Edit and execute <code>payload.dd</code> directly from the
+              browser. The portal stays live between runs — no reflashing
+              needed.
+            </p>
+            <ul class="panel__list">
+              <li>File seeded on first boot if absent</li>
+              <li>Validation runs before every execution</li>
+              <li>HID access serialized — one script at a time</li>
+            </ul>
           </div>
-        </div>
-      </article>
 
-      <aside class="rail">
-        <section class="card panel">
-          <h2>Flight deck</h2>
-          <p>
-            The portal stays available while the payload engine runs, so you can correct scripts
-            without reflashing the board.
-          </p>
-          <ul class="list">
-            <li>Boot payload seeded if the file is missing</li>
-            <li>Validation happens before every run</li>
-            <li>Cookie login protects the injector</li>
-            <li>CORS can be enabled for trusted tooling</li>
-          </ul>
-        </section>
+          <div class="panel">
+            <p class="panel__title">Status</p>
+            <dl class="meta">
+              <div class="meta__row">
+                <span class="meta__label">Payload file</span>
+                <span class="meta__value">payload.dd</span>
+              </div>
+              <div class="meta__row">
+                <span class="meta__label">Seeded this boot</span>
+                <span class="meta__value" data-bind="seeded">No</span>
+              </div>
+              <div class="meta__row">
+                <span class="meta__label">Runtime mode</span>
+                <span class="meta__value" data-bind="mode_label">–</span>
+              </div>
+            </dl>
+            <div class="divider"></div>
+            <form action="/logout" method="post">
+              <button class="btn btn--danger btn--wide" type="submit">
+                Sign out
+              </button>
+            </form>
+          </div>
+        </aside>
+      </div>
+    </main>
 
-        <section class="card panel">
-          <h2>Status</h2>
-          <dl class="meta">
-            <div>
-              <dt>Payload file</dt>
-              <dd>payload.dd</dd>
-            </div>
-            <div>
-              <dt>Seeded this boot</dt>
-              <dd data-bind="seeded">No</dd>
-            </div>
-            <div>
-              <dt>Host HID</dt>
-              <dd data-bind="hid_state">Waiting</dd>
-            </div>
-          </dl>
-          <form action="/logout" method="post" class="logout">
-            <button class="button button--ghost button--wide" type="submit">Sign out</button>
-          </form>
-        </section>
-      </aside>
-    </section>
-  </main>
-
-  <script src="/assets/portal.js"></script>
-</body>
+    <script src="/assets/portal.js"></script>
+  </body>
 </html>

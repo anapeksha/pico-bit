@@ -19,7 +19,7 @@
 
 ## Default Access
 
-- AP SSID: `picoBit`
+- AP SSID: `PicoBit`
 - AP password: `88888888`
 - Portal URL: `http://192.168.4.1`
 - Portal username: `admin`

@@ -1,34 +1,49 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Pico Bit Login</title>
-  <link rel="stylesheet" href="/assets/portal.css">
-</head>
-<body class="login-page">
-  <div class="bg-grid"></div>
-  <main class="login-shell">
-    <section class="login card">
-      <p class="eyebrow">secure injector</p>
-      <h1>Sign in to Pico Bit</h1>
-      <p class="lede">
-        Join the <strong>{{ap_ssid}}</strong> access point, then sign in with the injector
-        credentials baked into the firmware.
-      </p>
-      <div class="notice {{message_class}}">{{message}}</div>
-      <form action="/login" method="post" class="login__form">
-        <label class="field">
-          <span>Username</span>
-          <input name="username" autocomplete="username" value="{{username}}" required>
-        </label>
-        <label class="field">
-          <span>Password</span>
-          <input name="password" type="password" autocomplete="current-password" required>
-        </label>
-        <button class="button button--wide" type="submit">Unlock injector</button>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Pico Bit Injector · Sign in</title>
+    <link rel="stylesheet" href="/assets/portal.css" />
+  </head>
+  <body class="login-body">
+    <div class="login-card">
+      <div class="login-header">
+        <h1 class="login-title">Pico Bit</h1>
+        <p class="login-hint">
+          Connect to <strong>{{ap_ssid}}</strong> then sign in.
+        </p>
+      </div>
+
+      <form action="/login" method="post" class="login-form">
+        <div class="notice {{message_class}}">{{message}}</div>
+
+        <div class="field">
+          <label class="field__label" for="username">Username</label>
+          <input
+            class="field__input"
+            id="username"
+            name="username"
+            autocomplete="username"
+            value="{{username}}"
+            required
+          />
+        </div>
+        <div class="field">
+          <label class="field__label" for="password">Password</label>
+          <input
+            class="field__input"
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+          />
+        </div>
+        <button class="btn btn--primary btn--wide" type="submit">
+          Unlock injector
+        </button>
       </form>
-    </section>
-  </main>
-</body>
+    </div>
+  </body>
 </html>
