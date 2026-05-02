@@ -1,11 +1,12 @@
-from importlib.util import module_from_spec, spec_from_file_location
+import importlib
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-SPEC = spec_from_file_location('asset_pipeline', ROOT / 'asset_pipeline.py')
-assert SPEC is not None and SPEC.loader is not None
-ASSET_PIPELINE = module_from_spec(SPEC)
-SPEC.loader.exec_module(ASSET_PIPELINE)
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+ASSET_PIPELINE = importlib.import_module('scripts.asset_pipeline')
 
 
 def test_render_web_assets_contains_expected_exports() -> None:

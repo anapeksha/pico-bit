@@ -36,8 +36,8 @@ jobs:
 
       - name: Verify source tree
         run: |
-          poetry run python -c "from asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
-          poetry run ruff check asset_pipeline.py build.py build_support.py deploy.py src tests
+          poetry run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
+          poetry run ruff check build.py deploy.py scripts src tests
           poetry run pytest
 
       - name: Build frozen firmware

@@ -1,21 +1,16 @@
 from __future__ import annotations
 
+import importlib
 import sys
 from argparse import Namespace
-from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-SPEC = spec_from_file_location('deploy', ROOT / 'deploy.py')
-assert SPEC is not None and SPEC.loader is not None
-DEPLOY = module_from_spec(SPEC)
-SPEC.loader.exec_module(DEPLOY)
-BUILD_SUPPORT_SPEC = spec_from_file_location('build_support', ROOT / 'build_support.py')
-assert BUILD_SUPPORT_SPEC is not None and BUILD_SUPPORT_SPEC.loader is not None
-BUILD_SUPPORT = module_from_spec(BUILD_SUPPORT_SPEC)
-BUILD_SUPPORT_SPEC.loader.exec_module(BUILD_SUPPORT)
+
+BUILD_SUPPORT = importlib.import_module('scripts.build_support')
+DEPLOY = importlib.import_module('scripts.deploy')
 
 
 def _args(**overrides) -> Namespace:

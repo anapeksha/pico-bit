@@ -25,7 +25,7 @@ Run the local checks:
 ```bash
 poetry run pytest
 poetry run pyright
-poetry run ruff check .
+poetry run ruff check build.py deploy.py scripts src tests
 poetry run ruff format --check .
 poetry run python3 build.py
 ```
@@ -75,7 +75,6 @@ Update `README.md` when you change:
 
 - setup mode behavior,
 - required hardware assumptions,
-- toolchain commands,
 - or deployment steps.
 
 ## Security and Responsible Use

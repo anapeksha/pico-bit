@@ -23,7 +23,7 @@ testpaths = ["tests"]
 [tool.pyright]
 typeCheckingMode = "basic"
 reportMissingModuleSource = false
-include = ["asset_pipeline.py", "build.py", "build_support.py", "deploy.py", "src", "tests"]
+include = ["build.py", "deploy.py", "scripts", "src", "tests"]
 exclude = [
     "dist",
     ".venv",
@@ -40,7 +40,7 @@ executionEnvironments = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests"]
+src = ["scripts", "src", "tests"]
 extend-exclude = ["dist", "venv", "node_modules"]
 
 [tool.ruff.format]

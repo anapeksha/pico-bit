@@ -31,13 +31,13 @@ jobs:
         run: poetry install --no-interaction
 
       - name: Verify embedded web assets
-        run: poetry run python -c "from asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
+        run: poetry run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
 
       - name: Check formatting
         run: poetry run ruff format --check .
 
       - name: Run lint
-        run: poetry run ruff check asset_pipeline.py build.py build_support.py deploy.py src tests
+        run: poetry run ruff check build.py deploy.py scripts src tests
 
       - name: Run type checks
         run: poetry run pyright

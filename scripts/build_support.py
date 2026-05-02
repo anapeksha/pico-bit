@@ -9,7 +9,7 @@ import tempfile
 from pathlib import Path
 from typing import TypeAlias
 
-from asset_pipeline import sync_web_assets
+from .asset_pipeline import sync_web_assets
 
 OverrideValue: TypeAlias = str | bool | int | float | complex | bytes | None
 OVERRIDE_ENV = {
