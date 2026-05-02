@@ -222,3 +222,6 @@ __marimo__/
 
 # AI Context
 context.md
+
+# Runtime state
+keyboard_layout.txt
