@@ -33,12 +33,21 @@ def minify_css(css: str) -> str:
 def minify_js(js: str) -> str:
     lines = js.split('\n')
     js = '\n'.join(
-        line.split('//')[0] if '//' in line and 'http' not in line else line
-        for line in lines
+        line.split('//')[0] if '//' in line and 'http' not in line else line for line in lines
     )
     js = re.sub(r'/\*.*?\*/', '', js, flags=re.DOTALL)
     js = re.sub(r'  +', ' ', js)
-    js = re.sub(r'\s*([{}();,=<>!+\-*/%])\s*', r'\1', js)
+    # Split on template literals to avoid stripping spaces inside them,
+    # then only minify the non-template-literal segments.
+    parts = re.split(r'(`[^`]*`)', js)
+    minified_parts = []
+    for i, part in enumerate(parts):
+        if i % 2 == 1:
+            # Odd indices are template literal contents — keep as-is
+            minified_parts.append(part)
+        else:
+            minified_parts.append(re.sub(r'\s*([{}();,=<>!+\-*/%])\s*', r'\1', part))
+    js = ''.join(minified_parts)
     return js.strip()
 
 

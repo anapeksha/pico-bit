@@ -15,7 +15,9 @@ const modalBackdrop = document.getElementById('modal-backdrop');
 const modalBody = document.getElementById('modal-body');
 const modalSubtitle = document.getElementById('modal-subtitle');
 const modalClose = document.getElementById('modal-close');
-const validationBadge = document.querySelector('[data-bind="validation_badge"]');
+const validationBadge = document.querySelector(
+  '[data-bind="validation_badge"]',
+);
 
 const uiState = {
   charWidth: 8,
@@ -35,10 +37,13 @@ const uiState = {
   validationTimer: 0,
 };
 
+let _noticeTimer = 0;
+
 function setNotice(message, tone = 'quiet') {
   if (!notice) {
     return;
   }
+  clearTimeout(_noticeTimer);
   if (!message) {
     notice.className = 'notice notice--hidden';
     notice.textContent = '';
@@ -46,6 +51,10 @@ function setNotice(message, tone = 'quiet') {
   }
   notice.className = `notice notice--${tone}`;
   notice.textContent = message;
+  _noticeTimer = setTimeout(() => {
+    notice.className = 'notice notice--hidden';
+    notice.textContent = '';
+  }, 2000);
 }
 
 function setBoundText(name, value) {
@@ -66,11 +75,17 @@ function updateControls() {
   const validation = uiState.validation;
   if (saveButton) {
     saveButton.disabled =
-      uiState.validating || uiState.saving || !validation || !validation.can_save;
+      uiState.validating ||
+      uiState.saving ||
+      !validation ||
+      !validation.can_save;
   }
   if (runButton) {
     runButton.disabled =
-      uiState.validating || uiState.running || !validation || !validation.can_run;
+      uiState.validating ||
+      uiState.running ||
+      !validation ||
+      !validation.can_run;
   }
   if (unsafeToggle) {
     unsafeToggle.disabled = uiState.togglingUnsafe;
@@ -124,7 +139,8 @@ function renderRunHistory(entries = []) {
     badge.className = `history__badge ${isOk ? 'history__badge--ok' : 'history__badge--err'}`;
     badge.textContent = isOk ? 'OK' : 'Err';
 
-    item.title = `${sourceLabel} run #${entry.sequence}\n${entry.mode_label || ''}\n${entry.message || ''}`.trim();
+    item.title =
+      `${sourceLabel} run #${entry.sequence}\n${entry.mode_label || ''}\n${entry.message || ''}`.trim();
 
     item.appendChild(tag);
     item.appendChild(text);
@@ -150,7 +166,9 @@ async function requestJson(path, options = {}) {
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const error = new Error(data.message || `Request failed with ${response.status}`);
+    const error = new Error(
+      data.message || `Request failed with ${response.status}`,
+    );
     error.data = data;
     error.status = response.status;
     throw error;
@@ -168,12 +186,20 @@ function applyMode(state) {
 
 function renderKeyboardLayouts(state) {
   uiState.keyboardOses = state.keyboard_oses || uiState.keyboardOses || [];
-  uiState.keyboardLayouts = state.keyboard_layouts || uiState.keyboardLayouts || [];
-  setBoundText('keyboard_layout_label', state.keyboard_layout_label || 'English (US)');
-  setBoundText('keyboard_target_label', state.keyboard_target_label || 'Windows · English (US)');
+  uiState.keyboardLayouts =
+    state.keyboard_layouts || uiState.keyboardLayouts || [];
+  setBoundText(
+    'keyboard_layout_label',
+    state.keyboard_layout_label || 'English (US)',
+  );
+  setBoundText(
+    'keyboard_target_label',
+    state.keyboard_target_label || 'Windows · English (US)',
+  );
   setBoundText(
     'keyboard_layout_hint',
-    state.keyboard_layout_hint || 'Used for typed text and remembered on the device.',
+    state.keyboard_layout_hint ||
+      'Used for typed text and remembered on the device.',
   );
 
   if (keyboardOsSelect) {
@@ -229,7 +255,10 @@ function measureEditor() {
 function diagnosticLineMap(diagnostics = []) {
   const lines = new Map();
   diagnostics.forEach((diagnostic) => {
-    const current = lines.get(diagnostic.line) || { severity: diagnostic.severity, titles: [] };
+    const current = lines.get(diagnostic.line) || {
+      severity: diagnostic.severity,
+      titles: [],
+    };
     if (diagnostic.severity === 'error') {
       current.severity = 'error';
     } else if (current.severity !== 'error') {
@@ -294,7 +323,10 @@ function renderEditorDecorations(validation) {
     const marker = document.createElement('div');
     marker.className = `editor__marker editor__marker--${diagnostic.severity}`;
     marker.style.top = `${
-      uiState.padTop + (diagnostic.line - 1) * uiState.lineHeight + uiState.lineHeight - 4
+      uiState.padTop +
+      (diagnostic.line - 1) * uiState.lineHeight +
+      uiState.lineHeight -
+      4
     }px`;
     marker.style.left = `${uiState.padLeft + (diagnostic.column - 1) * uiState.charWidth}px`;
     marker.style.width = `${
@@ -321,7 +353,9 @@ function renderModalDiagnostics(diagnostics = []) {
   const items = diagnostics.map((diagnostic) => {
     const item = document.createElement('article');
     item.className = `modal__item modal__item--${diagnostic.severity}`;
-    item.title = [diagnostic.message, diagnostic.hint].filter(Boolean).join('\n\n');
+    item.title = [diagnostic.message, diagnostic.hint]
+      .filter(Boolean)
+      .join('\n\n');
 
     const line = document.createElement('p');
     line.className = 'modal__item-line';
@@ -359,22 +393,32 @@ function renderPendingValidation() {
 
 function renderValidation(validation) {
   uiState.validation = validation;
-  setBadge(validationBadge, validation.badge_label || 'Ready', validation.badge_tone || 'success');
+  setBadge(
+    validationBadge,
+    validation.badge_label || 'Ready',
+    validation.badge_tone || 'success',
+  );
   setBoundText('validation_summary', validation.summary || 'Dry run complete.');
 
   const diagnostics = validation.diagnostics || [];
   renderModalDiagnostics(diagnostics);
 
   const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
-  const warningCount = diagnostics.filter((d) => d.severity === 'warning').length;
+  const warningCount = diagnostics.filter(
+    (d) => d.severity === 'warning',
+  ).length;
 
   if (infoIcon) {
     const hasIssues = diagnostics.length > 0;
     infoIcon.style.display = hasIssues ? 'inline-flex' : 'none';
     if (hasIssues) {
       const labelParts = [];
-      if (errorCount) labelParts.push(`${errorCount} error${errorCount > 1 ? 's' : ''}`);
-      if (warningCount) labelParts.push(`${warningCount} warning${warningCount > 1 ? 's' : ''}`);
+      if (errorCount)
+        labelParts.push(`${errorCount} error${errorCount > 1 ? 's' : ''}`);
+      if (warningCount)
+        labelParts.push(
+          `${warningCount} warning${warningCount > 1 ? 's' : ''}`,
+        );
       setBoundText('info_count', labelParts.join(', '));
     }
     if (!hasIssues) {

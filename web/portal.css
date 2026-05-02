@@ -46,6 +46,7 @@ html {
 body {
   margin: 0;
   min-height: 100vh;
+  padding-top: 3rem;
   font-family: var(--sans);
   font-size: 14px;
   line-height: 1.5;
@@ -67,6 +68,11 @@ a {
 
 /* ─── Topbar ─────────────────────────────────── */
 .topbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 200;
   display: flex;
   align-items: center;
   gap: 0.75rem;
@@ -333,7 +339,9 @@ a {
   font-size: 11px;
   font-weight: 500;
   gap: 0.3rem;
-  transition: background 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    border-color 0.15s;
 }
 
 .editor__info-icon:hover {
@@ -510,7 +518,10 @@ a {
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  transition:
+    background 0.15s,
+    color 0.15s,
+    border-color 0.15s;
 }
 
 .modal__close:hover {
@@ -748,7 +759,9 @@ a {
   border-radius: 999px;
   background: var(--surface-3);
   border: 1px solid var(--border-strong);
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
   flex-shrink: 0;
 }
 
