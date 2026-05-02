@@ -142,28 +142,6 @@ def test_build_module_overrides_uses_repo_payload_seed(tmp_path) -> None:
     }
 
 
-def test_build_module_overrides_can_embed_baked_payload_library(tmp_path, monkeypatch) -> None:
-    (tmp_path / 'payload.dd').write_text('STRING seeded from file\n', encoding='utf-8')
-    src_dir = tmp_path / 'src'
-    src_dir.mkdir(parents=True, exist_ok=True)
-    (src_dir / 'payload_library.py').write_text('PAYLOAD_LIBRARY = ()\n', encoding='utf-8')
-    monkeypatch.setattr(
-        BUILD_SUPPORT,
-        'baked_payload_library_entries',
-        lambda root, *, build_dir=None: (
-            ('general/open4gmail', 'general', 'General', 'Open4Gmail', True, 'STRING hi\n'),
-        ),
-    )
-
-    overrides = BUILD_SUPPORT.build_module_overrides(tmp_path)
-
-    assert overrides['payload_library'] == {
-        'PAYLOAD_LIBRARY': (
-            ('general/open4gmail', 'general', 'General', 'Open4Gmail', True, 'STRING hi\n'),
-        )
-    }
-
-
 def test_prepare_source_tree_applies_module_overrides(tmp_path, monkeypatch) -> None:
     src_dir = tmp_path / 'repo-src'
     ducky_dir = src_dir / 'ducky'
@@ -190,56 +168,6 @@ def test_prepare_source_tree_applies_module_overrides(tmp_path, monkeypatch) -> 
     assert "DEFAULT_PAYLOAD = 'STRING seeded\\n'" in (
         configured / 'ducky' / 'constants.py'
     ).read_text(encoding='utf-8')
-
-
-def test_payload_uses_unsafe_features_detects_runtime_gated_commands() -> None:
-    assert BUILD_SUPPORT.payload_uses_unsafe_features('WAIT_FOR_CAPS_ON\n') is True
-    assert BUILD_SUPPORT.payload_uses_unsafe_features('STRING hello\n') is False
-    assert BUILD_SUPPORT.payload_uses_unsafe_features('STRING $$ _CAPSLOCK_ON\n') is False
-    assert BUILD_SUPPORT.payload_uses_unsafe_features('STRING $_CAPSLOCK_ON\n') is True
-
-
-def test_discover_payload_library_entries_groups_and_marks_safe(tmp_path) -> None:
-    library_root = tmp_path / 'payloads' / 'library'
-    general_dir = library_root / 'general' / 'Open4Gmail'
-    prank_dir = library_root / 'prank' / 'Caps Trap'
-    duplicate_dir = library_root / 'general' / 'Dual Format'
-    general_dir.mkdir(parents=True, exist_ok=True)
-    prank_dir.mkdir(parents=True, exist_ok=True)
-    duplicate_dir.mkdir(parents=True, exist_ok=True)
-    (general_dir / 'payload.txt').write_text('STRING hello\n', encoding='utf-8')
-    (prank_dir / 'payload.dd').write_text('WAIT_FOR_CAPS_ON\n', encoding='utf-8')
-    (duplicate_dir / 'payload.txt').write_text('STRING wrong\n', encoding='utf-8')
-    (duplicate_dir / 'payload.dd').write_text('STRING preferred\n', encoding='utf-8')
-
-    entries = BUILD_SUPPORT.discover_payload_library_entries(library_root)
-
-    assert entries == (
-        (
-            'general/Dual Format',
-            'general',
-            'General',
-            'Dual Format',
-            True,
-            'STRING preferred\n',
-        ),
-        (
-            'general/Open4Gmail',
-            'general',
-            'General',
-            'Open4Gmail',
-            True,
-            'STRING hello\n',
-        ),
-        (
-            'prank/Caps Trap',
-            'prank',
-            'Prank',
-            'Caps Trap',
-            False,
-            'WAIT_FOR_CAPS_ON\n',
-        ),
-    )
 
 
 def test_build_mpy_tree_embeds_relative_source_names(tmp_path, monkeypatch) -> None:

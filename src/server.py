@@ -1,5 +1,6 @@
 import asyncio
 import binascii
+import gc
 import json
 import os
 import time
@@ -27,7 +28,6 @@ from ducky import (
     validate_script,
 )
 from helpers import maybe_wait_closed, sleep_ms
-from payload_library import payload_library_groups, payload_library_script
 from status_led import STATUS_LED
 from web_assets import INDEX_HTML, LOGIN_HTML, PORTAL_CSS, PORTAL_JS
 
@@ -44,12 +44,7 @@ __all__ = ['SetupServer', 'SERVER', 'start']
 
 
 def _esc(s: str) -> str:
-    return (
-        s.replace('&', '&amp;')
-        .replace('<', '&lt;')
-        .replace('>', '&gt;')
-        .replace('"', '&quot;')
-    )
+    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
 
 
 def _urldecode(s: str) -> str:
@@ -101,7 +96,7 @@ def _merge_headers(*items) -> dict[str, str]:
 def _ticks_ms() -> int:
     ticks_ms = getattr(time, 'ticks_ms', None)
     if callable(ticks_ms):
-        return int(ticks_ms())
+        return int(ticks_ms())  # type: ignore
     return int(time.monotonic() * 1000)
 
 
@@ -164,6 +159,7 @@ class SetupServer:
         return payload_path
 
     def _read_payload(self) -> str:
+        gc.collect()
         payload_path = self._seed_payload()
         try:
             with open(payload_path) as f:
@@ -199,12 +195,6 @@ class SetupServer:
 
     def _validation_state(self, script: str) -> dict[str, object]:
         return analyze_script(script, allow_unsafe=self._allow_unsafe)
-
-    def _payload_library_groups(self) -> list[dict[str, object]]:
-        return payload_library_groups(self._allow_unsafe)
-
-    def _load_library_payload(self, payload_id: str) -> str | None:
-        return payload_library_script(payload_id, self._allow_unsafe)
 
     def _history_preview(self, script: str) -> str:
         for raw_line in script.replace('\r\n', '\n').replace('\r', '\n').split('\n'):
@@ -279,11 +269,8 @@ class SetupServer:
             'notice': notice,
             'allow_unsafe': self._allow_unsafe,
             'payload': payload,
-            'payload_library_groups': self._payload_library_groups(),
-            'run_history': self._recent_runs(),
             'safe_mode_enabled': self._safe_mode_enabled(),
             'seeded': self._payload_seeded,
-            'validation': self._validation_state(payload),
         }
 
     def _is_authorized(self, request) -> bool:
@@ -328,6 +315,7 @@ class SetupServer:
         return headers
 
     async def _send(self, writer, request, status: str, body: str | bytes, headers=None) -> None:
+        gc.collect()
         response_headers = _merge_headers(
             {'Connection': 'close', 'X-Content-Type-Options': 'nosniff'},
             headers,
@@ -343,7 +331,8 @@ class SetupServer:
         header_lines.append('')
         header_lines.append('')
 
-        writer.write('\r\n'.join(header_lines).encode() + body)
+        writer.write('\r\n'.join(header_lines).encode())
+        writer.write(body)
         await writer.drain()
 
     async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None:
@@ -564,48 +553,6 @@ class SetupServer:
             )
             return
 
-        if request['method'] == 'POST' and request['path'] == '/api/payload-library/load':
-            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
-            payload_id = data.get('id', '')
-            if not isinstance(payload_id, str) or not payload_id.strip():
-                await self._send_json(
-                    writer,
-                    request,
-                    '400 Bad Request',
-                    {
-                        'message': 'payload library id must be a non-empty string.',
-                        'notice': 'error',
-                    },
-                )
-                return
-
-            payload = self._load_library_payload(payload_id.strip())
-            if payload is None:
-                await self._send_json(
-                    writer,
-                    request,
-                    '404 Not Found',
-                    {
-                        'message': 'Payload library entry is unavailable in the current mode.',
-                        'notice': 'error',
-                    },
-                )
-                return
-
-            await self._send_json(
-                writer,
-                request,
-                '200 OK',
-                {
-                    'message': 'Payload template loaded into the editor. Not saved yet.',
-                    'notice': 'success',
-                    'payload': payload,
-                    'payload_id': payload_id.strip(),
-                    'validation': self._validation_state(payload),
-                },
-            )
-            return
-
         if request['method'] == 'POST' and request['path'] == '/api/safe-mode':
             data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
             enabled = data.get('enabled')
@@ -635,7 +582,6 @@ class SetupServer:
                     'mode_label': mode_label,
                     'mode_short': mode_short,
                     'notice': 'success',
-                    'payload_library_groups': self._payload_library_groups(),
                     'safe_mode_enabled': self._safe_mode_enabled(),
                     'validation': validation,
                 },
@@ -679,11 +625,12 @@ class SetupServer:
         await self._send_json(writer, request, '404 Not Found', {'message': 'Not found.'})
 
     async def _dispatch(self, request, writer) -> None:
+        gc.collect()
         if request['method'] == 'OPTIONS':
             await self._send(writer, request, '204 No Content', '', headers=_NO_STORE)
             return
 
-        if request['path'] == '/assets/portal.css':
+        if request['path'] in ('/portal.css', '/assets/portal.css'):
             await self._send(
                 writer,
                 request,
@@ -693,7 +640,7 @@ class SetupServer:
             )
             return
 
-        if request['path'] == '/assets/portal.js':
+        if request['path'] in ('/portal.js', '/assets/portal.js'):
             await self._send(
                 writer,
                 request,

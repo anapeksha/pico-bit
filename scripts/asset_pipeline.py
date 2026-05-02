@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -21,10 +22,46 @@ HEADER = (
 )
 
 
+def minify_css(css: str) -> str:
+    css = re.sub(r'/\*.*?\*/', '', css, flags=re.DOTALL)
+    css = re.sub(r'\s+', ' ', css)
+    css = re.sub(r'\s*([{}:;,])\s*', r'\1', css)
+    css = re.sub(r';(?=})', '', css)
+    return css.strip()
+
+
+def minify_js(js: str) -> str:
+    lines = js.split('\n')
+    js = '\n'.join(
+        line.split('//')[0] if '//' in line and 'http' not in line else line
+        for line in lines
+    )
+    js = re.sub(r'/\*.*?\*/', '', js, flags=re.DOTALL)
+    js = re.sub(r'  +', ' ', js)
+    js = re.sub(r'\s*([{}();,=<>!+\-*/%])\s*', r'\1', js)
+    return js.strip()
+
+
+def minify_html(html: str) -> str:
+    html = re.sub(r'<!--.*?-->', '', html, flags=re.DOTALL)
+    html = re.sub(r'>\s+<', '><', html)
+    html = re.sub(r'\s+', ' ', html)
+    html = re.sub(r'>\s+', '>', html)
+    html = re.sub(r'\s+<', '<', html)
+    html = re.sub(r'\s*=\s*', '=', html)
+    return html.strip()
+
+
 def render_web_assets() -> str:
     lines = [HEADER]
     for name, path in ASSET_MAP.items():
         text = path.read_text(encoding='utf-8')
+        if name == 'PORTAL_CSS':
+            text = minify_css(text)
+        elif name == 'PORTAL_JS':
+            text = minify_js(text)
+        elif name in ('LOGIN_HTML', 'INDEX_HTML'):
+            text = minify_html(text)
         lines.append(f'{name} = {json.dumps(text, ensure_ascii=False)}\n\n')
     lines.append('__all__ = ' + json.dumps(list(ASSET_MAP)) + '\n')
     return ''.join(lines)

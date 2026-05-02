@@ -160,7 +160,6 @@ def run_deploy(argv: list[str] | None = None) -> int:
     mpy_cross = _build_repo_mpy_cross()
     module_overrides = build_module_overrides(
         ROOT,
-        build_dir=BUILD_DIR,
         device_config_overrides=overrides,
     )
     artifact_version = resolve_artifact_version(args.release_version)

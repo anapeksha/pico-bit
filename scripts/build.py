@@ -379,7 +379,7 @@ def build_bundle(build_overrides=None):
 
 def build(build_overrides=None) -> None:
     if build_overrides is None:
-        build_overrides = build_module_overrides(ROOT, build_dir=BUILD_DIR)
+        build_overrides = build_module_overrides(ROOT)
 
     sync_web_assets()
     build_bundle(build_overrides)
@@ -431,7 +431,6 @@ def run_build(argv=None):
     build(
         build_module_overrides(
             ROOT,
-            build_dir=BUILD_DIR,
             device_config_overrides=config_overrides,
         )
     )

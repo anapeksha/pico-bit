@@ -71,7 +71,6 @@ def test_bootstrap_state_reports_payload_and_auth(monkeypatch) -> None:
     portal._payload_seeded = True
     portal._ap_password_in_use = ''
     monkeypatch.setattr(portal, '_read_payload', lambda: 'REM test\n')
-    monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
     monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
     monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
 
@@ -84,14 +83,12 @@ def test_bootstrap_state_reports_payload_and_auth(monkeypatch) -> None:
     assert state['allow_unsafe'] is False
     assert state['message'] == 'payload.dd was seeded on this boot.'
     assert state['safe_mode_enabled'] is True
-    assert state['validation'] == {'blocking': False}
 
 
 def test_bootstrap_state_reports_unsafe_runtime_when_enabled(monkeypatch) -> None:
     portal = server.SetupServer()
     portal._allow_unsafe = True
     monkeypatch.setattr(portal, '_read_payload', lambda: 'REM test\n')
-    monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
 
     state = portal._bootstrap_state()
 
@@ -99,30 +96,6 @@ def test_bootstrap_state_reports_unsafe_runtime_when_enabled(monkeypatch) -> Non
     assert state['mode_label'] == 'Unsafe mode allowed'
     assert state['mode_short'] == 'Unsafe runtime enabled'
     assert state['safe_mode_enabled'] is False
-
-
-def test_bootstrap_state_includes_library_groups_and_run_history(monkeypatch) -> None:
-    portal = server.SetupServer()
-    monkeypatch.setattr(portal, '_read_payload', lambda: 'REM test\n')
-    monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
-    monkeypatch.setattr(
-        portal,
-        '_payload_library_groups',
-        lambda: [{'key': 'general', 'label': 'General', 'items': [{'id': 'general/test'}]}],
-    )
-    monkeypatch.setattr(
-        portal,
-        '_recent_runs',
-        lambda: [{'sequence': 2, 'notice': 'success', 'preview': 'STRING hi'}],
-    )
-
-    state = portal._bootstrap_state()
-
-    assert state['payload_library_groups'] == [
-        {'key': 'general', 'label': 'General', 'items': [{'id': 'general/test'}]}
-    ]
-    assert state['run_history'] == [{'sequence': 2, 'notice': 'success', 'preview': 'STRING hi'}]
-    assert state['validation'] == {'blocking': False}
 
 
 def test_start_is_idempotent(monkeypatch) -> None:
@@ -444,11 +417,6 @@ def test_api_safe_mode_updates_runtime_state(monkeypatch) -> None:
     writer = FakeWriter()
     monkeypatch.setattr(portal, '_read_payload', lambda: 'REM hi\n')
     monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
-    monkeypatch.setattr(
-        portal,
-        '_payload_library_groups',
-        lambda: [{'key': 'general', 'label': 'General', 'items': []}],
-    )
 
     request = _make_request(
         'POST',
@@ -467,9 +435,6 @@ def test_api_safe_mode_updates_runtime_state(monkeypatch) -> None:
     assert payload['allow_unsafe'] is True
     assert payload['message'] == 'Safe mode disabled.'
     assert payload['mode_short'] == 'Unsafe runtime enabled'
-    assert payload['payload_library_groups'] == [
-        {'key': 'general', 'label': 'General', 'items': []}
-    ]
     assert payload['safe_mode_enabled'] is False
     assert payload['validation'] == {'blocking': False}
 
@@ -494,35 +459,6 @@ def test_api_safe_mode_requires_boolean_flag() -> None:
         'message': 'safe mode enabled must be a boolean.',
         'notice': 'error',
     }
-
-
-def test_api_payload_library_load_returns_template(monkeypatch) -> None:
-    portal = server.SetupServer()
-    writer = FakeWriter()
-    monkeypatch.setattr(portal, '_validation_state', lambda _script: {'blocking': False})
-    request = _make_request(
-        'POST',
-        '/api/payload-library/load',
-        body=b'{"id": "general/open4gmail"}',
-        cookies={'pico_bit_session': 'token123'},
-    )
-    portal._sessions['token123'] = 'admin'
-    portal._load_library_payload = (
-        lambda payload_id: 'STRING hi\n'
-        if payload_id == 'general/open4gmail'
-        else None
-    )
-
-    asyncio.run(portal._handle_api(request, writer))
-
-    head, body = writer.text().split('\r\n\r\n', 1)
-    payload = json.loads(body)
-    assert '200 OK' in head
-    assert payload['payload'] == 'STRING hi\n'
-    assert payload['payload_id'] == 'general/open4gmail'
-    assert payload['validation'] == {'blocking': False}
-
-
 def test_api_validate_returns_dry_run_state(monkeypatch) -> None:
     portal = server.SetupServer()
     writer = FakeWriter()

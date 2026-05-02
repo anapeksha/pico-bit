@@ -4,18 +4,19 @@ const saveButton = document.getElementById('save');
 const runButton = document.getElementById('run');
 const refreshButton = document.getElementById('refresh');
 const unsafeToggle = document.getElementById('unsafe-toggle');
-const librarySelect = document.getElementById('library-select');
 const runHistory = document.getElementById('run-history');
 const editorGutter = document.getElementById('editor-gutter');
 const editorMarkers = document.getElementById('editor-markers');
-const validationDiagnostics = document.getElementById('validation-diagnostics');
-const validationUnsafe = document.getElementById('validation-unsafe');
-const validationCommands = document.getElementById('validation-commands');
+const infoIcon = document.getElementById('info-icon');
+const validationModal = document.getElementById('validation-modal');
+const modalBackdrop = document.getElementById('modal-backdrop');
+const modalBody = document.getElementById('modal-body');
+const modalSubtitle = document.getElementById('modal-subtitle');
+const modalClose = document.getElementById('modal-close');
 const validationBadge = document.querySelector('[data-bind="validation_badge"]');
 
 const uiState = {
   charWidth: 8,
-  libraryCount: 0,
   lineHeight: 22,
   modeDescription: '',
   padLeft: 16,
@@ -27,7 +28,6 @@ const uiState = {
   validation: null,
   validationRequest: 0,
   validationTimer: 0,
-  loadingLibrary: false,
 };
 
 function setNotice(message, tone = 'quiet') {
@@ -57,21 +57,6 @@ function setBadge(node, label, tone) {
   node.textContent = label;
 }
 
-function payloadLibraryCount(groups = []) {
-  return groups.reduce((count, group) => count + (group.items || []).length, 0);
-}
-
-function libraryHint(groups, allowUnsafe) {
-  const count = payloadLibraryCount(groups);
-  if (!count) {
-    return 'No baked payload templates are available in this build.';
-  }
-  if (allowUnsafe) {
-    return `${count} baked payload templates available. Unsafe-mode templates are included.`;
-  }
-  return `${count} baked payload templates available in safe mode.`;
-}
-
 function updateControls() {
   const validation = uiState.validation;
   if (saveButton) {
@@ -82,9 +67,6 @@ function updateControls() {
     runButton.disabled =
       uiState.validating || uiState.running || !validation || !validation.can_run;
   }
-  if (librarySelect) {
-    librarySelect.disabled = uiState.loadingLibrary || uiState.libraryCount === 0;
-  }
   if (unsafeToggle) {
     unsafeToggle.disabled = uiState.togglingUnsafe;
   }
@@ -92,45 +74,6 @@ function updateControls() {
 
 function itemTitle(item) {
   return [item.message, item.hint].filter(Boolean).join('\n');
-}
-
-function renderPayloadLibrary(groups = []) {
-  if (!librarySelect) {
-    return;
-  }
-
-  const selected = librarySelect.value;
-  const validIds = new Set();
-  uiState.libraryCount = payloadLibraryCount(groups);
-
-  librarySelect.textContent = '';
-
-  const placeholder = document.createElement('option');
-  placeholder.value = '';
-  placeholder.textContent = uiState.libraryCount
-    ? 'Load a baked payload template…'
-    : 'No baked payload templates available';
-  librarySelect.appendChild(placeholder);
-
-  groups.forEach((group) => {
-    const optgroup = document.createElement('optgroup');
-    optgroup.label = group.label;
-
-    (group.items || []).forEach((item) => {
-      const option = document.createElement('option');
-      option.value = item.id;
-      option.textContent = item.safe ? item.label : `${item.label} (unsafe)`;
-      optgroup.appendChild(option);
-      validIds.add(item.id);
-    });
-
-    if (optgroup.childNodes.length) {
-      librarySelect.appendChild(optgroup);
-    }
-  });
-
-  librarySelect.value = validIds.has(selected) ? selected : '';
-  updateControls();
 }
 
 function renderRunHistory(entries = []) {
@@ -177,14 +120,20 @@ function renderRunHistory(entries = []) {
     meta.className = 'history__meta';
     meta.textContent = entry.mode_label || 'Runtime mode';
 
-    const message = document.createElement('p');
-    message.className = 'history__message';
-    message.textContent = entry.message || '';
-
     item.appendChild(top);
     item.appendChild(preview);
     item.appendChild(meta);
-    item.appendChild(message);
+
+    if (entry.message) {
+      const message = document.createElement('p');
+      message.className = 'history__message';
+      const firstLine = (entry.message || '').split('\n')[0];
+      const truncated = firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine;
+      message.textContent = truncated;
+      message.title = entry.message;
+      item.appendChild(message);
+    }
+
     runHistory.appendChild(item);
   });
 }
@@ -220,12 +169,6 @@ function applyMode(state) {
   if (unsafeToggle) {
     unsafeToggle.checked = !!state.allow_unsafe;
   }
-}
-
-function applyLibraryState(state) {
-  const groups = state.payload_library_groups || [];
-  renderPayloadLibrary(groups);
-  setBoundText('library_hint', libraryHint(groups, !!state.allow_unsafe));
 }
 
 function measureEditor() {
@@ -285,11 +228,11 @@ function renderEditorDecorations(validation) {
 
   const diagnostics = validation?.diagnostics || [];
   const lineMap = diagnosticLineMap(diagnostics);
-  const lines = payloadField.value.split('\n');
+  const text = payloadField.value;
+  const lines = text === '' ? [''] : text.split('\n');
 
   const gutterLines = document.createElement('div');
   gutterLines.className = 'editor__gutter-lines';
-  gutterLines.style.height = `${uiState.padTop * 2 + lines.length * uiState.lineHeight}px`;
 
   lines.forEach((_line, index) => {
     const lineNo = index + 1;
@@ -298,8 +241,6 @@ function renderEditorDecorations(validation) {
     row.className = `editor__gutter-line${
       lineState ? ` editor__gutter-line--${lineState.severity}` : ''
     }`;
-    row.style.top = `${uiState.padTop + index * uiState.lineHeight}px`;
-    row.style.height = `${uiState.lineHeight}px`;
     row.title = lineState ? lineState.titles.join('\n\n') : '';
 
     if (lineState) {
@@ -332,130 +273,53 @@ function renderEditorDecorations(validation) {
   syncEditorDecorations();
 }
 
-function renderEmpty(container, message) {
-  if (!container) {
-    return;
-  }
-  const empty = document.createElement('p');
-  empty.className = 'validation__empty';
-  empty.textContent = message;
-  container.replaceChildren(empty);
-}
-
-function renderDiagnosticsList(diagnostics = []) {
-  if (!validationDiagnostics) {
+function renderModalDiagnostics(diagnostics = []) {
+  if (!modalBody) {
     return;
   }
   if (!diagnostics.length) {
-    renderEmpty(validationDiagnostics, 'No issues detected.');
+    const empty = document.createElement('p');
+    empty.className = 'modal__empty';
+    empty.textContent = 'No issues detected.';
+    modalBody.replaceChildren(empty);
     return;
   }
 
   const items = diagnostics.map((diagnostic) => {
     const item = document.createElement('article');
-    item.className = `validation__item validation__item--${diagnostic.severity}`;
-    item.title = itemTitle(diagnostic);
+    item.className = `modal__item modal__item--${diagnostic.severity}`;
+    item.title = [diagnostic.message, diagnostic.hint].filter(Boolean).join('\n\n');
 
     const line = document.createElement('p');
-    line.className = 'validation__line';
-    line.textContent = `Line ${diagnostic.line}, col ${diagnostic.column}`;
+    line.className = 'modal__item-line';
+    line.textContent = `Line ${diagnostic.line} · col ${diagnostic.column}`;
 
     const message = document.createElement('p');
-    message.className = 'validation__message';
+    message.className = 'modal__item-message';
     message.textContent = diagnostic.message;
 
-    const hint = document.createElement('p');
-    hint.className = 'validation__hint';
-    hint.textContent = diagnostic.hint;
-
     item.appendChild(line);
     item.appendChild(message);
-    item.appendChild(hint);
-    return item;
-  });
-  validationDiagnostics.replaceChildren(...items);
-}
 
-function renderUnsafeList(items = []) {
-  if (!validationUnsafe) {
-    return;
-  }
-  if (!items.length) {
-    renderEmpty(validationUnsafe, 'No unsafe commands detected.');
-    return;
-  }
-
-  const nodes = items.map((itemData) => {
-    const item = document.createElement('article');
-    item.className = `validation__item validation__item--${itemData.severity}`;
-    item.title = itemTitle(itemData);
-
-    const line = document.createElement('p');
-    line.className = 'validation__line';
-    line.textContent = `Line ${itemData.line}`;
-
-    const message = document.createElement('p');
-    message.className = 'validation__message';
-    message.textContent = itemData.command;
-
-    const hint = document.createElement('p');
-    hint.className = 'validation__hint';
-    hint.textContent = itemData.hint;
-
-    item.appendChild(line);
-    item.appendChild(message);
-    item.appendChild(hint);
-    return item;
-  });
-  validationUnsafe.replaceChildren(...nodes);
-}
-
-function renderCommandList(commands = []) {
-  if (!validationCommands) {
-    return;
-  }
-  if (!commands.length) {
-    renderEmpty(validationCommands, 'No commands parsed yet.');
-    return;
-  }
-
-  const nodes = commands.map((command) => {
-    const item = document.createElement('article');
-    item.className = 'validation__item';
-    item.style.paddingLeft = `${0.75 + command.depth * 0.8}rem`;
-
-    const line = document.createElement('p');
-    line.className = 'validation__line';
-    line.textContent = `Line ${command.line}`;
-
-    const label = document.createElement('p');
-    label.className = 'validation__command';
-    const labelName = document.createElement('span');
-    labelName.className = 'validation__command-label';
-    labelName.textContent = command.label;
-    label.appendChild(labelName);
-    if (command.detail) {
-      label.appendChild(document.createTextNode(` - ${command.detail}`));
+    if (diagnostic.hint) {
+      const hint = document.createElement('p');
+      hint.className = 'modal__item-hint';
+      hint.textContent = diagnostic.hint;
+      item.appendChild(hint);
     }
 
-    item.appendChild(line);
-    item.appendChild(label);
     return item;
   });
-  validationCommands.replaceChildren(...nodes);
+  modalBody.replaceChildren(...items);
 }
 
 function renderPendingValidation() {
   setBadge(validationBadge, 'Checking…', 'accent');
-  setBoundText('validation_counts', 'Waiting for dry run');
-  setBoundText('validation_summary', 'Checking payload...');
-  setBoundText(
-    'validation_detail',
-    `${uiState.modeDescription} Validation updates as you type.`.trim(),
-  );
-  renderEmpty(validationDiagnostics, 'Checking for line-level issues...');
-  renderEmpty(validationUnsafe, 'Checking for unsafe commands...');
-  renderEmpty(validationCommands, 'Parsing commands...');
+  setBoundText('validation_summary', 'Checking payload…');
+  if (infoIcon) {
+    infoIcon.style.display = 'none';
+  }
+  closeModal();
   renderEditorDecorations({ diagnostics: [] });
   updateControls();
 }
@@ -463,15 +327,40 @@ function renderPendingValidation() {
 function renderValidation(validation) {
   uiState.validation = validation;
   setBadge(validationBadge, validation.badge_label || 'Ready', validation.badge_tone || 'success');
-  setBoundText('validation_counts', validation.counts_label || '');
   setBoundText('validation_summary', validation.summary || 'Dry run complete.');
-  setBoundText(
-    'validation_detail',
-    `${validation.detail || ''} ${uiState.modeDescription}`.trim(),
-  );
-  renderDiagnosticsList(validation.diagnostics || []);
-  renderUnsafeList(validation.unsafe_commands || []);
-  renderCommandList(validation.parsed_commands || []);
+
+  const diagnostics = validation.diagnostics || [];
+  renderModalDiagnostics(diagnostics);
+
+  const errorCount = diagnostics.filter((d) => d.severity === 'error').length;
+  const warningCount = diagnostics.filter((d) => d.severity === 'warning').length;
+
+  if (infoIcon) {
+    const hasIssues = diagnostics.length > 0;
+    infoIcon.style.display = hasIssues ? 'inline-flex' : 'none';
+    if (hasIssues) {
+      const labelParts = [];
+      if (errorCount) labelParts.push(`${errorCount} error${errorCount > 1 ? 's' : ''}`);
+      if (warningCount) labelParts.push(`${warningCount} warning${warningCount > 1 ? 's' : ''}`);
+      setBoundText('info_count', labelParts.join(', '));
+    }
+    if (!hasIssues) {
+      closeModal();
+    }
+  }
+
+  if (modalSubtitle) {
+    if (errorCount && warningCount) {
+      modalSubtitle.textContent = `${errorCount} error${errorCount > 1 ? 's' : ''}, ${warningCount} warning${warningCount > 1 ? 's' : ''}`;
+    } else if (errorCount) {
+      modalSubtitle.textContent = `${errorCount} error${errorCount > 1 ? 's' : ''} found in the payload`;
+    } else if (warningCount) {
+      modalSubtitle.textContent = `${warningCount} warning${warningCount > 1 ? 's' : ''} found in the payload`;
+    } else {
+      modalSubtitle.textContent = 'No issues detected';
+    }
+  }
+
   renderEditorDecorations(validation);
   updateControls();
 }
@@ -522,7 +411,6 @@ async function loadBootstrap() {
   setBoundText('ap_ssid', state.ap_ssid);
   setBoundText('ap_password', state.ap_password || 'Open network');
   applyMode(state);
-  applyLibraryState(state);
   renderRunHistory(state.run_history || []);
   setBoundText('seeded', state.seeded ? 'Yes' : 'No');
   setBoundText('hid_state', state.keyboard_ready ? 'Ready' : 'Waiting');
@@ -549,7 +437,6 @@ async function toggleUnsafe(unsafeOn) {
       body: JSON.stringify({ enabled: !unsafeOn, payload: payloadField.value }),
     });
     applyMode(result);
-    applyLibraryState(result);
     if (result.validation) {
       uiState.validating = false;
       renderValidation(result.validation);
@@ -565,40 +452,6 @@ async function toggleUnsafe(unsafeOn) {
     setNotice(error.message, 'error');
   } finally {
     uiState.togglingUnsafe = false;
-    updateControls();
-  }
-}
-
-async function loadLibraryPayload(payloadId) {
-  if (!payloadId) {
-    return;
-  }
-
-  uiState.loadingLibrary = true;
-  updateControls();
-  try {
-    const result = await requestJson('/api/payload-library/load', {
-      method: 'POST',
-      body: JSON.stringify({ id: payloadId }),
-    });
-    payloadField.value = result.payload || '';
-    measureEditor();
-    uiState.validating = false;
-    if (result.validation) {
-      renderValidation(result.validation);
-    }
-    setBoundText('payload_state', 'Library preview');
-    setNotice(result.message, result.notice || 'success');
-  } catch (error) {
-    if (librarySelect) {
-      librarySelect.value = '';
-    }
-    if (error.data?.validation) {
-      renderValidation(error.data.validation);
-    }
-    setNotice(error.message, 'error');
-  } finally {
-    uiState.loadingLibrary = false;
     updateControls();
   }
 }
@@ -658,6 +511,31 @@ function handlePayloadInput() {
   queueValidation();
 }
 
+function openModal() {
+  if (validationModal) {
+    validationModal.classList.add('visible');
+    validationModal.setAttribute('aria-hidden', 'false');
+    document.body.style.overflow = 'hidden';
+  }
+}
+
+function closeModal() {
+  if (validationModal) {
+    validationModal.classList.remove('visible');
+    validationModal.setAttribute('aria-hidden', 'true');
+    document.body.style.overflow = '';
+  }
+}
+
+function toggleModal() {
+  if (!validationModal) return;
+  if (validationModal.classList.contains('visible')) {
+    closeModal();
+  } else {
+    openModal();
+  }
+}
+
 if (refreshButton) {
   refreshButton.addEventListener('click', () => {
     loadBootstrap().catch((error) => setNotice(error.message, 'error'));
@@ -682,11 +560,23 @@ if (unsafeToggle) {
   });
 }
 
-if (librarySelect) {
-  librarySelect.addEventListener('change', () => {
-    loadLibraryPayload(librarySelect.value);
-  });
+if (infoIcon) {
+  infoIcon.addEventListener('click', toggleModal);
 }
+
+if (modalClose) {
+  modalClose.addEventListener('click', closeModal);
+}
+
+if (modalBackdrop) {
+  modalBackdrop.addEventListener('click', closeModal);
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && validationModal?.classList.contains('visible')) {
+    closeModal();
+  }
+});
 
 if (payloadField) {
   payloadField.addEventListener('input', handlePayloadInput);

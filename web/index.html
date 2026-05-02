@@ -60,28 +60,18 @@
 
           <div class="notice notice--hidden" id="notice"></div>
 
-          <div class="editor__tools">
-            <div class="field">
-              <label class="field__label" for="library-select"
-                >Payload library</label
-              >
-              <select
-                id="library-select"
-                class="field__input field__input--select"
-              >
-                <option value="">No baked payload selected</option>
-              </select>
-            </div>
-            <p class="editor__hint" data-bind="library_hint">
-              Safe mode shows only baked payloads that avoid higher-risk runtime
-              features.
-            </p>
-          </div>
-
           <div class="editor__stage">
-            <div class="editor__gutter" id="editor-gutter" aria-hidden="true"></div>
+            <div
+              class="editor__gutter"
+              id="editor-gutter"
+              aria-hidden="true"
+            ></div>
             <div class="editor__surface">
-              <div class="editor__markers" id="editor-markers" aria-hidden="true"></div>
+              <div
+                class="editor__markers"
+                id="editor-markers"
+                aria-hidden="true"
+              ></div>
               <textarea
                 id="payload"
                 class="editor__input"
@@ -96,9 +86,35 @@
           </div>
 
           <div class="editor__footer">
-            <p class="editor__note" data-bind="validation_summary">
-              Dry run validation checks the script before saving or running.
-            </p>
+            <div class="editor__status" id="editor-status">
+              <span class="badge" data-bind="validation_badge">Checking…</span>
+              <span class="editor__status-text" data-bind="validation_summary">
+                Dry run runs before save and execution.
+              </span>
+              <button
+                class="editor__info-icon"
+                id="info-icon"
+                type="button"
+                aria-label="Show validation errors"
+                style="display: none"
+              >
+                <svg
+                  viewBox="0 0 24 24"
+                  width="14"
+                  height="14"
+                  fill="none"
+                  stroke="currentcolor"
+                  stroke-width="2.4"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <line x1="12" y1="8" x2="12" y2="12"></line>
+                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                </svg>
+                <span data-bind="info_count">View issues</span>
+              </button>
+            </div>
             <div class="editor__actions">
               <button class="btn btn--ghost" id="refresh" type="button">
                 Reload
@@ -156,33 +172,16 @@
             <p class="panel__title">Dry run</p>
             <div class="validation">
               <div class="validation__header">
-                <span class="badge" data-bind="validation_badge">Checking…</span>
-                <span class="validation__meta" data-bind="validation_counts">0 commands</span>
+                <span class="badge" data-bind="validation_badge"
+                  >Checking…</span
+                >
+                <span class="validation__meta" data-bind="validation_counts"
+                  >0 commands</span
+                >
               </div>
               <p class="panel__text" data-bind="validation_detail">
                 Validation runs before every save and execution.
               </p>
-
-              <div class="validation__section">
-                <p class="validation__label">Issues</p>
-                <div class="validation__list" id="validation-diagnostics">
-                  <p class="validation__empty">No issues detected.</p>
-                </div>
-              </div>
-
-              <div class="validation__section">
-                <p class="validation__label">Unsafe commands</p>
-                <div class="validation__list" id="validation-unsafe">
-                  <p class="validation__empty">No unsafe commands detected.</p>
-                </div>
-              </div>
-
-              <div class="validation__section">
-                <p class="validation__label">Parsed commands</p>
-                <div class="validation__list validation__list--commands" id="validation-commands">
-                  <p class="validation__empty">No commands parsed yet.</p>
-                </div>
-              </div>
             </div>
           </div>
 
