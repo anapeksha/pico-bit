@@ -30,11 +30,14 @@ jobs:
       - name: Install dependencies
         run: poetry install --no-interaction
 
+      - name: Verify embedded web assets
+        run: poetry run python -c "from asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
+
       - name: Check formatting
         run: poetry run ruff format --check .
 
       - name: Run lint
-        run: poetry run ruff check build.py src tests
+        run: poetry run ruff check asset_pipeline.py build.py build_support.py deploy.py src tests
 
       - name: Run type checks
         run: poetry run pyright
@@ -42,11 +45,13 @@ jobs:
       - name: Run tests
         run: poetry run pytest
 
-      - name: Build bundle
+      - name: Build dev artifacts
         run: poetry run python build.py
 
-      - name: Validate generated bundle
+      - name: Validate generated artifacts
         run: |
           poetry run ruff format --check dist/boot.py
           poetry run ruff check dist/boot.py
           poetry run python -m py_compile dist/boot.py
+          test -d dist/mpy
+          find dist/mpy -name '*.mpy' | grep -q '.'

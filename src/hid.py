@@ -1,18 +1,8 @@
-"""
-USB HID keyboard helpers for MicroPython on the Raspberry Pi Pico 2.
-"""
-
-import time
+"""USB HID keyboard helpers for MicroPython on the Raspberry Pi Pico 2."""
 
 import machine
 
-if hasattr(time, 'sleep_ms'):
-    _sleep_ms = time.sleep_ms  # type: ignore[attr-defined]
-else:
-
-    def _sleep_ms(ms):
-        time.sleep(ms / 1000)
-
+from helpers import sleep_ms, sleep_ms_blocking
 
 MOD_NONE = 0x00
 MOD_CTRL = 0x01
@@ -424,7 +414,7 @@ class HIDKeyboard:
             self._dev.active(False)
         except OSError:
             pass
-        _sleep_ms(150)
+        sleep_ms_blocking(150)
         self._dev.builtin_driver = self._dev.BUILTIN_NONE
         self._dev.config(
             _DEVICE_DESC,
@@ -437,84 +427,76 @@ class HIDKeyboard:
         )
         self._dev.active(True)
 
-    def is_open(self):
+    def is_open(self) -> bool:
         return self._ready
 
-    def wait_open(self, timeout_ms=5000):
-        """Block until the host has enumerated the HID interface, or timeout."""
+    async def wait_open(self, timeout_ms: int = 5000) -> bool:
+        """Wait until the host has enumerated the HID interface, or timeout."""
         elapsed = 0
         step = 50
         while not self._ready and elapsed < timeout_ms:
-            _sleep_ms(step)
+            await sleep_ms(step)
             elapsed += step
         return self._ready
 
-    def stats(self):
+    def stats(self) -> tuple[int, int]:
         """Return (total_submits, failed_submits) — useful for diagnostics."""
-        return (self._submit_total, self._submit_failures)
+        return self._submit_total, self._submit_failures
 
-    def press(self, *keycodes):
-        mod = self._held_modifiers
+    async def press(self, *keycodes: int) -> None:
+        modifier = self._held_modifiers
         keys = list(self._held_keys)
-        for kc in keycodes:
-            if 0xE0 <= kc <= 0xE7:
-                mod |= 1 << (kc - 0xE0)
-            elif kc and kc not in keys and len(keys) < 6:
-                keys.append(kc)
-        self._write_report(mod, keys)
+        for keycode in keycodes:
+            if 0xE0 <= keycode <= 0xE7:
+                modifier |= 1 << (keycode - 0xE0)
+            elif keycode and keycode not in keys and len(keys) < 6:
+                keys.append(keycode)
+        await self._write_report(modifier, keys)
 
-    def hold(self, *keycodes):
-        for kc in keycodes:
-            if 0xE0 <= kc <= 0xE7:
-                self._held_modifiers |= 1 << (kc - 0xE0)
-            elif kc and kc not in self._held_keys and len(self._held_keys) < 6:
-                self._held_keys.append(kc)
-        self.send_held_state()
+    async def hold(self, *keycodes: int) -> None:
+        for keycode in keycodes:
+            if 0xE0 <= keycode <= 0xE7:
+                self._held_modifiers |= 1 << (keycode - 0xE0)
+            elif keycode and keycode not in self._held_keys and len(self._held_keys) < 6:
+                self._held_keys.append(keycode)
+        await self.send_held_state()
 
-    def release(self, *keycodes):
+    async def release(self, *keycodes: int) -> None:
         if not keycodes:
-            self.release_all()
+            await self.release_all()
             return
-        for kc in keycodes:
-            if 0xE0 <= kc <= 0xE7:
-                self._held_modifiers &= ~(1 << (kc - 0xE0))
-            elif kc in self._held_keys:
-                self._held_keys.remove(kc)
-        self.send_held_state()
+        for keycode in keycodes:
+            if 0xE0 <= keycode <= 0xE7:
+                self._held_modifiers &= ~(1 << (keycode - 0xE0))
+            elif keycode in self._held_keys:
+                self._held_keys.remove(keycode)
+        await self.send_held_state()
 
-    def send_held_state(self):
-        self._write_report(self._held_modifiers, self._held_keys)
+    async def send_held_state(self) -> None:
+        await self._write_report(self._held_modifiers, self._held_keys)
 
-    def release_all(self):
+    async def release_all(self) -> None:
         self._held_modifiers = 0
         self._held_keys = []
-        self._write_report(0, [])
+        await self._write_report(0, [])
 
-    def _write_report(self, modifier, keys):
+    async def _write_report(self, modifier: int, keys: list[int]) -> None:
         self._report[0] = modifier
         self._report[1] = 0
         for i in range(6):
             self._report[2 + i] = keys[i] if i < len(keys) else 0
-        self._send()
+        await self._send()
 
-    def _send(self):
+    async def _send(self) -> None:
         self._submit_total += 1
-        # If the host hasn't finished enumerating yet, there's nowhere for the
-        # report to go. Wait briefly so the very first keystrokes after boot
-        # don't get lost.
         if not self._ready:
-            self.wait_open(2000)
+            await self.wait_open(2000)
 
-        # Wait for the previous transfer to complete before queuing a new one.
-        # bInterval is 10 ms, so a normal completion should arrive within
-        # 10–15 ms; allow up to 50 ms before giving up on this particular key.
         elapsed = 0
         while self._xfer_busy and elapsed < 50:
-            _sleep_ms(2)
+            await sleep_ms(2)
             elapsed += 2
 
-        # Submit the new transfer. submit_xfer raises OSError when the
-        # endpoint is still busy or the device isn't configured.
         for _ in range(10):
             try:
                 self._xfer_busy = True
@@ -522,18 +504,15 @@ class HIDKeyboard:
                 break
             except OSError:
                 self._xfer_busy = False
-                _sleep_ms(3)
+                await sleep_ms(3)
         else:
             self._submit_failures += 1
             return
 
-        # Block until the host actually polls and reads the report, so
-        # subsequent press/release sequences don't get coalesced or dropped.
         elapsed = 0
         while self._xfer_busy and elapsed < 50:
-            _sleep_ms(2)
+            await sleep_ms(2)
             elapsed += 2
-
 
 def _mod_to_keycodes(modifier):
     result = []
@@ -556,35 +535,35 @@ def _mod_to_keycodes(modifier):
     return result
 
 
-def send_keys(kbd, modifier, keycodes):
+async def send_keys(kbd, modifier, keycodes) -> None:
     pressed = [kc for kc in keycodes if kc]
     if not pressed and not modifier:
         return
-    kbd.press(*_mod_to_keycodes(modifier), *pressed)
-    _sleep_ms(20)
-    kbd.send_held_state()
-    _sleep_ms(20)
+    await kbd.press(*_mod_to_keycodes(modifier), *pressed)
+    await sleep_ms(20)
+    await kbd.send_held_state()
+    await sleep_ms(20)
 
 
-def hold_keys(kbd, modifier, keycodes):
-    kbd.hold(*_mod_to_keycodes(modifier), *[kc for kc in keycodes if kc])
+async def hold_keys(kbd, modifier, keycodes) -> None:
+    await kbd.hold(*_mod_to_keycodes(modifier), *[kc for kc in keycodes if kc])
 
 
-def release_keys(kbd, modifier, keycodes):
+async def release_keys(kbd, modifier, keycodes) -> None:
     if not modifier and not keycodes:
-        kbd.release_all()
+        await kbd.release_all()
         return
-    kbd.release(*_mod_to_keycodes(modifier), *[kc for kc in keycodes if kc])
+    await kbd.release(*_mod_to_keycodes(modifier), *[kc for kc in keycodes if kc])
 
 
-def send_key(kbd, modifier, keycode):
-    send_keys(kbd, modifier, [keycode] if keycode else [])
+async def send_key(kbd, modifier, keycode) -> None:
+    await send_keys(kbd, modifier, [keycode] if keycode else [])
 
 
-def type_string(kbd, text, char_delay_ms=0):
+async def type_string(kbd, text, char_delay_ms=0) -> None:
     for ch in text:
         modifier, keycode = lookup_char(ch)
         if keycode:
-            send_key(kbd, modifier, keycode)
+            await send_key(kbd, modifier, keycode)
             if char_delay_ms > 0:
-                _sleep_ms(char_delay_ms)
+                await sleep_ms(char_delay_ms)

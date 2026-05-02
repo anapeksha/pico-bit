@@ -1,85 +1,78 @@
+import asyncio
+
+from helpers import wait_forever
 from status_led import STATUS_LED
 
 _INITIAL_DELAY_MS: int = 10000
 
-STATUS_LED.show('boot')
 
-
-def _start_server() -> None:
+async def _start_server():
     try:
         from server import SERVER
 
-        SERVER.start_background()
+        await SERVER.start()
+        return SERVER
     except OSError:
-        STATUS_LED.halt('setup_ap_failed')
+        await STATUS_LED.halt('setup_ap_failed')
     except Exception:
-        STATUS_LED.halt('setup_server_failed')
+        await STATUS_LED.halt('setup_server_failed')
+
+    raise AssertionError('unreachable')
 
 
-def _run_payload_mode() -> None:
+async def _run_payload(server) -> str | None:
     from device_config import ALLOW_UNSAFE
-    from ducky import (
-        DuckyScriptError,
-        find_payload,
-        run_script,
-        validate_script,
-    )
-    from server import SERVER
+    from ducky import DuckyScriptError, ensure_payload, validate_script
 
-    _start_server()
-    STATUS_LED.show('payload_entered')
+    await STATUS_LED.show('payload_entered')
 
     try:
-        payload_path = find_payload()
+        payload_path, _ = ensure_payload()
     except Exception:
-        STATUS_LED.halt('payload_find_failed')
-        return
+        return 'payload_find_failed'
 
     if not payload_path:
-        STATUS_LED.halt('payload_missing')
-        return
+        return 'payload_missing'
 
     try:
         with open(payload_path) as f:
             script = f.read()
     except OSError:
-        STATUS_LED.halt('payload_read_failed')
-        return
+        return 'payload_read_failed'
 
-    keyboard_ready = False
     try:
-        SERVER.acquire_execution()
-        try:
-            kbd = SERVER.keyboard()
-            STATUS_LED.show('hid_constructed')
-            STATUS_LED.on()
-            keyboard_ready = kbd.wait_open(_INITIAL_DELAY_MS)
-            if keyboard_ready:
-                STATUS_LED.off()
-                STATUS_LED.show('usb_enumerated')
-                STATUS_LED.show('payload_ready')
-                validate_script(script)
-                run_script(kbd, script, allow_unsafe=ALLOW_UNSAFE)
-        finally:
-            SERVER.release_execution()
+        keyboard = server.keyboard()
+        await STATUS_LED.show('hid_constructed')
+        STATUS_LED.on()
+        keyboard_ready = await keyboard.wait_open(_INITIAL_DELAY_MS)
+        if not keyboard_ready:
+            return 'usb_enum_timeout'
+
+        STATUS_LED.off()
+        await STATUS_LED.show('usb_enumerated')
+        await STATUS_LED.show('payload_ready')
+        validate_script(script)
+        await server.execute_script(script, allow_unsafe=ALLOW_UNSAFE)
     except DuckyScriptError:
-        STATUS_LED.halt('script_error')
+        return 'script_error'
+    except OSError:
+        return 'usb_enum_timeout'
+
+    await STATUS_LED.show('payload_complete')
+    return None
+
+
+async def run() -> None:
+    await STATUS_LED.show('boot')
+    server = await _start_server()
+    error_name = await _run_payload(server)
+    if error_name is not None:
+        await STATUS_LED.halt(error_name)
         return
-
-    if not keyboard_ready:
-        STATUS_LED.halt('usb_enum_timeout')
-        return
-
-    STATUS_LED.show('payload_complete')
-    while True:
-        STATUS_LED.pause(100)
-
-
-def run() -> None:
-    _run_payload_mode()
+    await wait_forever()
 
 
 try:
-    run()
+    asyncio.run(run())
 except Exception:
-    STATUS_LED.halt('unhandled')
+    asyncio.run(STATUS_LED.halt('unhandled'))

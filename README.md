@@ -2,207 +2,65 @@
 
 <img src="images/pico-bit.jpeg" alt="Pico Bit home">
 
-`pico-bit` is a MicroPython DuckyScript interpreter for the Raspberry Pi Pico 2 family. It validates and runs `payload.dd`, can expose a browser-based setup portal on Wi-Fi-capable boards, and bundles the whole runtime into a single `dist/boot.py`.
+`pico-bit` is a MicroPython DuckyScript runtime for Raspberry Pi Pico 2 boards. It runs a USB HID keyboard payload from `payload.dd`, starts a Wi-Fi injector portal on Pico 2 W hardware, and keeps the payload editable on the device.
 
-The project is meant to be approachable for MicroPython users and contributors who want a Pico Ducky style workflow without switching to CircuitPython.
+## What It Does
 
-## Purpose
-
-This repository focuses on:
-
-- DuckyScript parsing and validation on MicroPython
-- USB HID keyboard behavior on RP2350 boards
-- Wi-Fi payload editing on Pico 2 W hardware
-- single-file bundling for constrained embedded targets
-
-By default, the runtime stays in a safe mode. It can parse a broader DuckyScript surface, but unsafe runtime features remain blocked unless `ALLOW_UNSAFE` is enabled.
-
-## Responsibility
-
-This project is for legitimate automation, learning, and hardware experimentation.
-
-You are responsible for how you use it. If you choose to use it maliciously, that is your decision and your responsibility alone.
-
-Only run payloads on systems you own or are explicitly authorized to administer.
+- runs `payload.dd` as a keyboard payload
+- starts a Wi-Fi access point and browser injector on every boot
+- lets you view, edit, save, and run the payload from a phone or laptop
+- seeds `payload.dd` automatically on first boot if the file is missing
 
 ## Hardware
 
-- Payload mode works on Raspberry Pi Pico 2 devices that support MicroPython USB HID.
-- Setup mode requires Wi-Fi AP support, so you typically want a Raspberry Pi Pico 2 W.
-- On carrier boards that expose multiple USB ports, use the Pico's own USB data port for HID.
+- Recommended board: Raspberry Pi Pico 2 W
+- The browser injector needs Wi-Fi, so Pico 2 W is the main target
+- Use the Pico's own USB data port for HID, not a carrier-only power port
 
-## Project Layout
+## Default Access
 
-```text
-src/
-  ducky/
-    __init__.py
-    constants.py
-    errors.py
-    lexer.py
-    parser.py
-    payload.py
-    runtime.py
-  device_config.py
-  hid.py
-  main.py
-  server.py
-  status_led.py
-tests/
-stubs/
-build.py
-pyproject.toml
-```
-
-## Development
-
-This repository uses Poetry.
-
-```bash
-poetry install
-poetry run pytest
-poetry run pyright
-poetry run ruff check .
-poetry run ruff format --check .
-poetry run python3 build.py
-```
-
-## Bundling
-
-The bundler reads `src/`, removes local imports, hoists external imports, strips docstrings and `print()` calls, and emits exactly one deployable file:
-
-```text
-dist/boot.py
-```
-
-## Build-Time Configuration
-
-You can override the setup AP and runtime safety mode without editing source files:
-
-```bash
-poetry run python3 build.py \
-  --ap-ssid "Studio Pico" \
-  --ap-password "keyboard42" \
-  --allow-unsafe true
-```
-
-Environment variables work too:
-
-```bash
-PICO_BIT_AP_SSID="Studio Pico" \
-PICO_BIT_AP_PASSWORD="keyboard42" \
-PICO_BIT_ALLOW_UNSAFE=true \
-poetry run python3 build.py
-```
-
-Defaults are defined in `src/device_config.py`.
-
-## Flashing
-
-1. Build the bundle with `poetry run python3 build.py`.
-2. Copy `dist/boot.py` to the MicroPython filesystem as `boot.py`.
-3. Copy `payload.dd` to the board filesystem.
-4. Reboot the board.
-
-## Boot Flow
-
-On every boot the board:
-
-1. starts the Wi-Fi AP and browser editor
-2. initializes USB HID
-3. waits for the host to enumerate the keyboard
-4. searches for `payload.dd`
-5. validates the script
-6. runs it only if parsing succeeds
-
-The HTTP server stays available in the background while the payload runs.
-
-## Payload Execution
-
-The board:
-
-1. initializes USB HID
-2. waits for the host to enumerate the keyboard
-3. searches for `payload.dd`
-4. validates the script
-5. runs it only if parsing succeeds
-
-Parse failures stop execution before runtime.
-
-## Browser Editor
-
-The browser editor lives in `src/server.py` and starts on every boot.
-
-Current defaults:
-
-- AP name: `picoBit`
+- AP SSID: `picoBit`
 - AP password: `88888888`
-- Web UI: `http://192.168.4.1`
+- Portal URL: `http://192.168.4.1`
+- Portal username: `admin`
+- Portal password: `88888888`
 
-To use it:
+## Download Firmware
 
-1. Power-cycle or reset the board.
-2. Join the access point.
+Download the latest `.uf2` from the GitHub Releases page:
+
+- Latest release: <https://github.com/anapeksha/pico-bit/releases/latest>
+- All releases: <https://github.com/anapeksha/pico-bit/releases>
+
+Look for the release asset named like `pico-bit-RPI_PICO2_W-<version>.uf2`.
+
+## Flash The Board
+
+1. Hold `BOOTSEL` while connecting the Pico to your computer.
+2. Copy the downloaded `.uf2` file to the `RPI-RP2` drive.
+3. Wait for the board to reboot.
+
+On first boot, Pico Bit creates `payload.dd` automatically if it is not already present.
+
+## Use The Injector
+
+1. Power the board from the Pico USB port.
+2. Join the Wi-Fi network `picoBit`.
 3. Open `http://192.168.4.1`.
-4. Edit `payload.dd` in the browser.
-5. Save it or run it from the page.
+4. Sign in with the default portal credentials.
+5. Edit the payload, then save it or run it from the page.
 
-The web UI validates the script before execution and reports parser or runtime errors in the page.
+The payload also runs automatically during boot once USB HID is ready.
 
-## LED Reference
+## Payload File
 
-The onboard LED is used as a status indicator during boot, setup, and payload execution.
+- The active payload file is `payload.dd`
+- It stays writable on the board filesystem
+- Changes made in the browser are saved back to that file
 
-Setup-mode stages:
+## Safety
 
-- `boot`: 3 fast blinks
-- `setup_entered`: 6 medium blinks
-- `setup_ap_starting`: 1 short blink
-- `setup_ap_retry`: 2 quick blinks for each retry
-- `setup_ap_ready`: 1 long blink when the AP comes up
-- `setup_server_ready`: 2 medium blinks, then the LED stays on solid while the AP and web server are running
-
-Common payload-mode stages:
-
-- `hid_constructed`: 1 long blink
-- `payload_entered`: 2 long blinks
-- `usb_enumerated`: 3 long blinks
-- `payload_ready`: 4 long blinks
-- `payload_complete`: 2 slow blinks
-
-Fatal errors loop forever with repeating blink counts:
-
-- `setup_ap_failed`: 7 blinks
-- `setup_server_failed`: 8 blinks
-- `usb_enum_timeout`: 1 short blink
-- `script_error`: 4 blinks
-- `payload_missing`: 10 blinks
-
-## Runtime Safety
-
-`ALLOW_UNSAFE` is `False` by default.
-
-That means:
-
-- the parser can still understand a broader DuckyScript surface
-- higher-risk runtime features stay blocked
-- blocked features fail clearly instead of running silently
-
-If you set `ALLOW_UNSAFE=True` at build time, the runtime will execute its supported unsafe paths too.
-
-## Testing
-
-Host-side tests live in `tests/`.
-
-They cover:
-
-- lexer behavior
-- parser validation
-- runtime string expansion
-- AP startup fallbacks
-- bundler output
-
-These tests do not replace real hardware validation for USB HID or Wi-Fi behavior on a Pico 2 or Pico 2 W.
+Use Pico Bit only on systems you own or are explicitly authorized to administer.
 
 ## License
 

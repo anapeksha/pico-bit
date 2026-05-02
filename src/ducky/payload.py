@@ -1,10 +1,6 @@
-"""
-Payload file discovery helpers.
-"""
-
 import os
 
-from .constants import PAYLOAD_FILE
+from .constants import DEFAULT_PAYLOAD, PAYLOAD_FILE
 
 
 def _join_path(base, name):
@@ -52,3 +48,14 @@ def find_payload(start='.'):
         except OSError:
             pass
     return _find_payload_in(start, {})
+
+
+def ensure_payload(start='.', seed=DEFAULT_PAYLOAD):
+    payload_path = find_payload(start)
+    if payload_path:
+        return payload_path, False
+
+    payload_path = PAYLOAD_FILE if start in ('', '.') else _join_path(start, PAYLOAD_FILE)
+    with open(payload_path, 'w') as f:
+        f.write(seed)
+    return payload_path, True

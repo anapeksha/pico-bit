@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "pico-bit"
 version = "0.1.0"
-description = "MicroPython DuckyScript interpreter and single-file boot bundler for Raspberry Pi Pico 2."
+description = "MicroPython DuckyScript runtime and frozen-firmware toolchain for Raspberry Pi Pico 2."
 authors = ["pico-bit contributors"]
 license = "GPL-3.0-only"
 readme = "README.md"
@@ -23,7 +23,7 @@ testpaths = ["tests"]
 [tool.pyright]
 typeCheckingMode = "basic"
 reportMissingModuleSource = false
-include = ["build.py", "src", "tests"]
+include = ["asset_pipeline.py", "build.py", "build_support.py", "deploy.py", "src", "tests"]
 exclude = [
     "dist",
     ".venv",

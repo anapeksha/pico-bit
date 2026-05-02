@@ -1,17 +1,8 @@
-"""
-Centralized LED status patterns for boot stages and fatal errors.
-"""
-
-import time
+"""Centralized LED status patterns for boot stages and fatal errors."""
 
 import machine
 
-if hasattr(time, 'sleep_ms'):
-    _sleep_ms = time.sleep_ms  # type: ignore[attr-defined]
-else:
-
-    def _sleep_ms(ms: int) -> None:
-        time.sleep(ms / 1000)
+from helpers import sleep_ms
 
 
 class StatusLed:
@@ -40,23 +31,22 @@ class StatusLed:
         'payload_missing': (10, 350, 250, 1500),
     }
 
-    def __init__(self, led=None, sleep_ms=None) -> None:
+    def __init__(self, led=None) -> None:
         self._led = led if led is not None else machine.Pin('LED', machine.Pin.OUT)
-        self._sleep_ms = sleep_ms if sleep_ms is not None else _sleep_ms
 
-    def _blink(self, count: int, on_ms: int, off_ms: int) -> None:
+    async def _blink(self, count: int, on_ms: int, off_ms: int) -> None:
         for _ in range(count):
             self._led.on()
-            self._sleep_ms(on_ms)
+            await sleep_ms(on_ms)
             self._led.off()
-            self._sleep_ms(off_ms)
+            await sleep_ms(off_ms)
 
-    def show(self, stage: str) -> None:
+    async def show(self, stage: str) -> None:
         """Play a named non-fatal status pattern once."""
         count, on_ms, off_ms, gap_ms = self.STAGE_PATTERNS[stage]
-        self._blink(count, on_ms, off_ms)
+        await self._blink(count, on_ms, off_ms)
         if gap_ms:
-            self._sleep_ms(gap_ms)
+            await sleep_ms(gap_ms)
 
     def on(self) -> None:
         self._led.on()
@@ -64,16 +54,16 @@ class StatusLed:
     def off(self) -> None:
         self._led.off()
 
-    def pause(self, ms: int) -> None:
-        self._sleep_ms(ms)
+    async def pause(self, ms: int) -> None:
+        await sleep_ms(ms)
 
-    def halt(self, error_name: str) -> None:
+    async def halt(self, error_name: str) -> None:
         """Loop a named fatal pattern forever."""
         count, on_ms, off_ms, gap_ms = self.ERROR_PATTERNS[error_name]
         while True:
-            self._blink(count, on_ms, off_ms)
+            await self._blink(count, on_ms, off_ms)
             if gap_ms:
-                self._sleep_ms(gap_ms)
+                await sleep_ms(gap_ms)
 
 
 STAGE_PATTERNS = StatusLed.STAGE_PATTERNS

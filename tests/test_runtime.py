@@ -1,3 +1,5 @@
+import asyncio
+
 from ducky.runtime import DuckyInterpreter
 
 
@@ -27,3 +29,18 @@ def test_expand_text_supports_escaped_dollar_sign() -> None:
     interpreter = DuckyInterpreter(FakeKeyboard())
 
     assert interpreter._expand_text('cost $$5') == 'cost $5'
+
+
+def test_eval_expr_supports_async_function_calls() -> None:
+    interpreter = DuckyInterpreter(FakeKeyboard())
+    interpreter.functions['answer'] = [
+        {
+            'kind': 'return',
+            'line_no': 1,
+            'expression': '41',
+        }
+    ]
+
+    value = asyncio.run(interpreter._eval_expr('answer() + 1', 1))
+
+    assert value == 42

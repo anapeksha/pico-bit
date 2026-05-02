@@ -1,4 +1,8 @@
 PAYLOAD_FILE = 'payload.dd'
+DEFAULT_PAYLOAD = (
+    'REM pico-bit starter payload\n'
+    'REM STRING Hello from pico-bit\n'
+)
 ALLOW_UNSAFE_DEFAULT = False
 
 RANDOM_CHAR_SETS = {

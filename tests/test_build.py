@@ -15,7 +15,7 @@ def test_build_cleans_dist_to_single_boot_file() -> None:
     subprocess.run([sys.executable, 'build.py'], cwd=root, check=True)
 
     assert not stale.exists()
-    assert sorted(path.name for path in dist.iterdir()) == ['boot.py']
+    assert sorted(path.name for path in dist.iterdir()) == ['boot.py', 'mpy']
 
 
 def test_build_injects_runtime_config_overrides() -> None:
@@ -57,3 +57,15 @@ def test_build_emits_ruff_clean_bundle() -> None:
         cwd=root,
         check=True,
     )
+
+
+def test_build_emits_compiled_mpy_tree() -> None:
+    root = Path(__file__).resolve().parents[1]
+    dist = root / 'dist' / 'mpy'
+
+    subprocess.run([sys.executable, 'build.py'], cwd=root, check=True)
+
+    compiled = sorted(path.relative_to(dist).as_posix() for path in dist.rglob('*.mpy'))
+    assert 'main.mpy' in compiled
+    assert 'server.mpy' in compiled
+    assert 'ducky/runtime.mpy' in compiled

@@ -1,225 +1,56 @@
-import socket
-import time
+import asyncio
+import binascii
+import json
+import os
 
 import network
 
-from device_config import ALLOW_UNSAFE, AP_PASSWORD, AP_SSID
+from device_config import (
+    ALLOW_UNSAFE,
+    AP_PASSWORD,
+    AP_SSID,
+    CORS_ALLOW_CREDENTIALS,
+    CORS_ALLOWED_ORIGIN,
+    PORTAL_AUTH_ENABLED,
+    PORTAL_PASSWORD,
+    PORTAL_USERNAME,
+)
 from ducky import (
+    DEFAULT_PAYLOAD,
     PAYLOAD_FILE,
     DuckyScriptError,
+    ensure_payload,
     find_payload,
     run_script,
     validate_script,
 )
+from helpers import maybe_wait_closed, sleep_ms
 from status_led import STATUS_LED
+from web_assets import INDEX_HTML, LOGIN_HTML, PORTAL_CSS, PORTAL_JS
 
 PORT: int = 80
 _USB_ENUM_TIMEOUT_MS = 5000
 _DEFAULT_AP_IP = '192.168.4.1'
-
-if hasattr(time, 'sleep_ms'):
-    _sleep_ms = time.sleep_ms  # type: ignore[attr-defined]
-else:
-
-    def _sleep_ms(ms: int) -> None:
-        time.sleep(ms / 1000)
-
-
-_DEFAULT_PAYLOAD: str = (
-    'REM picoDucky default payload\nDELAY 1000\nGUI SPACE\nDELAY 800\nSTRING Calculator\nENTER\n'
-)
-
-_HTML: str = ''.join(
-    (
-        '<!DOCTYPE html>\n'
-        '<html lang="en">\n'
-        '<head>\n'
-        '<meta name="viewport" content="width=device-width,initial-scale=1">\n'
-        '<title>Pico Bit</title>\n'
-        '<style>\n'
-        ':root{{color-scheme:light;--page:#fff;--ink:#111;--muted:#6b7280;--line:#e5e7eb;'
-        '--soft:#f5f5f4;--shadow:0 24px 60px rgba(15,23,42,.08);--radius:28px;'
-        '--sans:"Avenir Next","Helvetica Neue","Segoe UI",sans-serif;'
-        '--mono:"SFMono-Regular",Monaco,"Cascadia Mono","Segoe UI Mono",monospace}}\n'
-        '*{{box-sizing:border-box}}\n'
-        'html,body{{margin:0;min-height:100%;background:var(--page);color:var(--ink)}}\n'
-        'body{{font-family:var(--sans);background-image:'
-        'radial-gradient(circle at top,#f6f6f4 0,#fff 42%)}}\n'
-        'a{{color:inherit}}\n'
-        '.app{{max-width:1180px;margin:0 auto;padding:28px 18px 40px}}\n'
-        '.hero{{display:grid;gap:18px;margin-bottom:24px}}\n'
-        '.hero__copy{{padding:8px 0}}\n'
-        '.hero__eyebrow{{margin:0 0 12px;font-size:12px;font-weight:700;letter-spacing:.16em;'
-        'text-transform:uppercase;color:#52525b}}\n'
-        '.hero__title{{margin:0;font-size:clamp(34px,5vw,56px);line-height:1.02;'
-        'letter-spacing:-.04em}}\n'
-        '.hero__body{{max-width:640px;margin:14px 0 0;font-size:16px;line-height:1.7;'
-        'color:#52525b}}\n'
-        '.hero__card{{background:linear-gradient(180deg,#fff,#fafaf9);border:1px solid var(--line);'
-        'border-radius:var(--radius);padding:22px;box-shadow:var(--shadow)}}\n'
-        '.hero__grid{{display:grid;gap:14px}}\n'
-        '.metric{{padding:14px 16px;border:1px solid var(--line);border-radius:16px;'
-        'background:#fff}}\n'
-        '.metric__label{{display:block;margin-bottom:6px;font-size:11px;font-weight:700;letter-spacing:.14em;'
-        'text-transform:uppercase;color:var(--muted)}}\n'
-        '.metric__value{{display:block;font-size:16px;font-weight:700;letter-spacing:-.02em}}\n'
-        '.metric__value--mono{{font-family:var(--mono);font-size:14px}}\n'
-        '.notice{{margin:0 0 18px;padding:14px 16px;border-radius:16px;'
-        'border:1px solid var(--line);'
-        'font-size:14px;line-height:1.6;background:#fafaf9}}\n'
-        '.notice--success{{border-color:#d4d4d8;background:#fafaf9}}\n'
-        '.notice--error{{border-color:#fecaca;background:#fef2f2}}\n'
-        '.workspace{{display:grid;gap:20px}}\n'
-        '.editor{{background:#fff;border:1px solid var(--line);'
-        'border-radius:var(--radius);overflow:hidden;'
-        'box-shadow:var(--shadow)}}\n'
-        '.editor__chrome{{display:flex;align-items:center;gap:14px;padding:16px 18px;'
-        'border-bottom:1px solid var(--line);background:linear-gradient(180deg,#fff,#fafaf9)}}\n'
-        '.editor__lights{{display:flex;gap:8px;flex-shrink:0}}\n'
-        '.editor__lights span{{display:block;width:10px;height:10px;'
-        'border-radius:999px;background:#111}}\n'
-        '.editor__file{{padding:8px 12px;border-radius:999px;background:#111;color:#fff;'
-        'font-size:13px;font-weight:700;letter-spacing:-.01em}}\n'
-        '.editor__hint{{margin-left:auto;font-size:13px;color:var(--muted)}}\n'
-        '.editor__form{{padding:18px}}\n'
-        '.editor__toolbar{{display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;margin-bottom:16px}}\n'
-        '.editor__pills{{display:flex;flex-wrap:wrap;gap:10px}}\n'
-        '.pill{{display:inline-flex;align-items:center;padding:8px 12px;'
-        'border:1px solid var(--line);'
-        'border-radius:999px;background:#fafaf9;font-size:12px;font-weight:700;color:#3f3f46}}\n'
-        '.editor__actions{{display:flex;flex-wrap:wrap;gap:10px}}\n'
-        '.button{{display:inline-flex;align-items:center;justify-content:center;padding:12px 18px;'
-        'border-radius:14px;border:1px solid #111;background:#111;color:#fff;font-size:14px;'
-        'font-weight:700;text-decoration:none;cursor:pointer;transition:transform .12s ease,'
-        'box-shadow .12s ease,background .12s ease}}\n'
-        '.button:active{{transform:translateY(1px)}}\n'
-        '.button--secondary{{background:#fff;color:#111;border-color:var(--line)}}\n'
-        '.editor__surface{{display:grid;grid-template-columns:70px 1fr;gap:0;'
-        'border:1px solid var(--line);'
-        'border-radius:22px;background:#fff;overflow:hidden}}\n'
-        '.editor__rail{{display:flex;flex-direction:column;justify-content:space-between;gap:18px;'
-        'padding:18px 12px;background:#fafaf9;border-right:1px solid var(--line);'
-        'font:700 11px/1.4 var(--mono);'
-        'letter-spacing:.16em;text-transform:uppercase;color:#71717a}}\n'
-        '.editor__rail span{{display:block}}\n'
-        '.editor__input{{width:100%;min-height:560px;padding:22px;border:0;outline:none;resize:vertical;'
-        'background:linear-gradient(180deg,#fff,#fcfcfb);color:#111;font:14px/1.7 var(--mono);'
-        'tab-size:4;'
-        'white-space:pre;overflow:auto}}\n'
-        '.editor__input::placeholder{{color:#a1a1aa}}\n'
-        '.editor__footer{{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;'
-        'gap:14px;margin-top:16px}}\n'
-        '.editor__note{{margin:0;max-width:540px;font-size:14px;line-height:1.7;color:var(--muted)}}\n'
-        '.sidebar{{display:grid;gap:18px}}\n'
-        '.panel{{padding:22px;border:1px solid var(--line);border-radius:24px;background:#fff;'
-        'box-shadow:0 18px 40px rgba(15,23,42,.05)}}\n'
-        '.panel__title{{margin:0 0 12px;font-size:17px;letter-spacing:-.02em}}\n'
-        '.panel__body{{margin:0;font-size:14px;line-height:1.7;color:#52525b}}\n'
-        '.steps{{margin:0;padding-left:20px;font-size:14px;line-height:1.8;color:#27272a}}\n'
-        '@media (min-width:980px){{.hero{{grid-template-columns:1.45fr .95fr;align-items:end}}'
-        '.workspace{{grid-template-columns:minmax(0,1.65fr) minmax(280px,.85fr);'
-        'align-items:start}}}}\n'
-        '@media (max-width:720px){{.app{{padding:22px 14px 32px}}'
-        '.editor__surface{{grid-template-columns:1fr}}'
-        '.editor__rail{{display:none}}.editor__input{{min-height:420px}}.button{{width:100%}}'
-        '.editor__actions{{width:100%}}.editor__actions .button{{flex:1}}}}\n'
-        '</style>\n'
-        '</head>\n'
-        '<body>\n'
-        '<div class="app">\n'
-        '<header class="hero">\n'
-        '<div class="hero__copy">\n'
-        '<p class="hero__eyebrow">pico-bit setup</p>\n'
-        '<h1 class="hero__title">A clean browser editor for <span>payload.dd</span>.</h1>\n'
-        '<p class="hero__body">Write, save, validate, and run your DuckyScript from a Pico 2 W '
-        'access point without leaving the browser. The workspace is tuned for a keyboard-driven '
-        'flow and ships '
-        'as part of the single-file MicroPython bundle.</p>\n'
-        '</div>\n'
-        '<aside class="hero__card">\n'
-        '<div class="hero__grid">\n'
-        '<div class="metric"><span class="metric__label">Access point</span>'
-        '<strong class="metric__value">{ap_ssid}</strong></div>\n'
-        '<div class="metric"><span class="metric__label">Password</span>'
-        '<strong class="metric__value metric__value--mono">{ap_password}</strong></div>\n'
-        '<div class="metric"><span class="metric__label">Runtime mode</span>'
-        '<strong class="metric__value">{mode_label}</strong></div>\n'
-        '<div class="metric"><span class="metric__label">Target file</span>'
-        '<strong class="metric__value metric__value--mono">payload.dd</strong></div>\n'
-        '</div>\n'
-        '</aside>\n'
-        '</header>\n'
-        '{notice}\n'
-        '<main class="workspace">\n'
-        '<section class="editor">\n'
-        '<div class="editor__chrome">\n'
-        '<div class="editor__lights"><span></span><span></span><span></span></div>\n'
-        '<div class="editor__file">payload.dd</div>\n'
-        '<div class="editor__hint">MicroPython setup portal</div>\n'
-        '</div>\n'
-        '<form class="editor__form" method="POST" action="/save">\n'
-        '<div class="editor__toolbar">\n'
-        '<div class="editor__pills">\n'
-        '<span class="pill">Saved on device</span>\n'
-        '<span class="pill">Validated before run</span>\n'
-        '<span class="pill">{mode_short}</span>\n'
-        '</div>\n'
-        '<div class="editor__actions">\n'
-        '<a class="button button--secondary" href="/">Refresh</a>\n'
-        '<a class="button" href="/run">Run payload</a>\n'
-        '</div>\n'
-        '</div>\n'
-        '<div class="editor__surface">\n'
-        '<div class="editor__rail"><span>DD</span><span>EDIT</span><span>RUN</span></div>\n'
-        '<textarea class="editor__input" name="p" spellcheck="false" autocapitalize="off" '
-        'autocomplete="off" autocorrect="off" '
-        'placeholder="REM Write your payload here">{payload}</textarea>\n'
-        '</div>\n'
-        '<div class="editor__footer">\n'
-        '<p class="editor__note">{mode_description} Parse errors stop execution before runtime '
-        'so a '
-        'broken '
-        'payload never silently fires.</p>\n'
-        '<button class="button" type="submit">Save payload</button>\n'
-        '</div>\n'
-        '</form>\n'
-        '</section>\n'
-        '<aside class="sidebar">\n'
-        '<section class="panel">\n'
-        '<h2 class="panel__title">Workflow</h2>\n'
-        '<ol class="steps">\n'
-        '<li>Power on the Pico.</li>\n'
-        '<li>Join the Pico access point.</li>\n'
-        '<li>Edit or paste your DuckyScript.</li>\n'
-        '<li>Save the file or run it after validation.</li>\n'
-        '</ol>\n'
-        '</section>\n'
-        '<section class="panel">\n'
-        '<h2 class="panel__title">Notes</h2>\n'
-        '<p class="panel__body">The board scans for <code>payload.dd</code>, stores it on-device, '
-        'and keeps '
-        'the browser portal available while the boot payload runs.</p>\n'
-        '</section>\n'
-        '</aside>\n'
-        '</main>\n'
-        '</div>\n'
-        '</body>\n'
-        '</html>',
-    )
-)
+_SESSION_COOKIE = 'pico_bit_session'
+_JSON_HEADERS = {'Content-Type': 'application/json; charset=utf-8'}
+_NO_STORE = {'Cache-Control': 'no-store'}
+_STATIC_CACHE = {'Cache-Control': 'public, max-age=86400'}
 
 __all__ = ['SetupServer', 'SERVER', 'start']
 
 
 def _esc(s: str) -> str:
-    """Escape text for the HTML template."""
-    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
+    return (
+        s.replace('&', '&amp;')
+        .replace('<', '&lt;')
+        .replace('>', '&gt;')
+        .replace('"', '&quot;')
+    )
 
 
 def _urldecode(s: str) -> str:
-    """Decode a form-encoded string."""
     out: list[str] = []
-    i: int = 0
+    i = 0
     while i < len(s):
         if s[i] == '%' and i + 2 < len(s):
             out.append(chr(int(s[i + 1 : i + 3], 16)))
@@ -233,139 +64,241 @@ def _urldecode(s: str) -> str:
     return ''.join(out)
 
 
-def _parse_form(body: str) -> dict[str, str]:
-    """Parse a small x-www-form-urlencoded body."""
+def _parse_form(body: bytes) -> dict[str, str]:
     params: dict[str, str] = {}
-    for pair in body.split('&'):
-        if '=' in pair:
-            key, value = pair.split('=', 1)
-            params[_urldecode(key)] = _urldecode(value)
+    for pair in body.decode('utf-8', 'ignore').split('&'):
+        if '=' not in pair:
+            continue
+        key, value = pair.split('=', 1)
+        params[_urldecode(key)] = _urldecode(value)
     return params
 
 
-def _recv(conn: socket.socket) -> str:
-    """Read one HTTP request, including any declared body."""
-    conn.settimeout(3.0)
-    buf: bytes = b''
-    try:
-        while True:
-            chunk: bytes = conn.recv(1024)
-            if not chunk:
-                break
-            buf += chunk
-            if b'\r\n\r\n' in buf:
-                sep: int = buf.index(b'\r\n\r\n') + 4
-                header_block: str = buf[:sep].decode('utf-8', 'ignore')
-                content_length: int = 0
-                for line in header_block.split('\r\n'):
-                    if line.lower().startswith('content-length:'):
-                        content_length = int(line.split(':', 1)[1].strip())
-                if len(buf) - sep >= content_length:
-                    break
-    except OSError:
-        pass
-    return buf.decode('utf-8', 'ignore')
+def _parse_cookies(header_value: str) -> dict[str, str]:
+    cookies: dict[str, str] = {}
+    for item in header_value.split(';'):
+        if '=' not in item:
+            continue
+        key, value = item.split('=', 1)
+        cookies[key.strip()] = value.strip()
+    return cookies
 
 
-def _parse(raw: str) -> tuple[str, str, str]:
-    """Split a raw request into method, path, and body."""
-    lines: list[str] = raw.split('\r\n')
-    parts: list[str] = lines[0].split(' ') if lines else []
-    method: str = parts[0] if parts else 'GET'
-    path: str = parts[1].split('?')[0] if len(parts) > 1 else '/'
-    body: str = ''
-    try:
-        body = raw[raw.index('\r\n\r\n') + 4 :]
-    except ValueError:
-        pass
-    return method, path, body
+def _merge_headers(*items) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for item in items:
+        if not item:
+            continue
+        for key, value in item.items():
+            merged[key] = value
+    return merged
 
 
-def _send(conn: socket.socket, status: str, ctype: str, body: str | bytes) -> None:
-    """Send an HTTP response."""
-    if isinstance(body, str):
-        body = body.encode()
-    headers: str = (
-        f'HTTP/1.1 {status}\r\n'
-        f'Content-Type: {ctype}\r\n'
-        f'Content-Length: {len(body)}\r\n'
-        'Connection: close\r\n\r\n'
-    )
-    conn.sendall(headers.encode() + body)
+async def _read_request(reader):
+    request_line = await reader.readline()
+    if not request_line:
+        return None
 
+    parts = request_line.decode('utf-8', 'ignore').strip().split()
+    if len(parts) < 2:
+        raise ValueError('malformed request line')
 
-def _redirect(conn: socket.socket, loc: str) -> None:
-    """Send a 303 redirect."""
-    conn.sendall(f'HTTP/1.1 303 See Other\r\nLocation: {loc}\r\nConnection: close\r\n\r\n'.encode())
+    headers: dict[str, str] = {}
+    while True:
+        line = await reader.readline()
+        if not line or line in (b'\r\n', b'\n'):
+            break
+        header = line.decode('utf-8', 'ignore').strip()
+        if ':' not in header:
+            continue
+        key, value = header.split(':', 1)
+        headers[key.lower()] = value.strip()
+
+    content_length = int(headers.get('content-length', '0') or 0)
+    body = b''
+    if content_length:
+        body = await reader.readexactly(content_length)
+
+    target = parts[1]
+    path = target.split('?', 1)[0]
+    return {
+        'method': parts[0].upper(),
+        'path': path,
+        'target': target,
+        'headers': headers,
+        'body': body,
+        'cookies': _parse_cookies(headers.get('cookie', '')),
+    }
 
 
 class SetupServer:
-    """Setup-mode portal for editing and running payload.dd."""
-
     def __init__(self, port: int = PORT) -> None:
         self.port = port
         self._ap = None
+        self._ap_ip = _DEFAULT_AP_IP
         self._kbd = None
         self._ap_password_in_use = AP_PASSWORD
+        self._payload_seeded = False
         self._run_lock = None
-        self._server_socket = None
-        self._server_thread_started = False
-        self._thread_mod = None
+        self._server = None
+        self._sessions: dict[str, str] = {}
+
+    def _seed_payload(self) -> str:
+        payload_path, created = ensure_payload(seed=DEFAULT_PAYLOAD)
+        if created:
+            self._payload_seeded = True
+        return payload_path
 
     def _read_payload(self) -> str:
-        """Load payload.dd, or fall back to the bundled starter script."""
+        payload_path = self._seed_payload()
         try:
-            with open(find_payload() or PAYLOAD_FILE) as f:
+            with open(payload_path) as f:
                 return f.read()
         except OSError:
-            return _DEFAULT_PAYLOAD
+            return DEFAULT_PAYLOAD
 
-    def _write_payload(self, content: str) -> None:
-        """Persist the current payload text."""
-        with open(find_payload() or PAYLOAD_FILE, 'w') as f:
+    def _write_payload(self, content: str) -> str:
+        payload_path = find_payload() or PAYLOAD_FILE
+        with open(payload_path, 'w') as f:
             f.write(content)
+        self._payload_seeded = False
+        return payload_path
 
     def _mode_strings(self) -> tuple[str, str, str]:
-        """Return the labels shown for the current runtime mode."""
         if ALLOW_UNSAFE:
             return (
                 'Unsafe mode allowed',
                 'Unsafe runtime enabled',
-                'Allow unsafe is enabled, so supported unsafe runtime features may execute.',
+                'Unsafe runtime features are allowed, so advanced commands may execute.',
             )
         return (
             'Safe mode',
             'Unsafe runtime blocked',
-            'Allow unsafe is disabled, so higher-risk runtime features stay blocked.',
+            'Safe mode is active, so higher-risk runtime features stay blocked.',
         )
 
-    def _page(self, message: str = '', notice: str = 'success') -> str:
-        """Render the setup page."""
-        mode_label, mode_short, mode_description = self._mode_strings()
-        notice_html = ''
+    def _auth_enabled(self) -> bool:
+        return PORTAL_AUTH_ENABLED and bool(PORTAL_PASSWORD)
+
+    def _render_login(self, message: str = '', username: str = '') -> str:
+        message_class = 'notice--hidden'
         if message:
-            notice_html = f'<div class="notice notice--{_esc(notice)}">{_esc(message)}</div>'
-        return _HTML.format(
-            notice=notice_html,
-            payload=_esc(self._read_payload()),
-            ap_ssid=_esc(AP_SSID),
-            ap_password=_esc(self._ap_password_in_use or 'Open network'),
-            mode_label=_esc(mode_label),
-            mode_short=_esc(mode_short),
-            mode_description=_esc(mode_description),
+            message_class = 'notice--error'
+        page = LOGIN_HTML
+        page = page.replace('{{ap_ssid}}', _esc(AP_SSID))
+        page = page.replace('{{message_class}}', message_class)
+        page = page.replace('{{message}}', _esc(message))
+        page = page.replace('{{username}}', _esc(username))
+        return page
+
+    def _keyboard_ready(self) -> bool:
+        return self._kbd is not None and self._kbd.is_open()
+
+    def _bootstrap_state(self) -> dict[str, object]:
+        mode_label, mode_short, mode_description = self._mode_strings()
+        message = ''
+        notice = 'quiet'
+        if self._payload_seeded:
+            message = 'payload.dd was seeded on this boot.'
+
+        return {
+            'ap_ip': self._ap_ip,
+            'ap_password': self._ap_password_in_use or 'Open network',
+            'ap_ssid': AP_SSID,
+            'auth_enabled': self._auth_enabled(),
+            'keyboard_ready': self._keyboard_ready(),
+            'message': message,
+            'mode_description': mode_description,
+            'mode_label': mode_label,
+            'mode_short': mode_short,
+            'notice': notice,
+            'payload': self._read_payload(),
+            'seeded': self._payload_seeded,
+        }
+
+    def _is_authorized(self, request) -> bool:
+        if not self._auth_enabled():
+            return True
+        token = request['cookies'].get(_SESSION_COOKIE, '')
+        return token in self._sessions
+
+    def _new_session(self) -> str:
+        token = binascii.hexlify(os.urandom(16)).decode()
+        self._sessions[token] = PORTAL_USERNAME
+        return token
+
+    def _clear_session(self, request) -> None:
+        token = request['cookies'].get(_SESSION_COOKIE, '')
+        if token:
+            self._sessions.pop(token, None)
+
+    def _session_cookie(self, token: str) -> str:
+        return f'{_SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict'
+
+    def _expired_session_cookie(self) -> str:
+        return f'{_SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'
+
+    def _cors_headers(self, request) -> dict[str, str]:
+        if not CORS_ALLOWED_ORIGIN:
+            return {}
+
+        origin = request['headers'].get('origin', '')
+        if CORS_ALLOWED_ORIGIN != '*' and origin != CORS_ALLOWED_ORIGIN:
+            return {}
+
+        headers = {
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Origin': CORS_ALLOWED_ORIGIN if CORS_ALLOWED_ORIGIN else origin,
+        }
+        if CORS_ALLOWED_ORIGIN != '*':
+            headers['Vary'] = 'Origin'
+        if CORS_ALLOW_CREDENTIALS and CORS_ALLOWED_ORIGIN != '*':
+            headers['Access-Control-Allow-Credentials'] = 'true'
+        return headers
+
+    async def _send(self, writer, request, status: str, body: str | bytes, headers=None) -> None:
+        response_headers = _merge_headers(
+            {'Connection': 'close', 'X-Content-Type-Options': 'nosniff'},
+            headers,
+            self._cors_headers(request),
+        )
+        if isinstance(body, str):
+            body = body.encode()
+        response_headers['Content-Length'] = str(len(body))
+
+        header_lines = [f'HTTP/1.1 {status}']
+        for key, value in response_headers.items():
+            header_lines.append(f'{key}: {value}')
+        header_lines.append('')
+        header_lines.append('')
+
+        writer.write('\r\n'.join(header_lines).encode() + body)
+        await writer.drain()
+
+    async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None:
+        await self._send(
+            writer,
+            request,
+            status,
+            json.dumps(data),
+            headers=_merge_headers(_JSON_HEADERS, _NO_STORE),
         )
 
-    def _start_ap(self) -> str:
-        """Start the AP and return its IP address."""
-        ap = network.WLAN(network.AP_IF)
-        self._ap = ap
-        try:
-            ap.active(False)
-        except OSError:
-            pass
-        _sleep_ms(150)
+    async def _redirect(self, writer, request, location: str, headers=None) -> None:
+        await self._send(
+            writer,
+            request,
+            '303 See Other',
+            '',
+            headers=_merge_headers({'Location': location}, headers),
+        )
 
-        # Match abc.py exactly: essid=... and config before active(True).
+    async def _start_ap(self) -> str:
+        ap_if = getattr(network, 'AP_IF', getattr(network.WLAN, 'IF_AP', 1))
+        ap = network.WLAN(ap_if)
+        self._ap = ap
+
         if AP_PASSWORD.strip():
             ap.config(essid=AP_SSID, password=AP_PASSWORD)
             self._ap_password_in_use = AP_PASSWORD
@@ -378,9 +311,11 @@ class SetupServer:
         for _ in range(50):
             if ap.active():
                 break
-            _sleep_ms(100)
+            await sleep_ms(100)
         if not ap.active():
             raise OSError('AP failed to come active within 5 s')
+
+        await sleep_ms(250)
 
         for _ in range(20):
             try:
@@ -388,29 +323,19 @@ class SetupServer:
             except (AttributeError, OSError, TypeError, ValueError):
                 ip = ''
             if ip and ip != '0.0.0.0':
+                self._ap_ip = ip
                 return ip
-            _sleep_ms(100)
-        return _DEFAULT_AP_IP
+            await sleep_ms(100)
 
-    def _thread_module(self):
-        if self._thread_mod is None:
-            self._thread_mod = __import__('_thread')
-        return self._thread_mod
+        self._ap_ip = _DEFAULT_AP_IP
+        return self._ap_ip
 
     def _run_lock_obj(self):
         if self._run_lock is None:
-            self._run_lock = self._thread_module().allocate_lock()
+            self._run_lock = asyncio.Lock()
         return self._run_lock
 
-    def acquire_execution(self) -> None:
-        """Serialize HID use across boot payloads and browser-triggered runs."""
-        self._run_lock_obj().acquire()
-
-    def release_execution(self) -> None:
-        self._run_lock_obj().release()
-
     def _keyboard(self):
-        """Create HID lazily so the AP can start before USB is ready."""
         if self._kbd is None:
             from hid import HIDKeyboard
 
@@ -418,119 +343,248 @@ class SetupServer:
         return self._kbd
 
     def keyboard(self):
-        """Return the shared HID keyboard without waiting for enumeration."""
         return self._keyboard()
 
-    def _ensure_keyboard(self):
-        """Return a shared keyboard once the host has enumerated HID."""
+    async def _ensure_keyboard(self):
         keyboard = self._keyboard()
-        if not keyboard.wait_open(_USB_ENUM_TIMEOUT_MS):
+        ready = await keyboard.wait_open(_USB_ENUM_TIMEOUT_MS)
+        if not ready:
             raise OSError('USB HID did not enumerate within 5 s')
         return keyboard
 
-    def execute_script(self, script: str, allow_unsafe: bool = ALLOW_UNSAFE) -> None:
-        """Validate and run a script with exclusive access to the HID device."""
-        self.acquire_execution()
-        try:
+    async def execute_script(self, script: str, allow_unsafe: bool = ALLOW_UNSAFE) -> None:
+        async with self._run_lock_obj():
             validate_script(script)
-            keyboard = self._ensure_keyboard()
-            run_script(keyboard, script, allow_unsafe=allow_unsafe)
-        finally:
-            self.release_execution()
+            keyboard = await self._ensure_keyboard()
+            await run_script(keyboard, script, allow_unsafe=allow_unsafe)
 
-    def _prepare_server(self) -> None:
-        """Start the AP and bind the listening socket once."""
-        if self._server_socket is not None:
+    async def _prepare_server(self) -> None:
+        if self._server is not None:
             return
 
-        STATUS_LED.show('setup_ap_starting')
-        self._start_ap()
-        STATUS_LED.show('setup_ap_ready')
+        self._seed_payload()
 
-        srv: socket.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        await STATUS_LED.show('setup_ap_starting')
+        await self._start_ap()
+        await STATUS_LED.show('setup_ap_ready')
+
         try:
-            srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            srv.bind(('0.0.0.0', self.port))
-            srv.listen(3)
-            srv.settimeout(0.2)
+            self._server = await asyncio.start_server(
+                self._handle_request,
+                '0.0.0.0',
+                self.port,
+                backlog=3,
+            )
         except OSError as exc:
-            srv.close()
             raise RuntimeError('setup server bind failed') from exc
 
-        self._server_socket = srv
-        STATUS_LED.show('setup_server_ready')
+        await STATUS_LED.show('setup_server_ready')
         STATUS_LED.on()
 
-    def _serve_forever(self) -> None:
-        """Serve requests until the process exits."""
-        srv = self._server_socket
-        if srv is None:
-            raise RuntimeError('server socket not prepared')
-
-        while True:
-            try:
-                conn, _ = srv.accept()
-            except OSError:
-                continue
-
-            try:
-                self._handle_request(conn)
-            except Exception as exc:
-                print('request error:', exc)
-            finally:
-                conn.close()
-
-    def _run_payload(self) -> tuple[str, str]:
-        """Validate and run the saved payload."""
-        script = self._read_payload()
+    async def _run_payload(self, script: str) -> tuple[str, str]:
         try:
-            self.execute_script(script, allow_unsafe=ALLOW_UNSAFE)
-            return 'Payload executed', 'success'
+            await self.execute_script(script, allow_unsafe=ALLOW_UNSAFE)
+            return 'Payload executed.', 'success'
         except DuckyScriptError as exc:
             return f'Error: {exc}', 'error'
         except OSError as exc:
             return f'USB error: {exc}', 'error'
 
-    def _handle_request(self, conn: socket.socket) -> None:
-        """Route one browser request."""
-        method, path, body = _parse(_recv(conn))
-
-        if path == '/':
-            _send(conn, '200 OK', 'text/html', self._page())
+    async def _handle_login(self, request, writer) -> None:
+        if not self._auth_enabled():
+            await self._redirect(writer, request, '/')
             return
 
-        if path == '/run':
-            message, notice = self._run_payload()
-            _send(conn, '200 OK', 'text/html', self._page(message, notice))
+        if request['method'] == 'GET':
+            await self._send(
+                writer,
+                request,
+                '200 OK',
+                self._render_login(),
+                headers=_merge_headers({'Content-Type': 'text/html; charset=utf-8'}, _NO_STORE),
+            )
             return
 
-        if path == '/save' and method == 'POST':
-            content = _parse_form(body).get('p', '').replace('\r\n', '\n')
-            self._write_payload(content)
-            _redirect(conn, '/')
+        if request['method'] != 'POST':
+            await self._send(writer, request, '405 Method Not Allowed', '405')
             return
 
-        _send(conn, '404 Not Found', 'text/plain', '404')
-
-    def start(self) -> None:
-        """Start the setup AP and serve requests forever."""
-        if self._server_thread_started:
-            raise RuntimeError('setup server is already running in the background')
-        self._prepare_server()
-        self._serve_forever()
-
-    def start_background(self) -> None:
-        """Start the AP and serve requests on a background thread."""
-        if self._server_thread_started:
+        form = _parse_form(request['body'])
+        username = form.get('username', '')
+        password = form.get('password', '')
+        if username == PORTAL_USERNAME and password == PORTAL_PASSWORD:
+            token = self._new_session()
+            await self._redirect(
+                writer,
+                request,
+                '/',
+                headers=_merge_headers({'Set-Cookie': self._session_cookie(token)}, _NO_STORE),
+            )
             return
-        self._prepare_server()
-        self._thread_module().start_new_thread(self._serve_forever, ())
-        self._server_thread_started = True
+
+        await self._send(
+            writer,
+            request,
+            '401 Unauthorized',
+            self._render_login('Invalid injector credentials.', username=username),
+            headers=_merge_headers({'Content-Type': 'text/html; charset=utf-8'}, _NO_STORE),
+        )
+
+    async def _handle_api(self, request, writer) -> None:
+        if not self._is_authorized(request):
+            await self._send_json(
+                writer,
+                request,
+                '401 Unauthorized',
+                {'message': 'Sign in required.'},
+            )
+            return
+
+        if request['method'] == 'GET' and request['path'] == '/api/bootstrap':
+            await self._send_json(writer, request, '200 OK', self._bootstrap_state())
+            return
+
+        if request['method'] == 'POST' and request['path'] == '/api/payload':
+            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            payload = data.get('payload', '').replace('\r\n', '\n')
+            self._write_payload(payload)
+            await self._send_json(
+                writer,
+                request,
+                '200 OK',
+                {'message': 'payload.dd saved.', 'notice': 'success'},
+            )
+            return
+
+        if request['method'] == 'POST' and request['path'] == '/api/run':
+            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            payload = str(data.get('payload', self._read_payload())).replace('\r\n', '\n')
+            if data.get('save', True):
+                self._write_payload(payload)
+            message, notice = await self._run_payload(payload)
+            status = '200 OK' if notice == 'success' else '400 Bad Request'
+            await self._send_json(
+                writer,
+                request,
+                status,
+                {'message': message, 'notice': notice},
+            )
+            return
+
+        await self._send_json(writer, request, '404 Not Found', {'message': 'Not found.'})
+
+    async def _dispatch(self, request, writer) -> None:
+        if request['method'] == 'OPTIONS':
+            await self._send(writer, request, '204 No Content', '', headers=_NO_STORE)
+            return
+
+        if request['path'] == '/assets/portal.css':
+            await self._send(
+                writer,
+                request,
+                '200 OK',
+                PORTAL_CSS,
+                headers=_merge_headers({'Content-Type': 'text/css; charset=utf-8'}, _STATIC_CACHE),
+            )
+            return
+
+        if request['path'] == '/assets/portal.js':
+            await self._send(
+                writer,
+                request,
+                '200 OK',
+                PORTAL_JS,
+                headers=_merge_headers(
+                    {'Content-Type': 'application/javascript; charset=utf-8'},
+                    _STATIC_CACHE,
+                ),
+            )
+            return
+
+        if request['path'] == '/login':
+            await self._handle_login(request, writer)
+            return
+
+        if request['path'] == '/logout':
+            self._clear_session(request)
+            await self._redirect(
+                writer,
+                request,
+                '/login',
+                headers=_merge_headers(
+                    {'Set-Cookie': self._expired_session_cookie()},
+                    _NO_STORE,
+                ),
+            )
+            return
+
+        if request['path'].startswith('/api/'):
+            await self._handle_api(request, writer)
+            return
+
+        if not self._is_authorized(request):
+            await self._redirect(writer, request, '/login')
+            return
+
+        if request['path'] == '/':
+            await self._send(
+                writer,
+                request,
+                '200 OK',
+                INDEX_HTML,
+                headers=_merge_headers({'Content-Type': 'text/html; charset=utf-8'}, _NO_STORE),
+            )
+            return
+
+        await self._send(writer, request, '404 Not Found', '404', headers=_NO_STORE)
+
+    async def _handle_request(self, reader, writer) -> None:
+        try:
+            request = await _read_request(reader)
+            if request is None:
+                return
+            await self._dispatch(request, writer)
+        except (ValueError, json.JSONDecodeError):
+            fallback = {'method': 'GET', 'path': '/', 'headers': {}, 'body': b'', 'cookies': {}}
+            await self._send_json(
+                writer,
+                fallback,
+                '400 Bad Request',
+                {'message': 'Malformed request.'},
+            )
+        except Exception:
+            fallback = {'method': 'GET', 'path': '/', 'headers': {}, 'body': b'', 'cookies': {}}
+            await self._send_json(
+                writer,
+                fallback,
+                '500 Internal Server Error',
+                {'message': 'Unexpected server error.'},
+            )
+        finally:
+            writer.close()
+            await maybe_wait_closed(writer)
+
+    async def start(self) -> None:
+        await self._prepare_server()
+
+    async def stop(self) -> None:
+        if self._server is not None:
+            self._server.close()
+            await maybe_wait_closed(self._server)
+            self._server = None
+        if self._ap is not None:
+            try:
+                self._ap.active(False)
+            except OSError:
+                pass
+            self._ap = None
+        self._sessions = {}
 
 
 SERVER = SetupServer()
 
 
-def start() -> None:
-    """Backward-compatible entry point for setup mode."""
-    SERVER.start()
+async def start() -> None:
+    await SERVER.start()
+    if SERVER._server is not None:
+        await maybe_wait_closed(SERVER._server)
