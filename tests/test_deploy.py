@@ -101,10 +101,12 @@ def test_build_mpy_tree_embeds_relative_source_names(tmp_path, monkeypatch) -> N
     output_dir = tmp_path / 'mpy'
     compiler_calls: list[list[str]] = []
 
+    boot = source_dir / 'boot.py'
     server = source_dir / 'server.py'
     parser = source_dir / 'ducky' / 'parser.py'
     server.parent.mkdir(parents=True, exist_ok=True)
     parser.parent.mkdir(parents=True, exist_ok=True)
+    boot.write_text('import main\n', encoding='utf-8')
     server.write_text('VALUE = 1\n', encoding='utf-8')
     parser.write_text('VALUE = 2\n', encoding='utf-8')
 
@@ -126,10 +128,12 @@ def test_build_mpy_tree_embeds_relative_source_names(tmp_path, monkeypatch) -> N
     )
 
     assert [path.relative_to(output_dir).as_posix() for path in compiled] == [
+        'boot.mpy',
         'ducky/parser.mpy',
         'server.mpy',
     ]
     assert [call[call.index('-s') + 1] for call in compiler_calls] == [
+        'boot.py',
         'ducky/parser.py',
         'server.py',
     ]

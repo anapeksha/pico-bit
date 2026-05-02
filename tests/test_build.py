@@ -66,6 +66,7 @@ def test_build_emits_compiled_mpy_tree() -> None:
     subprocess.run([sys.executable, 'build.py'], cwd=root, check=True)
 
     compiled = sorted(path.relative_to(dist).as_posix() for path in dist.rglob('*.mpy'))
+    assert 'boot.mpy' in compiled
     assert 'main.mpy' in compiled
     assert 'server.mpy' in compiled
     assert 'ducky/runtime.mpy' in compiled
