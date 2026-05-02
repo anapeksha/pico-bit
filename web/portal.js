@@ -94,46 +94,30 @@ function renderRunHistory(entries = []) {
     const item = document.createElement('article');
     item.className = 'history__item';
 
-    const top = document.createElement('div');
-    top.className = 'history__top';
+    const isOk = entry.notice === 'success';
+    const sourceLabel = entry.source === 'boot' ? 'Boot' : 'Portal';
+    const summary =
+      (entry.message || '').split('\n')[0].trim() ||
+      entry.preview ||
+      'Empty payload';
 
-    const title = document.createElement('div');
-    title.className = 'history__title';
-    title.textContent = `#${entry.sequence} · ${
-      entry.source === 'boot' ? 'Boot payload' : 'Portal run'
-    }`;
+    const tag = document.createElement('span');
+    tag.className = 'history__seq';
+    tag.textContent = `#${entry.sequence}`;
+
+    const text = document.createElement('span');
+    text.className = 'history__text';
+    text.textContent = `${sourceLabel} · ${summary}`;
 
     const badge = document.createElement('span');
-    badge.className = `badge ${
-      entry.notice === 'success' ? 'badge--success' : 'badge--error'
-    }`;
-    badge.textContent = entry.notice === 'success' ? 'OK' : 'Error';
+    badge.className = `history__badge ${isOk ? 'history__badge--ok' : 'history__badge--err'}`;
+    badge.textContent = isOk ? 'OK' : 'Err';
 
-    top.appendChild(title);
-    top.appendChild(badge);
+    item.title = `${sourceLabel} run #${entry.sequence}\n${entry.mode_label || ''}\n${entry.message || ''}`.trim();
 
-    const preview = document.createElement('p');
-    preview.className = 'history__preview';
-    preview.textContent = entry.preview || 'Empty payload';
-
-    const meta = document.createElement('p');
-    meta.className = 'history__meta';
-    meta.textContent = entry.mode_label || 'Runtime mode';
-
-    item.appendChild(top);
-    item.appendChild(preview);
-    item.appendChild(meta);
-
-    if (entry.message) {
-      const message = document.createElement('p');
-      message.className = 'history__message';
-      const firstLine = (entry.message || '').split('\n')[0];
-      const truncated = firstLine.length > 60 ? firstLine.slice(0, 60) + '…' : firstLine;
-      message.textContent = truncated;
-      message.title = entry.message;
-      item.appendChild(message);
-    }
-
+    item.appendChild(tag);
+    item.appendChild(text);
+    item.appendChild(badge);
     runHistory.appendChild(item);
   });
 }
@@ -408,6 +392,7 @@ async function loadBootstrap() {
   const state = await requestJson('/api/bootstrap');
   payloadField.value = state.payload || '';
   measureEditor();
+  renderEditorDecorations({ diagnostics: [] });
   setBoundText('ap_ssid', state.ap_ssid);
   setBoundText('ap_password', state.ap_password || 'Open network');
   applyMode(state);
@@ -424,6 +409,7 @@ async function loadBootstrap() {
     renderValidation(state.validation);
   } else {
     renderPendingValidation();
+    queueValidation();
   }
   setNotice(state.message || '', state.notice || 'quiet');
 }
