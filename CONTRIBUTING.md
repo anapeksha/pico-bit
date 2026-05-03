@@ -6,7 +6,7 @@ Thanks for helping improve `pico-bit`.
 
 - Keep the project friendly to contributors who are new to MicroPython.
 - Prefer small, reviewable changes over broad rewrites.
-- Preserve Raspberry Pi Pico 2 and Pico 2 W compatibility.
+- Is compatible only with Raspberry Pi Pico 2 W.
 - Treat parser and runtime behavior changes as user-facing changes that need tests.
 
 ## Development Setup
@@ -61,12 +61,17 @@ Please add or update tests when you change:
 
 ## Bundled Output
 
-`dist/boot.py` is generated output.
+`dist/boot.py` should be built using `build.py`.
+`pico-bit-RPI_PICO2_W-v0.0.1.uf2` should be built using `deploy.py`
 
 When source changes affect the deployable runtime, rebuild it with:
 
 ```bash
 poetry run python3 build.py
+```
+
+```bash
+poetry run python3 deploy.py build-uf2 --micropython-ref v1.28.0 --board RPI_PICO2_W --release-version 0.0.1
 ```
 
 ## Documentation
