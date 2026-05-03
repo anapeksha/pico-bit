@@ -30,12 +30,6 @@ poetry run ruff format --check .
 poetry run python3 build.py
 ```
 
-For board-specific bundles, you can also use:
-
-```bash
-poetry run python3 build.py --ap-ssid "Lab Pico" --ap-password "keyboard42"
-```
-
 If you intentionally change formatting, run:
 
 ```bash
@@ -59,16 +53,27 @@ Please add or update tests when you change:
 - payload discovery,
 - or bundler output behavior.
 
-## Bundled Output
+## Bundled Local Output
 
-`dist/boot.py` should be built using `build.py`.
-`pico-bit-RPI_PICO2_W-v0.0.1.uf2` should be built using `deploy.py`
-
-When source changes affect the deployable runtime, rebuild it with:
+For local testing, build script with
 
 ```bash
 poetry run python3 build.py
 ```
+
+Copy `dist/boot.py` to Pico2 and reboot.
+
+## Bundled Firmware Output
+
+Firmware should be built using `deploy.py`
+
+Install prerequisites
+
+```bash
+sudo apt-get install -y build-essential cmake gcc-arm-none-eabi libnewlib-arm-none-eabi ninja-build
+```
+
+Rebuild it with:
 
 ```bash
 poetry run python3 deploy.py build-uf2 --micropython-ref v1.28.0 --board RPI_PICO2_W --release-version 0.0.1
