@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import re
 from pathlib import Path
 
@@ -71,8 +70,13 @@ def render_web_assets() -> str:
             text = minify_js(text)
         elif name in ('LOGIN_HTML', 'INDEX_HTML'):
             text = minify_html(text)
-        lines.append(f'{name} = {json.dumps(text, ensure_ascii=False)}\n\n')
-    lines.append('__all__ = ' + json.dumps(list(ASSET_MAP)) + '\n')
+        # Store as bytes so the server can write directly to the socket without
+        # a str.encode() allocation on every request. Frozen bytes literals are
+        # flash-resident in MicroPython, meaning no heap copy is made when the
+        # server reads and sends them.
+        data = text.encode('utf-8')
+        lines.append(f'{name}: bytes = {repr(data)}\n\n')
+    lines.append('__all__ = ' + repr(list(ASSET_MAP)) + '\n')
     return ''.join(lines)
 
 

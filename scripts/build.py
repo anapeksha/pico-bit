@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import cast
 
 from .asset_pipeline import sync_web_assets
 from .build_support import (
@@ -31,7 +32,7 @@ os.chdir(ROOT)
 OUTPUT.parent.mkdir(exist_ok=True)
 
 
-def _is_docstring(expr):
+def _is_docstring(expr: ast.stmt) -> bool:
     return (
         isinstance(expr, ast.Expr)
         and isinstance(expr.value, ast.Constant)
@@ -39,7 +40,7 @@ def _is_docstring(expr):
     )
 
 
-def _is_print_call(expr):
+def _is_print_call(expr: ast.stmt) -> bool:
     return (
         isinstance(expr, ast.Expr)
         and isinstance(expr.value, ast.Call)
@@ -171,51 +172,51 @@ def _ordered_modules(entry_module, modules, dependency_graph):
 
 
 class _Bundler(ast.NodeTransformer):
-    def visit_Module(self, node):
+    def visit_Module(self, node: ast.Module) -> ast.Module:
         node.body = self._filter_body(node.body)
-        return self.generic_visit(node)
+        return cast(ast.Module, self.generic_visit(node))
 
-    def visit_FunctionDef(self, node):
-        node = self.generic_visit(node)
+    def visit_FunctionDef(self, node: ast.FunctionDef) -> ast.FunctionDef:
+        node = cast(ast.FunctionDef, self.generic_visit(node))
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         return node
 
-    def visit_AsyncFunctionDef(self, node):
-        node = self.generic_visit(node)
+    def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> ast.AsyncFunctionDef:
+        node = cast(ast.AsyncFunctionDef, self.generic_visit(node))
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         return node
 
-    def visit_ClassDef(self, node):
-        node = self.generic_visit(node)
+    def visit_ClassDef(self, node: ast.ClassDef) -> ast.ClassDef:
+        node = cast(ast.ClassDef, self.generic_visit(node))
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         return node
 
-    def visit_If(self, node):
-        node = self.generic_visit(node)
-        node.body = self._filter_body(node.body, ensure_non_empty=True)
-        node.orelse = self._filter_body(node.orelse)
-        return node
-
-    def visit_For(self, node):
-        node = self.generic_visit(node)
+    def visit_If(self, node: ast.If) -> ast.If:
+        node = cast(ast.If, self.generic_visit(node))
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         node.orelse = self._filter_body(node.orelse)
         return node
 
-    def visit_While(self, node):
-        node = self.generic_visit(node)
+    def visit_For(self, node: ast.For) -> ast.For:
+        node = cast(ast.For, self.generic_visit(node))
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         node.orelse = self._filter_body(node.orelse)
         return node
 
-    def visit_With(self, node):
-        node = self.generic_visit(node)
+    def visit_While(self, node: ast.While) -> ast.While:
+        node = cast(ast.While, self.generic_visit(node))
+        node.body = self._filter_body(node.body, ensure_non_empty=True)
+        node.orelse = self._filter_body(node.orelse)
+        return node
+
+    def visit_With(self, node: ast.With) -> ast.With:
+        node = cast(ast.With, self.generic_visit(node))
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         return node
 
-    def visit_Try(self, node):
+    def visit_Try(self, node: ast.Try) -> ast.Try:
         # Recurse into children first to remove imports before filtering
-        node = self.generic_visit(node)
+        node = cast(ast.Try, self.generic_visit(node))
         node.body = self._filter_body(node.body, ensure_non_empty=True)
         node.orelse = self._filter_body(node.orelse)
         node.finalbody = self._filter_body(node.finalbody)
@@ -223,14 +224,14 @@ class _Bundler(ast.NodeTransformer):
             handler.body = self._filter_body(handler.body, ensure_non_empty=True)
         return node
 
-    def visit_Import(self, node):
+    def visit_Import(self, node: ast.Import) -> None:
         return None
 
-    def visit_ImportFrom(self, node):
+    def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
         return None
 
-    def _filter_body(self, body, ensure_non_empty=False):
-        filtered = []
+    def _filter_body(self, body: list[ast.stmt], ensure_non_empty: bool = False) -> list[ast.stmt]:
+        filtered: list[ast.stmt] = []
         for stmt in body:
             if _is_docstring(stmt) or _is_print_call(stmt):
                 continue

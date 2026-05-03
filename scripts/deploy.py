@@ -95,6 +95,11 @@ def build_firmware(
             'ports/rp2',
             f'BOARD={board}',
             f'FROZEN_MANIFEST={MANIFEST}',
+            # Disable Bluetooth — the CYW43 chip handles both WiFi and BT, but
+            # this firmware only uses WiFi. Stripping NimBLE and the bluetooth
+            # Python module saves ~50–80 KB of flash and reduces init overhead.
+            'MICROPY_PY_BLUETOOTH=0',
+            'MICROPY_BLUETOOTH_NIMBLE=0',
         ],
         cwd=MICROPYTHON_DIR,
     )

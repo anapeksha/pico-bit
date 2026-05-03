@@ -40,6 +40,7 @@ const uiState = {
   validation: null,
   validationRequest: 0,
   validationTimer: 0,
+  lastValidatedPayload: null,
 };
 
 const HL_UNSAFE = new Set([
@@ -583,11 +584,17 @@ function queueValidation() {
   renderPendingValidation();
   uiState.validationTimer = window.setTimeout(() => {
     validatePayloadDraft();
-  }, 180);
+  }, 800);
 }
 
 async function validatePayloadDraft() {
   if (!payloadField) {
+    return;
+  }
+  const currentPayload = payloadField.value;
+  if (currentPayload === uiState.lastValidatedPayload && uiState.validation) {
+    uiState.validating = false;
+    renderValidation(uiState.validation);
     return;
   }
   const requestId = ++uiState.validationRequest;
@@ -595,11 +602,12 @@ async function validatePayloadDraft() {
   try {
     const result = await requestJson('/api/validate', {
       method: 'POST',
-      body: JSON.stringify({ payload: payloadField.value }),
+      body: JSON.stringify({ payload: currentPayload }),
     });
     if (requestId !== uiState.validationRequest) {
       return;
     }
+    uiState.lastValidatedPayload = currentPayload;
     uiState.validating = false;
     renderValidation(result.validation);
   } catch (error) {

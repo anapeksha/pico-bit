@@ -237,23 +237,25 @@
           <div class="panel">
             <p class="panel__title">Layout</p>
             <p class="panel__text">Tell how the host interprets typed text.</p>
-            <div class="field">
-              <label class="field__label" for="keyboard-os">
-                Operating system
-              </label>
-              <select
-                id="keyboard-os"
-                class="field__input field__input--select"
-              ></select>
-            </div>
-            <div class="field">
-              <label class="field__label" for="keyboard-layout">
-                Keyboard layout
-              </label>
-              <select
-                id="keyboard-layout"
-                class="field__input field__input--select"
-              ></select>
+            <div class="layout__field__container">
+              <div class="field">
+                <label class="field__label" for="keyboard-os">
+                  Operating system
+                </label>
+                <select
+                  id="keyboard-os"
+                  class="field__input field__input--select"
+                ></select>
+              </div>
+              <div class="field">
+                <label class="field__label" for="keyboard-layout">
+                  Keyboard layout
+                </label>
+                <select
+                  id="keyboard-layout"
+                  class="field__input field__input--select"
+                ></select>
+              </div>
             </div>
             <p class="panel__hint" data-bind="keyboard_layout_hint">
               Used for typed text and remembered on the device.

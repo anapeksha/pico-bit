@@ -30,14 +30,14 @@ class OverrideInjector(ast.NodeTransformer):
     def __init__(self, overrides: dict[str, OverrideValue]) -> None:
         self._overrides = overrides
 
-    def visit_Assign(self, node):
+    def visit_Assign(self, node: ast.Assign) -> ast.AST:
         if len(node.targets) == 1 and isinstance(node.targets[0], ast.Name):
             name = node.targets[0].id
             if name in self._overrides:
                 node.value = _literal_node(self._overrides[name])
         return self.generic_visit(node)
 
-    def visit_AnnAssign(self, node):
+    def visit_AnnAssign(self, node: ast.AnnAssign) -> ast.AST:
         if isinstance(node.target, ast.Name) and node.target.id in self._overrides:
             node.value = _literal_node(self._overrides[node.target.id])
         return self.generic_visit(node)
@@ -196,9 +196,7 @@ def prepare_source_tree(
 
 
 def source_modules(source_dir: Path) -> list[Path]:
-    return sorted(
-        path for path in source_dir.rglob('*.py') if '__pycache__' not in path.parts
-    )
+    return sorted(path for path in source_dir.rglob('*.py') if '__pycache__' not in path.parts)
 
 
 def clean_mpy_output(output_dir: Path) -> None:

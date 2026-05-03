@@ -54,6 +54,8 @@ _SESSION_COOKIE = 'pico_bit_session'
 _SESSION_TIMEOUT_MS = 30 * 60 * 1000
 _MAX_LOGIN_ATTEMPTS = 5
 _LOGIN_LOCKOUT_MS = 60_000
+_AP_CHECK_INTERVAL_MS = 6_000
+_WDT_TIMEOUT_MS = 8_000
 _PAYLOADS_DIR = 'payloads'
 _PAYLOAD_NAME_MAX = 32
 _JSON_HEADERS = {'Content-Type': 'application/json; charset=utf-8'}
@@ -195,6 +197,7 @@ class SetupServer:
         self._session_timestamps: dict[str, int] = {}
         self._login_attempts: int = 0
         self._login_lockout_until: int = 0
+        self._wdt = None
 
     def _seed_payload(self) -> str:
         payload_path, created = ensure_payload(seed=DEFAULT_PAYLOAD)
@@ -221,8 +224,9 @@ class SetupServer:
     def _ensure_payloads_dir(self) -> None:
         try:
             os.mkdir(_PAYLOADS_DIR)
-        except OSError:
-            pass
+        except OSError as exc:
+            if exc.args[0] != 17:  # EEXIST
+                raise
 
     def _list_payloads(self) -> list[dict[str, object]]:
         gc.collect()
@@ -249,6 +253,7 @@ class SetupServer:
 
     def _write_named_payload(self, name: str, content: str) -> None:
         self._ensure_payloads_dir()
+        gc.collect()
         with open(f'{_PAYLOADS_DIR}/{name}.dd', 'w') as f:
             f.write(content)
 
@@ -366,8 +371,7 @@ class SetupServer:
         message_class = 'notice--hidden'
         if message:
             message_class = 'notice--error'
-        page = LOGIN_HTML
-        page = page.replace('{{ap_ssid}}', _esc(AP_SSID))
+        page = LOGIN_HTML.decode()
         page = page.replace('{{message_class}}', message_class)
         page = page.replace('{{message}}', _esc(message))
         page = page.replace('{{username}}', _esc(username))
@@ -511,6 +515,8 @@ class SetupServer:
         for _ in range(50):
             if ap.active():
                 break
+            if self._wdt is not None:
+                self._wdt.feed()
             await sleep_ms(100)
         if not ap.active():
             raise OSError('AP failed to come active within 5 s')
@@ -525,6 +531,8 @@ class SetupServer:
             if ip and ip != '0.0.0.0':
                 self._ap_ip = ip
                 return ip
+            if self._wdt is not None:
+                self._wdt.feed()
             await sleep_ms(100)
 
         self._ap_ip = _DEFAULT_AP_IP
@@ -866,37 +874,82 @@ class SetupServer:
         method = request['method']
 
         if path == '/api/payloads' and method == 'GET':
-            await self._send_json(
-                writer, request, '200 OK', {'payloads': self._list_payloads()}
-            )
+            await self._send_json(writer, request, '200 OK', {'payloads': self._list_payloads()})
             return
 
         if path == '/api/payloads' and method == 'POST':
-            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            gc.collect()
+            try:
+                data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            except ValueError:
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {'message': 'Invalid JSON body.', 'notice': 'error'},
+                )
+                return
             name = str(data.get('name', '')).strip()
             if not _validate_payload_name(name):
                 await self._send_json(
-                    writer, request, '400 Bad Request',
-                    {'message': 'Name must be 1-32 alphanumeric, hyphen, or underscore chars.'},
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {
+                        'message': 'Name must be 1-32 alphanumeric, hyphen, or underscore chars.',
+                        'notice': 'error',
+                    },
                 )
                 return
             content = str(data.get('payload', '')).replace('\r\n', '\n')
             try:
                 self._write_named_payload(name, content)
             except OSError as exc:
+                errno_code = exc.args[0] if exc.args else 0
+                if errno_code == 28:  # ENOSPC
+                    msg = 'No space left on device.'
+                elif errno_code == 30:  # EROFS
+                    msg = 'Filesystem is read-only.'
+                elif errno_code == 2:  # ENOENT — payloads dir missing
+                    msg = 'Could not create payloads directory.'
+                else:
+                    msg = f'Write failed (errno {errno_code}).'
                 await self._send_json(
-                    writer, request, '500 Internal Server Error',
-                    {'message': f'Write failed: {exc}'},
+                    writer,
+                    request,
+                    '500 Internal Server Error',
+                    {'message': msg, 'notice': 'error'},
+                )
+                return
+            except MemoryError:
+                await self._send_json(
+                    writer,
+                    request,
+                    '500 Internal Server Error',
+                    {
+                        'message': 'Not enough memory to save payload. Try a shorter payload.',
+                        'notice': 'error',
+                    },
+                )
+                return
+            except Exception:
+                await self._send_json(
+                    writer,
+                    request,
+                    '500 Internal Server Error',
+                    {'message': 'Save failed.', 'notice': 'error'},
                 )
                 return
             await self._send_json(
-                writer, request, '200 OK',
+                writer,
+                request,
+                '200 OK',
                 {'message': f'Saved as {name}.dd', 'notice': 'success', 'name': name},
             )
             return
 
         if path.startswith('/api/payloads/'):
-            rest = path[len('/api/payloads/'):]
+            rest = path[len('/api/payloads/') :]
             if '/' in rest:
                 pname, action = rest.split('/', 1)
             else:
@@ -931,7 +984,9 @@ class SetupServer:
                     )
                     return
                 await self._send_json(
-                    writer, request, '200 OK',
+                    writer,
+                    request,
+                    '200 OK',
                     {'message': f'Deleted {pname}.dd', 'notice': 'success'},
                 )
                 return
@@ -1015,28 +1070,81 @@ class SetupServer:
             if request is None:
                 return
             await self._dispatch(request, writer)
-        except (ValueError, json.JSONDecodeError):
+        except ValueError:
             fallback = {'method': 'GET', 'path': '/', 'headers': {}, 'body': b'', 'cookies': {}}
-            await self._send_json(
-                writer,
-                fallback,
-                '400 Bad Request',
-                {'message': 'Malformed request.'},
-            )
+            try:
+                await self._send_json(
+                    writer,
+                    fallback,
+                    '400 Bad Request',
+                    {'message': 'Malformed request.'},
+                )
+            except Exception:
+                pass
         except Exception:
             fallback = {'method': 'GET', 'path': '/', 'headers': {}, 'body': b'', 'cookies': {}}
-            await self._send_json(
-                writer,
-                fallback,
-                '500 Internal Server Error',
-                {'message': 'Unexpected server error.'},
-            )
+            try:
+                await self._send_json(
+                    writer,
+                    fallback,
+                    '500 Internal Server Error',
+                    {'message': 'Unexpected server error.'},
+                )
+            except Exception:
+                pass
         finally:
             writer.close()
             await maybe_wait_closed(writer)
 
+    async def _restart_tcp_server(self) -> None:
+        if self._server is not None:
+            try:
+                self._server.close()
+                await maybe_wait_closed(self._server)
+            except Exception:
+                pass
+            self._server = None
+        try:
+            self._server = await asyncio.start_server(
+                self._handle_request, '0.0.0.0', self.port, backlog=3
+            )
+        except OSError:
+            pass
+
+    async def _ensure_ap_active(self) -> None:
+        if self._ap is None:
+            return
+        try:
+            if self._ap.active():
+                return
+        except Exception:
+            return
+        try:
+            await self._start_ap()
+        except Exception:
+            return
+        await self._restart_tcp_server()
+
+    async def _ap_watchdog(self) -> None:
+        while True:
+            await sleep_ms(_AP_CHECK_INTERVAL_MS)
+            if self._wdt is not None:
+                self._wdt.feed()
+            try:
+                await self._ensure_ap_active()
+            except Exception:
+                pass
+
     async def start(self) -> None:
         await self._prepare_server()
+        try:
+            import machine
+
+            _WDT = getattr(machine, 'WDT', None)
+            self._wdt = _WDT(timeout=_WDT_TIMEOUT_MS) if _WDT is not None else None
+        except Exception:
+            self._wdt = None
+        asyncio.create_task(self._ap_watchdog())
 
     async def stop(self) -> None:
         if self._server is not None:
