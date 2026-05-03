@@ -8,7 +8,7 @@
       content="Edit, validate, and run payload.dd from the Pico Bit portal on Raspberry Pi Pico 2 W."
     />
     <title>Pico Bit Injector</title>
-    <link rel="stylesheet" href="/assets/portal.css" />
+    <link rel="stylesheet" href="/portal.css" />
   </head>
   <body>
     <nav class="topbar">
@@ -54,6 +54,74 @@
       </div>
 
       <div class="workspace">
+        <!-- Left rail: library + device status -->
+        <aside class="sidebar sidebar--left">
+          <div class="panel">
+            <p class="panel__title">Library</p>
+            <p class="panel__text">Repository for custom payloads</p>
+            <div
+              id="payload-library"
+              class="library"
+              aria-label="Saved payloads"
+              aria-live="polite"
+            ></div>
+            <div class="library__save">
+              <label class="sr-only" for="save-as-name">Payload name</label>
+              <input
+                type="text"
+                id="save-as-name"
+                class="field__input"
+                placeholder="payload-name"
+                maxlength="48"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+              />
+              <div>
+                <button
+                  class="btn btn--ghost btn--md"
+                  id="save-as-btn"
+                  type="button"
+                >
+                  Save as
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="panel">
+            <p class="panel__title">Status</p>
+            <dl class="meta">
+              <div class="meta__row">
+                <span class="meta__label">Payload file</span>
+                <span class="meta__value">payload.dd</span>
+              </div>
+              <div class="meta__row">
+                <span class="meta__label">Seeded this boot</span>
+                <span class="meta__value" data-bind="seeded">No</span>
+              </div>
+              <div class="meta__row">
+                <span class="meta__label">Runtime mode</span>
+                <span class="meta__value" data-bind="mode_label">–</span>
+              </div>
+              <div class="meta__row">
+                <span class="meta__label">Typing target</span>
+                <span class="meta__value" data-bind="keyboard_target_label">
+                  Windows · English (US)
+                </span>
+              </div>
+            </dl>
+            <div class="divider"></div>
+            <form action="/logout" method="post">
+              <button class="btn btn--danger btn--wide" type="submit">
+                Sign out
+              </button>
+            </form>
+          </div>
+        </aside>
+
+        <!-- Middle: editor -->
         <div class="editor">
           <div class="editor__bar">
             <div class="editor__file">payload.dd</div>
@@ -78,6 +146,11 @@
               <div
                 class="editor__markers"
                 id="editor-markers"
+                aria-hidden="true"
+              ></div>
+              <div
+                class="editor__highlight"
+                id="editor-highlight"
                 aria-hidden="true"
               ></div>
               <label for="payload" class="sr-only">Payload script</label>
@@ -145,7 +218,8 @@
           </div>
         </div>
 
-        <aside class="sidebar">
+        <!-- Right rail: about + layout + recent runs -->
+        <aside class="sidebar sidebar--right">
           <div class="panel">
             <p class="panel__title">About</p>
             <p class="panel__text">
@@ -196,36 +270,6 @@
             >
               <p class="history__empty">No payloads have run yet.</p>
             </div>
-          </div>
-
-          <div class="panel">
-            <p class="panel__title">Status</p>
-            <dl class="meta">
-              <div class="meta__row">
-                <span class="meta__label">Payload file</span>
-                <span class="meta__value">payload.dd</span>
-              </div>
-              <div class="meta__row">
-                <span class="meta__label">Seeded this boot</span>
-                <span class="meta__value" data-bind="seeded">No</span>
-              </div>
-              <div class="meta__row">
-                <span class="meta__label">Runtime mode</span>
-                <span class="meta__value" data-bind="mode_label">–</span>
-              </div>
-              <div class="meta__row">
-                <span class="meta__label">Typing target</span>
-                <span class="meta__value" data-bind="keyboard_target_label">
-                  Windows · English (US)
-                </span>
-              </div>
-            </dl>
-            <div class="divider"></div>
-            <form action="/logout" method="post">
-              <button class="btn btn--danger btn--wide" type="submit">
-                Sign out
-              </button>
-            </form>
           </div>
         </aside>
       </div>

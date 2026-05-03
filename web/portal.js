@@ -8,6 +8,7 @@ const keyboardOsSelect = document.getElementById('keyboard-os');
 const keyboardLayoutSelect = document.getElementById('keyboard-layout');
 const runHistory = document.getElementById('run-history');
 const editorGutter = document.getElementById('editor-gutter');
+const editorHighlight = document.getElementById('editor-highlight');
 const editorMarkers = document.getElementById('editor-markers');
 const infoIcon = document.getElementById('info-icon');
 const validationModal = document.getElementById('validation-modal');
@@ -18,6 +19,9 @@ const modalClose = document.getElementById('modal-close');
 const validationBadge = document.querySelector(
   '[data-bind="validation_badge"]',
 );
+const payloadLibrary = document.getElementById('payload-library');
+const saveAsInput = document.getElementById('save-as-name');
+const saveAsBtn = document.getElementById('save-as-btn');
 
 const uiState = {
   charWidth: 8,
@@ -28,6 +32,7 @@ const uiState = {
   changingTarget: false,
   keyboardOses: [],
   keyboardLayouts: [],
+  libraryWorking: false,
   running: false,
   saving: false,
   togglingUnsafe: false,
@@ -36,6 +41,129 @@ const uiState = {
   validationRequest: 0,
   validationTimer: 0,
 };
+
+const HL_UNSAFE = new Set([
+  'ATTACKMODE',
+  'EXFIL',
+  'HIDE_PAYLOAD',
+  'RESTORE_PAYLOAD',
+  'SAVE_ATTACKMODE',
+  'RESTORE_ATTACKMODE',
+  'SAVE_HOST_KEYBOARD_LOCK_STATE',
+  'RESTORE_HOST_KEYBOARD_LOCK_STATE',
+  'WAIT_FOR_CAPS_CHANGE',
+  'WAIT_FOR_CAPS_OFF',
+  'WAIT_FOR_CAPS_ON',
+  'WAIT_FOR_NUM_CHANGE',
+  'WAIT_FOR_NUM_OFF',
+  'WAIT_FOR_NUM_ON',
+  'WAIT_FOR_SCROLL_CHANGE',
+  'WAIT_FOR_SCROLL_OFF',
+  'WAIT_FOR_SCROLL_ON',
+]);
+const HL_FLOW = new Set([
+  'IF',
+  'ELSE',
+  'ELSEIF',
+  'END_IF',
+  'WHILE',
+  'END_WHILE',
+  'FUNCTION',
+  'END_FUNCTION',
+  'RETURN',
+  'CALL',
+  'REPEAT',
+  'VAR',
+  'DEFINE',
+  'BUTTON_DEF',
+  'END_BUTTON',
+  'EXTENSION',
+  'END_EXTENSION',
+]);
+const HL_STRING_CMD = new Set([
+  'STRING',
+  'STRINGLN',
+  'END_STRING',
+  'END_STRINGLN',
+]);
+const HL_KEYWORD = new Set([
+  'DELAY',
+  'DEFAULTDELAY',
+  'DEFAULT_DELAY',
+  'DEFAULTCHARDELAY',
+  'DEFAULT_CHAR_DELAY',
+  'DEFAULTCHARJITTER',
+  'DISABLE_BUTTON',
+  'ENABLE_BUTTON',
+  'INJECT_MOD',
+  'INJECT_VAR',
+  'RD_KBD',
+  'RELEASE',
+  'RESET',
+  'STOP_PAYLOAD',
+  'RESTART_PAYLOAD',
+  'VERSION',
+  'WAIT_FOR_BUTTON_PRESS',
+  'RANDOM_CHAR',
+  'RANDOM_CHAR_FROM',
+  'RANDOM_LOWERCASE_LETTER',
+  'RANDOM_UPPERCASE_LETTER',
+  'RANDOM_LETTER',
+  'RANDOM_NUMBER',
+  'RANDOM_SPECIAL',
+  'HOLD',
+  'LED_R',
+  'LED_G',
+  'LED_B',
+  'LED_ON',
+  'LED_OFF',
+]);
+
+function escHtml(s) {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function hlVars(escaped) {
+  return escaped.replace(
+    /\$([A-Za-z_]\w*)/g,
+    '<span class="hl-var">$$$1</span>',
+  );
+}
+
+function highlightLine(raw) {
+  if (!raw.trim()) return escHtml(raw);
+  const indent = raw.length - raw.trimStart().length;
+  const stripped = raw.slice(indent);
+  const upper = stripped.toUpperCase();
+  if (upper === 'REM' || upper.startsWith('REM ')) {
+    return `<span class="hl-comment">${escHtml(raw)}</span>`;
+  }
+  const spaceAt = stripped.search(/\s/);
+  const token = spaceAt < 0 ? stripped : stripped.slice(0, spaceAt);
+  const rest = spaceAt < 0 ? '' : stripped.slice(spaceAt);
+  const tu = token.toUpperCase();
+  let cls = null;
+  if (HL_UNSAFE.has(tu)) cls = 'hl-unsafe';
+  else if (HL_FLOW.has(tu)) cls = 'hl-flow';
+  else if (HL_STRING_CMD.has(tu) || HL_KEYWORD.has(tu)) cls = 'hl-keyword';
+  if (!cls) return escHtml(raw);
+  const indentHtml = escHtml(raw.slice(0, indent));
+  const tokenHtml = `<span class="${cls}">${escHtml(token)}</span>`;
+  const restHtml =
+    HL_STRING_CMD.has(tu) && rest
+      ? `<span class="hl-string">${hlVars(escHtml(rest))}</span>`
+      : hlVars(escHtml(rest));
+  return indentHtml + tokenHtml + restHtml;
+}
+
+function renderHighlight() {
+  if (!payloadField || !editorHighlight) return;
+  editorHighlight.innerHTML = payloadField.value
+    .split('\n')
+    .map(highlightLine)
+    .join('\n');
+  syncEditorDecorations();
+}
 
 let _noticeTimer = 0;
 
@@ -278,6 +406,9 @@ function syncEditorDecorations() {
   if (gutterLines) {
     gutterLines.style.transform = `translateY(${-payloadField.scrollTop}px)`;
   }
+  if (editorHighlight) {
+    editorHighlight.style.transform = `translate(${-payloadField.scrollLeft}px, ${-payloadField.scrollTop}px)`;
+  }
   if (editorMarkers) {
     editorMarkers.style.transform = `translate(${-payloadField.scrollLeft}px, ${-payloadField.scrollTop}px)`;
   }
@@ -485,7 +616,9 @@ async function loadBootstrap() {
   const state = await requestJson('/api/bootstrap');
   payloadField.value = state.payload || '';
   measureEditor();
+  renderHighlight();
   renderEditorDecorations({ diagnostics: [] });
+  loadLibrary();
   setBoundText('ap_ssid', state.ap_ssid);
   setBoundText('ap_password', state.ap_password || 'Open network');
   applyMode(state);
@@ -617,6 +750,7 @@ async function runPayload() {
 
 function handlePayloadInput() {
   setBoundText('payload_state', 'Unsaved draft');
+  renderHighlight();
   queueValidation();
 }
 
@@ -715,5 +849,130 @@ window.addEventListener('resize', () => {
     renderPendingValidation();
   }
 });
+
+function updateLibraryControls() {
+  if (saveAsBtn) saveAsBtn.disabled = uiState.libraryWorking;
+  if (saveAsInput) saveAsInput.disabled = uiState.libraryWorking;
+}
+
+function renderLibrary(payloads = []) {
+  if (!payloadLibrary) return;
+  payloadLibrary.textContent = '';
+  if (!payloads.length) {
+    const p = document.createElement('p');
+    p.className = 'library__empty';
+    p.textContent = 'No saved payloads.';
+    payloadLibrary.appendChild(p);
+    return;
+  }
+  payloads.forEach(({ name }) => {
+    const item = document.createElement('article');
+    item.className = 'library__item';
+
+    const nameEl = document.createElement('span');
+    nameEl.className = 'library__name';
+    nameEl.textContent = name;
+    nameEl.title = `${name}.dd`;
+
+    const actions = document.createElement('div');
+    actions.className = 'library__actions';
+
+    const loadBtn = document.createElement('button');
+    loadBtn.className = 'btn btn--ghost btn--sm';
+    loadBtn.type = 'button';
+    loadBtn.textContent = 'Load';
+    loadBtn.addEventListener('click', () => loadNamedPayload(name));
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'btn btn--danger-ghost btn--sm';
+    delBtn.type = 'button';
+    delBtn.textContent = 'Delete';
+    delBtn.setAttribute('aria-label', `Delete ${name}`);
+    delBtn.addEventListener('click', () => deleteNamedPayload(name));
+
+    actions.appendChild(loadBtn);
+    actions.appendChild(delBtn);
+    item.appendChild(nameEl);
+    item.appendChild(actions);
+    payloadLibrary.appendChild(item);
+  });
+}
+
+async function loadLibrary() {
+  try {
+    const result = await requestJson('/api/payloads');
+    renderLibrary(result.payloads || []);
+  } catch (_) {}
+}
+
+async function loadNamedPayload(name) {
+  if (uiState.libraryWorking) return;
+  uiState.libraryWorking = true;
+  try {
+    const result = await requestJson(
+      `/api/payloads/${encodeURIComponent(name)}`,
+    );
+    if (payloadField) {
+      payloadField.value = result.payload || '';
+      handlePayloadInput();
+    }
+    setNotice(`Loaded ${name}.dd`, 'success');
+  } catch (error) {
+    setNotice(error.message, 'error');
+  } finally {
+    uiState.libraryWorking = false;
+  }
+}
+
+async function deleteNamedPayload(name) {
+  if (uiState.libraryWorking) return;
+  uiState.libraryWorking = true;
+  try {
+    await requestJson(`/api/payloads/${encodeURIComponent(name)}`, {
+      method: 'DELETE',
+    });
+    setNotice(`Deleted ${name}.dd`, 'success');
+    loadLibrary();
+  } catch (error) {
+    setNotice(error.message, 'error');
+  } finally {
+    uiState.libraryWorking = false;
+  }
+}
+
+async function saveAsPayload() {
+  if (uiState.libraryWorking || !saveAsInput) return;
+  const name = saveAsInput.value.trim();
+  if (!name) {
+    setNotice('Enter a name first.', 'error');
+    return;
+  }
+  uiState.libraryWorking = true;
+  updateLibraryControls();
+  try {
+    await requestJson('/api/payloads', {
+      method: 'POST',
+      body: JSON.stringify({ name, payload: payloadField?.value || '' }),
+    });
+    saveAsInput.value = '';
+    setNotice(`Saved as ${name}.dd`, 'success');
+    loadLibrary();
+  } catch (error) {
+    setNotice(error.message, 'error');
+  } finally {
+    uiState.libraryWorking = false;
+    updateLibraryControls();
+  }
+}
+
+if (saveAsBtn) {
+  saveAsBtn.addEventListener('click', saveAsPayload);
+}
+
+if (saveAsInput) {
+  saveAsInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') saveAsPayload();
+  });
+}
 
 loadBootstrap().catch((error) => setNotice(error.message, 'error'));

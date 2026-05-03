@@ -652,6 +652,245 @@ def test_api_run_returns_recent_history(monkeypatch) -> None:
     assert payload['validation']['blocking'] is False
 
 
+# ── Rate limiting ────────────────────────────────────────────────────────────
+
+def test_login_lockout_after_max_failed_attempts(monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
+    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    now = [1_000_000]
+    monkeypatch.setattr(server, '_ticks_ms', lambda: now[0])
+
+    req = _make_request('POST', '/login', body=b'username=admin&password=wrong')
+    writer = FakeWriter()
+    for _ in range(server._MAX_LOGIN_ATTEMPTS):
+        writer = FakeWriter()
+        asyncio.run(portal._handle_login(req, writer))
+
+    assert portal._login_lockout_until > 0
+
+
+def test_locked_out_login_blocks_post(monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
+    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    now = [1_000_000]
+    monkeypatch.setattr(server, '_ticks_ms', lambda: now[0])
+    portal._login_lockout_until = server._ticks_add(now[0], server._LOGIN_LOCKOUT_MS)
+
+    writer = FakeWriter()
+    asyncio.run(portal._handle_login(
+        _make_request('POST', '/login', body=b'username=admin&password=secret'),
+        writer,
+    ))
+
+    assert '429 Too Many Requests' in writer.text()
+    assert 'Try again in' in writer.text()
+
+
+def test_locked_out_login_shows_wait_on_get(monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    now = [1_000_000]
+    monkeypatch.setattr(server, '_ticks_ms', lambda: now[0])
+    portal._login_lockout_until = server._ticks_add(now[0], server._LOGIN_LOCKOUT_MS)
+
+    writer = FakeWriter()
+    asyncio.run(portal._handle_login(_make_request('GET', '/login'), writer))
+
+    assert '200 OK' in writer.text()
+    assert 'Try again in' in writer.text()
+
+
+def test_login_success_resets_lockout_counter(monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
+    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    monkeypatch.setattr(server, '_ticks_ms', lambda: 1_000_000)
+    portal._login_attempts = 3
+
+    asyncio.run(portal._handle_login(
+        _make_request('POST', '/login', body=b'username=admin&password=secret'),
+        FakeWriter(),
+    ))
+
+    assert portal._login_attempts == 0
+    assert portal._login_lockout_until == 0
+
+
+# ── Session timeout ───────────────────────────────────────────────────────────
+
+def test_expired_session_is_rejected(monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    long_ago = 0
+    monkeypatch.setattr(server, '_ticks_ms', lambda: server._SESSION_TIMEOUT_MS + 1)
+    portal._sessions['tok'] = 'admin'
+    portal._session_timestamps['tok'] = long_ago
+
+    req = _make_request('GET', '/api/bootstrap', cookies={'pico_bit_session': 'tok'})
+    assert portal._is_authorized(req) is False
+    assert 'tok' not in portal._sessions
+
+
+def test_active_session_is_not_expired(monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    now = 5_000_000
+    monkeypatch.setattr(server, '_ticks_ms', lambda: now)
+    portal._sessions['tok'] = 'admin'
+    portal._session_timestamps['tok'] = now - 60_000  # 1 min ago
+
+    req = _make_request('GET', '/api/bootstrap', cookies={'pico_bit_session': 'tok'})
+    assert portal._is_authorized(req) is True
+
+
+# ── Multi-payload ─────────────────────────────────────────────────────────────
+
+def test_validate_payload_name_accepts_valid() -> None:
+    assert server._validate_payload_name('recon') is True
+    assert server._validate_payload_name('my-payload_01') is True
+    assert server._validate_payload_name('a' * 32) is True
+
+
+def test_validate_payload_name_rejects_invalid() -> None:
+    assert server._validate_payload_name('') is False
+    assert server._validate_payload_name('a' * 33) is False
+    assert server._validate_payload_name('bad/name') is False
+    assert server._validate_payload_name('../escape') is False
+    assert server._validate_payload_name('has space') is False
+
+
+def test_api_payloads_list_empty(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    monkeypatch.setattr(portal, '_list_payloads', lambda: [])
+    request = _make_request('GET', '/api/payloads', cookies={'pico_bit_session': 'tok'})
+    portal._sessions['tok'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    assert '200 OK' in head
+    assert json.loads(body) == {'payloads': []}
+
+
+def test_api_payloads_create_valid(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    written: list[tuple[str, str]] = []
+    monkeypatch.setattr(portal, '_write_named_payload', lambda n, c: written.append((n, c)))
+    request = _make_request(
+        'POST', '/api/payloads',
+        body=b'{"name": "recon", "payload": "STRING hello\\n"}',
+        cookies={'pico_bit_session': 'tok'},
+    )
+    portal._sessions['tok'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    assert '200 OK' in head
+    assert json.loads(body)['name'] == 'recon'
+    assert written == [('recon', 'STRING hello\n')]
+
+
+def test_api_payloads_create_invalid_name(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    request = _make_request(
+        'POST', '/api/payloads',
+        body=b'{"name": "bad name!", "payload": "STRING hi\\n"}',
+        cookies={'pico_bit_session': 'tok'},
+    )
+    portal._sessions['tok'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    assert '400 Bad Request' in writer.text()
+
+
+def test_api_payloads_get_content(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    monkeypatch.setattr(portal, '_read_named_payload', lambda n: f'REM {n}\n')
+    request = _make_request(
+        'GET', '/api/payloads/recon',
+        cookies={'pico_bit_session': 'tok'},
+    )
+    portal._sessions['tok'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    assert '200 OK' in head
+    data = json.loads(body)
+    assert data['name'] == 'recon'
+    assert data['payload'] == 'REM recon\n'
+
+
+def test_api_payloads_get_missing(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+
+    def raise_os(_name):
+        raise OSError('no file')
+
+    monkeypatch.setattr(portal, '_read_named_payload', raise_os)
+    request = _make_request(
+        'GET', '/api/payloads/missing',
+        cookies={'pico_bit_session': 'tok'},
+    )
+    portal._sessions['tok'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    assert '404 Not Found' in writer.text()
+
+
+def test_api_payloads_delete(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+    deleted: list[str] = []
+    monkeypatch.setattr(portal, '_delete_named_payload', lambda n: deleted.append(n))
+    request = _make_request(
+        'DELETE', '/api/payloads/recon',
+        cookies={'pico_bit_session': 'tok'},
+    )
+    portal._sessions['tok'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    assert '200 OK' in head
+    assert deleted == ['recon']
+
+
+def test_api_payloads_delete_missing(monkeypatch) -> None:
+    portal = server.SetupServer()
+    writer = FakeWriter()
+
+    def raise_os(_name):
+        raise OSError('no file')
+
+    monkeypatch.setattr(portal, '_delete_named_payload', raise_os)
+    request = _make_request(
+        'DELETE', '/api/payloads/ghost',
+        cookies={'pico_bit_session': 'tok'},
+    )
+    portal._sessions['tok'] = 'admin'
+
+    asyncio.run(portal._handle_api(request, writer))
+
+    assert '404 Not Found' in writer.text()
+
+
 def test_stop_closes_server_and_ap() -> None:
     events: list[str] = []
     portal = server.SetupServer()

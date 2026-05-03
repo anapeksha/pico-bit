@@ -1,17 +1,2 @@
-REM Rick Roll — macOS Safari
-REM Tested on macOS Tahoe / Pico 2W
-
-DEFAULTDELAY 200
-
-REM Launch Safari via Spotlight
-GUI SPACE
-DELAY 800
-STRING Safari
-ENTER
-DELAY 2000
-
-REM Focus address bar and navigate
-GUI l
-DELAY 400
-STRING https://www.youtube.com/watch?v=dQw4w9WgXcQ
-ENTER
+REM Pico Bit
+REM The Ducky Script parser for Raspberry Pi Pico W

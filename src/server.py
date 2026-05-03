@@ -51,6 +51,11 @@ _DEFAULT_AP_IP = '192.168.4.1'
 _KEYBOARD_LAYOUT_FILE = 'keyboard_layout.txt'
 _RUN_HISTORY_LIMIT = 12
 _SESSION_COOKIE = 'pico_bit_session'
+_SESSION_TIMEOUT_MS = 30 * 60 * 1000
+_MAX_LOGIN_ATTEMPTS = 5
+_LOGIN_LOCKOUT_MS = 60_000
+_PAYLOADS_DIR = 'payloads'
+_PAYLOAD_NAME_MAX = 32
 _JSON_HEADERS = {'Content-Type': 'application/json; charset=utf-8'}
 _NO_STORE = {'Cache-Control': 'no-store'}
 _STATIC_CACHE = {'Cache-Control': 'public, max-age=86400'}
@@ -115,6 +120,26 @@ def _ticks_ms() -> int:
     return int(time.monotonic() * 1000)
 
 
+def _ticks_add(t: int, delta: int) -> int:
+    fn = getattr(time, 'ticks_add', None)
+    if callable(fn):
+        return int(fn(t, delta))  # type: ignore
+    return t + delta
+
+
+def _ticks_diff(end: int, start: int) -> int:
+    fn = getattr(time, 'ticks_diff', None)
+    if callable(fn):
+        return int(fn(end, start))  # type: ignore
+    return end - start
+
+
+def _validate_payload_name(name: str) -> bool:
+    if not name or len(name) > _PAYLOAD_NAME_MAX:
+        return False
+    return all(c.isalnum() or c in '-_' for c in name)
+
+
 async def _read_request(reader):
     request_line = await reader.readline()
     if not request_line:
@@ -167,6 +192,9 @@ class SetupServer:
         self._run_sequence = 0
         self._server = None
         self._sessions: dict[str, str] = {}
+        self._session_timestamps: dict[str, int] = {}
+        self._login_attempts: int = 0
+        self._login_lockout_until: int = 0
 
     def _seed_payload(self) -> str:
         payload_path, created = ensure_payload(seed=DEFAULT_PAYLOAD)
@@ -189,6 +217,43 @@ class SetupServer:
             f.write(content)
         self._payload_seeded = False
         return payload_path
+
+    def _ensure_payloads_dir(self) -> None:
+        try:
+            os.mkdir(_PAYLOADS_DIR)
+        except OSError:
+            pass
+
+    def _list_payloads(self) -> list[dict[str, object]]:
+        gc.collect()
+        try:
+            entries = os.listdir(_PAYLOADS_DIR)
+        except OSError:
+            return []
+        result: list[dict[str, object]] = []
+        for entry in entries:
+            if not entry.endswith('.dd'):
+                continue
+            name = entry[:-3]
+            try:
+                size = os.stat(f'{_PAYLOADS_DIR}/{entry}')[6]
+            except OSError:
+                size = 0
+            result.append({'name': name, 'size': size})
+        return result
+
+    def _read_named_payload(self, name: str) -> str:
+        gc.collect()
+        with open(f'{_PAYLOADS_DIR}/{name}.dd') as f:
+            return f.read()
+
+    def _write_named_payload(self, name: str, content: str) -> None:
+        self._ensure_payloads_dir()
+        with open(f'{_PAYLOADS_DIR}/{name}.dd', 'w') as f:
+            f.write(content)
+
+    def _delete_named_payload(self, name: str) -> None:
+        os.remove(f'{_PAYLOADS_DIR}/{name}.dd')
 
     def _safe_mode_enabled(self) -> bool:
         return not self._allow_unsafe
@@ -343,17 +408,27 @@ class SetupServer:
         if not self._auth_enabled():
             return True
         token = request['cookies'].get(_SESSION_COOKIE, '')
-        return token in self._sessions
+        if token not in self._sessions:
+            return False
+        last = self._session_timestamps.get(token, _ticks_ms())
+        if _ticks_diff(_ticks_ms(), last) > _SESSION_TIMEOUT_MS:
+            self._sessions.pop(token, None)
+            self._session_timestamps.pop(token, None)
+            return False
+        self._session_timestamps[token] = _ticks_ms()
+        return True
 
     def _new_session(self) -> str:
         token = binascii.hexlify(os.urandom(16)).decode()
         self._sessions[token] = PORTAL_USERNAME
+        self._session_timestamps[token] = _ticks_ms()
         return token
 
     def _clear_session(self, request) -> None:
         token = request['cookies'].get(_SESSION_COOKIE, '')
         if token:
             self._sessions.pop(token, None)
+            self._session_timestamps.pop(token, None)
 
     def _session_cookie(self, token: str) -> str:
         return f'{_SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict'
@@ -526,17 +601,29 @@ class SetupServer:
         self._record_run(script, message, notice, source=source)
         return message, notice
 
+    def _lockout_remaining_s(self) -> int:
+        if not self._login_lockout_until:
+            return 0
+        remaining = _ticks_diff(self._login_lockout_until, _ticks_ms())
+        if remaining <= 0:
+            self._login_lockout_until = 0
+            return 0
+        return remaining // 1000 + 1
+
     async def _handle_login(self, request, writer) -> None:
         if not self._auth_enabled():
             await self._redirect(writer, request, '/')
             return
 
+        remaining_s = self._lockout_remaining_s()
+
         if request['method'] == 'GET':
+            message = f'Too many attempts. Try again in {remaining_s}s.' if remaining_s else ''
             await self._send(
                 writer,
                 request,
                 '200 OK',
-                self._render_login(),
+                self._render_login(message),
                 headers=_merge_headers({'Content-Type': 'text/html; charset=utf-8'}, _NO_STORE),
             )
             return
@@ -545,10 +632,22 @@ class SetupServer:
             await self._send(writer, request, '405 Method Not Allowed', '405')
             return
 
+        if remaining_s:
+            await self._send(
+                writer,
+                request,
+                '429 Too Many Requests',
+                self._render_login(f'Too many attempts. Try again in {remaining_s}s.'),
+                headers=_merge_headers({'Content-Type': 'text/html; charset=utf-8'}, _NO_STORE),
+            )
+            return
+
         form = _parse_form(request['body'])
         username = form.get('username', '')
         password = form.get('password', '')
         if username == PORTAL_USERNAME and password == PORTAL_PASSWORD:
+            self._login_attempts = 0
+            self._login_lockout_until = 0
             token = self._new_session()
             await self._redirect(
                 writer,
@@ -558,11 +657,21 @@ class SetupServer:
             )
             return
 
+        self._login_attempts += 1
+        if self._login_attempts >= _MAX_LOGIN_ATTEMPTS:
+            self._login_lockout_until = _ticks_add(_ticks_ms(), _LOGIN_LOCKOUT_MS)
+            self._login_attempts = 0
+            remaining_s = _LOGIN_LOCKOUT_MS // 1000
         await self._send(
             writer,
             request,
             '401 Unauthorized',
-            self._render_login('Invalid injector credentials.', username=username),
+            self._render_login(
+                f'Too many attempts. Try again in {remaining_s}s.'
+                if remaining_s
+                else 'Invalid injector credentials.',
+                username=username,
+            ),
             headers=_merge_headers({'Content-Type': 'text/html; charset=utf-8'}, _NO_STORE),
         )
 
@@ -750,6 +859,85 @@ class SetupServer:
                     'run_history': self._recent_runs(),
                     'validation': validation,
                 },
+            )
+            return
+
+        path = request['path']
+        method = request['method']
+
+        if path == '/api/payloads' and method == 'GET':
+            await self._send_json(
+                writer, request, '200 OK', {'payloads': self._list_payloads()}
+            )
+            return
+
+        if path == '/api/payloads' and method == 'POST':
+            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            name = str(data.get('name', '')).strip()
+            if not _validate_payload_name(name):
+                await self._send_json(
+                    writer, request, '400 Bad Request',
+                    {'message': 'Name must be 1-32 alphanumeric, hyphen, or underscore chars.'},
+                )
+                return
+            content = str(data.get('payload', '')).replace('\r\n', '\n')
+            try:
+                self._write_named_payload(name, content)
+            except OSError as exc:
+                await self._send_json(
+                    writer, request, '500 Internal Server Error',
+                    {'message': f'Write failed: {exc}'},
+                )
+                return
+            await self._send_json(
+                writer, request, '200 OK',
+                {'message': f'Saved as {name}.dd', 'notice': 'success', 'name': name},
+            )
+            return
+
+        if path.startswith('/api/payloads/'):
+            rest = path[len('/api/payloads/'):]
+            if '/' in rest:
+                pname, action = rest.split('/', 1)
+            else:
+                pname, action = rest, ''
+
+            if not _validate_payload_name(pname):
+                await self._send_json(
+                    writer, request, '400 Bad Request', {'message': 'Invalid payload name.'}
+                )
+                return
+
+            if not action and method == 'GET':
+                gc.collect()
+                try:
+                    content = self._read_named_payload(pname)
+                except OSError:
+                    await self._send_json(
+                        writer, request, '404 Not Found', {'message': 'Payload not found.'}
+                    )
+                    return
+                await self._send_json(
+                    writer, request, '200 OK', {'name': pname, 'payload': content}
+                )
+                return
+
+            if not action and method == 'DELETE':
+                try:
+                    self._delete_named_payload(pname)
+                except OSError:
+                    await self._send_json(
+                        writer, request, '404 Not Found', {'message': 'Payload not found.'}
+                    )
+                    return
+                await self._send_json(
+                    writer, request, '200 OK',
+                    {'message': f'Deleted {pname}.dd', 'notice': 'success'},
+                )
+                return
+
+            await self._send_json(
+                writer, request, '405 Method Not Allowed', {'message': 'Method not allowed.'}
             )
             return
 

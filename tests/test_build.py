@@ -42,8 +42,9 @@ def test_build_injects_runtime_config_overrides() -> None:
     assert "AP_SSID: str = 'Studio Pico'" in bundled
     assert "AP_PASSWORD: str = 'keyboard42'" in bundled
     assert 'ALLOW_UNSAFE: bool = True' in bundled
-    assert 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' in payload_seed
-    assert 'https://www.youtube.com/watch?v=dQw4w9WgXcQ' in bundled
+    first_line = payload_seed.splitlines()[0].strip()
+    assert first_line
+    assert first_line in bundled
 
 
 def test_build_emits_ruff_clean_bundle() -> None:
