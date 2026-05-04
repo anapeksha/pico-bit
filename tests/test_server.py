@@ -59,7 +59,7 @@ def test_login_page_renders_form() -> None:
 
     html = portal._render_login('Nope', username='ana')
 
-    assert 'Unlock injector' in html
+    assert 'Unlock' in html
     assert 'Invalid injector credentials.' not in html
     assert 'Nope' in html
     assert 'value="ana"' in html

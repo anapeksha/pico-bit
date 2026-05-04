@@ -873,6 +873,11 @@ a {
 .btn--wide {
   width: 100%;
 }
+.btn__icon {
+  width: 1.1em;
+  height: 1.1em;
+  margin-right: 0.5rem;
+}
 
 /* ─── Login page ─────────────────────────────── */
 .login-body {
