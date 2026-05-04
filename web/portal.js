@@ -188,7 +188,19 @@ function setNotice(message, tone = 'quiet') {
 
 function setBoundText(name, value) {
   document.querySelectorAll(`[data-bind="${name}"]`).forEach((node) => {
-    node.textContent = value;
+    if ('password' in node.dataset) {
+      const toggle = document.getElementById('ap-password-toggle');
+      const isOpen = value === 'Open network';
+      node.dataset.plain = value;
+      node.textContent = isOpen ? value : '•'.repeat(value.length);
+      if (toggle) {
+        toggle.hidden = isOpen;
+        toggle.setAttribute('aria-pressed', 'false');
+        toggle.setAttribute('aria-label', 'Show AP password');
+      }
+    } else {
+      node.textContent = value;
+    }
   });
 }
 
@@ -971,6 +983,22 @@ async function saveAsPayload() {
     uiState.libraryWorking = false;
     updateLibraryControls();
   }
+}
+
+const apPasswordToggle = document.getElementById('ap-password-toggle');
+const apPasswordValue = document.getElementById('ap-password-value');
+
+if (apPasswordToggle && apPasswordValue) {
+  apPasswordToggle.addEventListener('click', () => {
+    const showing = apPasswordToggle.getAttribute('aria-pressed') === 'true';
+    const plain = apPasswordValue.dataset.plain || '';
+    apPasswordValue.textContent = showing ? '•'.repeat(plain.length) : plain;
+    apPasswordToggle.setAttribute('aria-pressed', String(!showing));
+    apPasswordToggle.setAttribute(
+      'aria-label',
+      showing ? 'Show AP password' : 'Hide AP password',
+    );
+  });
 }
 
 if (saveAsBtn) {
