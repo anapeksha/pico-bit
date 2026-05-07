@@ -1,20 +1,34 @@
-[tool.poetry]
+[project]
 name = "pico-bit"
 version = "0.0.1"
 description = "MicroPython DuckyScript runtime and frozen-firmware toolchain for Raspberry Pi Pico 2."
-authors = ["pico-bit contributors"]
-license = "GPL-3.0-only"
+authors = [{ name = "Anapeksha Mukherjee <anapeksha.mukherjee@gmail.com>" }]
+requires-python = ">=3.11,<3.15"
 readme = "README.md"
-package-mode = false
+license = "GPL-3.0-only"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+]
 
-[tool.poetry.dependencies]
-python = ">=3.11,<3.15"
+[dependency-groups]
+dev = [
+    "pytest>=8.4,<10.0",
+    "pyright>=1.1.405,<2",
+    "ruff>=0.14.0,<=0.15.12",
+    "mpy-cross>=1.27.0.post2,<2",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = ">=8.4,<10.0"
-pyright = "^1.1.405"
-ruff = "^0.14.0"
-mpy-cross = "^1.27.0.post2"
+[tool.uv]
+package = false
+default-groups = "all"
+
+[build-system]
+requires = ["uv_build>=0.11.11,<0.12.0"]
+build-backend = "uv_build"
 
 [tool.pytest.ini_options]
 addopts = "-q"
@@ -33,9 +47,7 @@ exclude = [
     "**/.*",
 ]
 stubPath = "stubs"
-executionEnvironments = [
-    { root = ".", extraPaths = ["src"] },
-]
+executionEnvironments = [{ root = ".", extraPaths = ["src"] }]
 
 [tool.ruff]
 line-length = 100
@@ -53,7 +65,3 @@ ignore = ["SIM105"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["ducky"]
-
-[build-system]
-requires = ["poetry-core>=1.9.0"]
-build-backend = "poetry.core.masonry.api"
