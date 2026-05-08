@@ -21,6 +21,15 @@ wheels = [
 ]
 
 [[package]]
+name = "microdot"
+version = "2.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/4f/89/a2cf4a4fe6f5380cd7b11310061d91fa73f975f86ff6bd644b3c895cc4a0/microdot-2.6.1.tar.gz", hash = "sha256:d56824f4510e628dac711c86121957894ceaf833298e4d25f06c29d2b19a1721", size = 90667, upload-time = "2026-04-24T19:15:26.53Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/3e/44cc0939301cd5c7895a2a59cb51a0f5d965b9dfe6460f1a7a08073072e6/microdot-2.6.1-py3-none-any.whl", hash = "sha256:3ba8bab39ae52bca08ee7024dfc71afb7cff089f0b6611d2a1f617abfcee749c", size = 53227, upload-time = "2026-04-24T19:15:25.109Z" },
+]
+
+[[package]]
 name = "mpy-cross"
 version = "1.27.0.post2"
 source = { registry = "https://pypi.org/simple" }
@@ -56,6 +65,9 @@ wheels = [
 name = "pico-bit"
 version = "0.0.1"
 source = { virtual = "." }
+dependencies = [
+    { name = "microdot" },
+]
 
 [package.dev-dependencies]
 dev = [
@@ -66,6 +78,7 @@ dev = [
 ]
 
 [package.metadata]
+requires-dist = [{ name = "microdot", specifier = ">=2.6.1" }]
 
 [package.metadata.requires-dev]
 dev = [

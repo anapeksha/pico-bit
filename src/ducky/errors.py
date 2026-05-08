@@ -30,7 +30,3 @@ class DuckyParseError(DuckyScriptError):
 
 class DuckyRuntimeError(DuckyScriptError):
     pass
-
-
-class UnsafeFeatureError(DuckyRuntimeError):
-    pass

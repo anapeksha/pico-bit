@@ -14,44 +14,36 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        id: setup-python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v4
         with:
           python-version: '3.14'
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          virtualenvs-create: true
-          virtualenvs-in-project: true
-          installer-parallel: true
-
       - name: Install dependencies
-        run: poetry install --no-interaction
+        run: uv sync
 
       - name: Verify embedded web assets
-        run: poetry run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
+        run: uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
 
       - name: Check formatting
-        run: poetry run ruff format --check .
+        run: uv run ruff format --check .
 
       - name: Run lint
-        run: poetry run ruff check build.py deploy.py scripts src tests
+        run: uv run ruff check build.py release.py scripts src tests
 
       - name: Run type checks
-        run: poetry run pyright
+        run: uv run pyright
 
       - name: Run tests
-        run: poetry run pytest
+        run: uv run pytest
 
       - name: Build dev artifacts
-        run: poetry run python build.py
+        run: uv run python build.py
 
       - name: Validate generated artifacts
         run: |
-          poetry run ruff format --check dist/boot.py
-          poetry run ruff check dist/boot.py
-          poetry run python -m py_compile dist/boot.py
+          uv run ruff format --check dist/boot.py
+          uv run ruff check dist/boot.py
+          uv run python -m py_compile dist/boot.py
           test -d dist/mpy
           find dist/mpy -name '*.mpy' | grep -q '.'

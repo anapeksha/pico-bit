@@ -419,10 +419,6 @@ def _build_parser():
         '--ap-password',
         help='Override the access-point password for the generated artifacts.',
     )
-    parser.add_argument(
-        '--allow-unsafe',
-        help='Override allow-unsafe in the generated artifacts (true, false, or default).',
-    )
     parser.add_argument('--portal-auth-enabled')
     parser.add_argument('--portal-username')
     parser.add_argument('--portal-password')

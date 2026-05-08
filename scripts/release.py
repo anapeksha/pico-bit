@@ -138,7 +138,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--repo-url', default=DEFAULT_REPO)
     parser.add_argument('--ap-ssid')
     parser.add_argument('--ap-password')
-    parser.add_argument('--allow-unsafe')
     parser.add_argument('--portal-auth-enabled')
     parser.add_argument('--portal-username')
     parser.add_argument('--portal-password')
@@ -148,7 +147,7 @@ def _build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def run_deploy(argv: list[str] | None = None) -> int:
+def run_release(argv: list[str] | None = None) -> int:
     parser = _build_parser()
     args = parser.parse_args(argv)
 

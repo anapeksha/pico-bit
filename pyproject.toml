@@ -2,7 +2,9 @@
 name = "pico-bit"
 version = "0.0.1"
 description = "MicroPython DuckyScript runtime and frozen-firmware toolchain for Raspberry Pi Pico 2."
-authors = [{ name = "Anapeksha Mukherjee <anapeksha.mukherjee@gmail.com>" }]
+authors = [
+    { name = "Anapeksha Mukherjee", email = "anapeksha.mukherjee@gmail.com>" },
+]
 requires-python = ">=3.11,<3.15"
 readme = "README.md"
 license = "GPL-3.0-only"
@@ -13,6 +15,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
+
+dependencies = ["microdot>=2.6.1"]
 
 [dependency-groups]
 dev = [
@@ -37,7 +41,7 @@ testpaths = ["tests"]
 [tool.pyright]
 typeCheckingMode = "basic"
 reportMissingModuleSource = false
-include = ["build.py", "deploy.py", "scripts", "src", "tests"]
+include = ["build.py", "release.py", "scripts", "src", "tests"]
 exclude = [
     "dist",
     ".venv",
@@ -53,6 +57,7 @@ executionEnvironments = [{ root = ".", extraPaths = ["src"] }]
 line-length = 100
 target-version = "py311"
 src = ["scripts", "src", "tests"]
+exclude = ["src/web_assets.py"]
 extend-exclude = ["dist", "venv", "node_modules"]
 
 [tool.ruff.format]
