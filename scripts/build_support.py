@@ -15,7 +15,6 @@ OverrideValue: TypeAlias = object
 ModuleOverrides: TypeAlias = dict[str, dict[str, OverrideValue]]
 PAYLOAD_SEED_FILE = 'payload.dd'
 OVERRIDE_ENV = {
-    'ALLOW_UNSAFE': 'PICO_BIT_ALLOW_UNSAFE',
     'AP_PASSWORD': 'PICO_BIT_AP_PASSWORD',
     'AP_SSID': 'PICO_BIT_AP_SSID',
     'CORS_ALLOW_CREDENTIALS': 'PICO_BIT_CORS_ALLOW_CREDENTIALS',
@@ -94,7 +93,6 @@ def build_config_overrides(args: argparse.Namespace) -> dict[str, OverrideValue]
         'CORS_ALLOWED_ORIGIN': config_value(args, 'cors_allowed_origin', 'CORS_ALLOWED_ORIGIN'),
     }
     raw_bools = {
-        'ALLOW_UNSAFE': config_value(args, 'allow_unsafe', 'ALLOW_UNSAFE'),
         'PORTAL_AUTH_ENABLED': config_value(
             args,
             'portal_auth_enabled',

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-__all__ = ['run_build', 'run_deploy']
+__all__ = ['run_build', 'run_release']
 
 
 def run_build(*args, **kwargs):
@@ -11,7 +11,7 @@ def run_build(*args, **kwargs):
     return _run_build(*args, **kwargs)
 
 
-def run_deploy(*args, **kwargs):
-    from .deploy import run_deploy as _run_deploy
+def run_release(*args, **kwargs):
+    from .release import run_release as _run_release
 
-    return _run_deploy(*args, **kwargs)
+    return _run_release(*args, **kwargs)

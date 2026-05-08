@@ -16,14 +16,11 @@ from hid import (
 from keyboard_layouts import DEFAULT_LAYOUT_CODE
 
 from .constants import (
-    ALLOW_UNSAFE_DEFAULT,
     NO_DELAY_COMMANDS,
     RANDOM_CHAR_SETS,
     SAFE_INTERNAL_DEFAULTS,
-    UNSAFE_COMMANDS,
-    UNSAFE_INTERNALS,
 )
-from .errors import DuckyRuntimeError, RestartPayload, ReturnSignal, StopPayload, UnsafeFeatureError
+from .errors import DuckyRuntimeError, RestartPayload, ReturnSignal, StopPayload
 from .lexer import split_atoms, tokenize_expression
 from .parser import parse_script
 
@@ -31,9 +28,8 @@ _YIELD_EVERY = 16
 
 
 class DuckyInterpreter:
-    def __init__(self, kbd, allow_unsafe=ALLOW_UNSAFE_DEFAULT, default_layout=DEFAULT_LAYOUT_CODE):
+    def __init__(self, kbd, default_layout=DEFAULT_LAYOUT_CODE):
         self.kbd = kbd
-        self.allow_unsafe = allow_unsafe
         self.default_layout = default_layout
         self.default_delay_ms = 0
         self.default_char_delay_ms = 0
@@ -275,9 +271,6 @@ class DuckyInterpreter:
                 await self._execute_string(str(value), False)
             return
 
-        if command in UNSAFE_COMMANDS:
-            self._raise_unsafe(line_no, command)
-
         if command in (
             'ATTACKMODE',
             'HIDE_PAYLOAD',
@@ -509,15 +502,6 @@ class DuckyInterpreter:
             self.variables[name] = value
 
     def _get_internal(self, name):
-        if (
-            name in UNSAFE_INTERNALS
-            or name.startswith('_CAPSLOCK_')
-            or name.startswith('_NUMLOCK_')
-            or name.startswith('_SCROLLLOCK_')
-            or name.startswith('_EXFIL_')
-        ):
-            self._raise_unsafe(0, name)
-
         if name == '_RANDOM_INT':
             min_value = int(self._internal.get('_RANDOM_MIN', 0))
             max_value = int(self._internal.get('_RANDOM_MAX', 65535))
@@ -528,14 +512,6 @@ class DuckyInterpreter:
         return self._internal.get(name, 0)
 
     def _set_internal(self, name, value):
-        if (
-            name in UNSAFE_INTERNALS
-            or name.startswith('_CAPSLOCK_')
-            or name.startswith('_NUMLOCK_')
-            or name.startswith('_SCROLLLOCK_')
-            or name.startswith('_EXFIL_')
-        ):
-            self._raise_unsafe(0, name)
         self._internal[name] = value
 
     async def _wait_for_button_press(self):
@@ -554,28 +530,16 @@ class DuckyInterpreter:
                 return
         self._led.value(1 if enabled else 0)
 
-    def _raise_unsafe(self, line_no, feature):
-        if not self.allow_unsafe:
-            raise UnsafeFeatureError(
-                line_no, f'{feature} is blocked unless allow_unsafe is enabled'
-            )
-        raise DuckyRuntimeError(line_no, f'{feature} is not implemented on this MicroPython target')
-
 
 async def run_script(
     kbd,
     script: str,
-    allow_unsafe: bool = ALLOW_UNSAFE_DEFAULT,
     default_layout: str = DEFAULT_LAYOUT_CODE,
 ) -> None:
     statements = parse_script(script)
     while True:
         try:
-            interpreter = DuckyInterpreter(
-                kbd,
-                allow_unsafe=allow_unsafe,
-                default_layout=default_layout,
-            )
+            interpreter = DuckyInterpreter(kbd, default_layout=default_layout)
             await interpreter.run(statements)
             return
         except RestartPayload:

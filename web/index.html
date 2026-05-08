@@ -14,19 +14,6 @@
     <nav class="topbar">
       <div class="topbar__brand">Pico Bit</div>
       <div class="topbar__fill"></div>
-      <label class="switch" for="unsafe-toggle">
-        <span class="switch__label">Unsafe mode</span>
-        <input
-          type="checkbox"
-          id="unsafe-toggle"
-          class="switch__input"
-          role="switch"
-          aria-label="Toggle unsafe mode"
-        />
-        <span class="switch__track" aria-hidden="true">
-          <span class="switch__thumb"></span>
-        </span>
-      </label>
     </nav>
 
     <main class="layout">
@@ -103,14 +90,19 @@
           <div class="panel">
             <p class="panel__title">About</p>
             <p class="panel__text">
-              Edit and execute&nbsp;<code>payload.dd</code>&nbsp;directly from
-              the browser. The portal stays live between runs — no reflashing
-              needed.
+              Two-stage drop-shell workflow for authorized security assessment.
             </p>
             <ul class="panel__list">
-              <li>File seeded on first boot if absent</li>
-              <li>Validation runs before every execution</li>
-              <li>HID access serialized — one script at a time</li>
+              <li>
+                <strong>Stage&nbsp;1&nbsp;·&nbsp;Recon</strong> — write
+                DuckyScript to type commands or exfiltrate data from the target
+              </li>
+              <li>
+                <strong>Stage&nbsp;2&nbsp;·&nbsp;Inject</strong> — upload an
+                agent binary, then HID-inject the download stager; the agent
+                POSTs system audit data back as loot
+              </li>
+              <li>Loot panel live-updates as data arrives</li>
             </ul>
           </div>
 
@@ -118,16 +110,8 @@
             <p class="panel__title">Status</p>
             <dl class="meta">
               <div class="meta__row">
-                <span class="meta__label">Payload file</span>
-                <span class="meta__value">payload.dd</span>
-              </div>
-              <div class="meta__row">
                 <span class="meta__label">Seeded this boot</span>
                 <span class="meta__value" data-bind="seeded">No</span>
-              </div>
-              <div class="meta__row">
-                <span class="meta__label">Runtime mode</span>
-                <span class="meta__value" data-bind="mode_label">–</span>
               </div>
               <div class="meta__row">
                 <span class="meta__label">Typing target</span>
@@ -145,139 +129,295 @@
           </div>
         </aside>
 
-        <!-- Middle: editor -->
+        <!-- Middle: editor accordion -->
         <div class="editor">
-          <div class="editor__bar">
-            <div class="editor__file">payload.dd</div>
-            <span class="badge" data-bind="payload_state">Saved on device</span>
-          </div>
-
-          <div
-            class="notice notice--hidden"
-            id="notice"
-            role="status"
-            aria-live="polite"
-            aria-atomic="true"
-          ></div>
-
-          <div class="editor__stage">
-            <div
-              class="editor__gutter"
-              id="editor-gutter"
-              aria-hidden="true"
-            ></div>
-            <div class="editor__surface">
-              <div
-                class="editor__markers"
-                id="editor-markers"
+          <!-- Section A: Ducky Editor (default open) -->
+          <section
+            class="accordion__section accordion__section--open"
+            id="accordion-ducky"
+          >
+            <button
+              class="accordion__header"
+              id="accordion-ducky-btn"
+              type="button"
+              aria-expanded="true"
+              aria-controls="accordion-ducky-body"
+            >
+              <span class="accordion__title">Ducky Editor</span>
+              <span class="badge" data-bind="payload_state"
+                >Saved on device</span
+              >
+              <svg
+                class="accordion__chevron"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
                 aria-hidden="true"
-              ></div>
-              <div
-                class="editor__highlight"
-                id="editor-highlight"
-                aria-hidden="true"
-              ></div>
-              <label for="payload" class="sr-only">Payload script</label>
-              <textarea
-                id="payload"
-                class="editor__input"
-                spellcheck="false"
-                autocapitalize="off"
-                autocomplete="off"
-                autocorrect="off"
-                placeholder="REM Write your payload here"
-                wrap="off"
-                aria-describedby="editor-status"
-              ></textarea>
-            </div>
-          </div>
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
 
-          <div class="editor__footer">
-            <div class="editor__status" id="editor-status">
-              <span
-                class="badge"
-                data-bind="validation_badge"
+            <div class="accordion__body" id="accordion-ducky-body">
+              <div class="editor__bar">
+                <div class="editor__file">payload.dd</div>
+              </div>
+
+              <div
+                class="notice notice--hidden"
+                id="notice"
+                role="status"
                 aria-live="polite"
                 aria-atomic="true"
-                >Checking…</span
-              >
-              <span class="editor__status-text" data-bind="validation_summary">
-                Dry run runs before save and execution.
-              </span>
-              <button
-                class="editor__info-icon"
-                id="info-icon"
-                type="button"
-                aria-label="Show validation errors"
-                style="display: none"
-              >
-                <svg
-                  viewBox="0 0 24 24"
-                  width="14"
-                  height="14"
-                  fill="none"
-                  stroke="currentcolor"
-                  stroke-width="2.4"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <line x1="12" y1="8" x2="12" y2="12"></line>
-                  <line x1="12" y1="16" x2="12.01" y2="16"></line>
-                </svg>
-                <span data-bind="info_count">View issues</span>
-              </button>
+              ></div>
+
+              <div class="editor__stage">
+                <div
+                  class="editor__gutter"
+                  id="editor-gutter"
+                  aria-hidden="true"
+                ></div>
+                <div class="editor__surface">
+                  <div
+                    class="editor__markers"
+                    id="editor-markers"
+                    aria-hidden="true"
+                  ></div>
+                  <div
+                    class="editor__highlight"
+                    id="editor-highlight"
+                    aria-hidden="true"
+                  ></div>
+                  <label for="payload" class="sr-only">Payload script</label>
+                  <textarea
+                    id="payload"
+                    class="editor__input"
+                    spellcheck="false"
+                    autocapitalize="off"
+                    autocomplete="off"
+                    autocorrect="off"
+                    placeholder="REM Write your payload here"
+                    wrap="off"
+                    aria-describedby="editor-status"
+                  ></textarea>
+                </div>
+              </div>
+
+              <div class="editor__footer">
+                <div class="editor__status" id="editor-status">
+                  <span
+                    class="badge"
+                    data-bind="validation_badge"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    >Checking…</span
+                  >
+                  <span
+                    class="editor__status-text"
+                    data-bind="validation_summary"
+                  >
+                    Dry run runs before save and execution.
+                  </span>
+                  <button
+                    class="editor__info-icon"
+                    id="info-icon"
+                    type="button"
+                    aria-label="Show validation errors"
+                    style="display: none"
+                  >
+                    <svg
+                      viewBox="0 0 24 24"
+                      width="14"
+                      height="14"
+                      fill="none"
+                      stroke="currentcolor"
+                      stroke-width="2.4"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                    >
+                      <circle cx="12" cy="12" r="10"></circle>
+                      <line x1="12" y1="8" x2="12" y2="12"></line>
+                      <line x1="12" y1="16" x2="12.01" y2="16"></line>
+                    </svg>
+                    <span data-bind="info_count">View issues</span>
+                  </button>
+                </div>
+                <div class="editor__actions">
+                  <button class="btn btn--ghost" id="refresh" type="button">
+                    Reload
+                  </button>
+                  <button class="btn btn--ghost" id="save" type="button">
+                    Save
+                  </button>
+                  <button class="btn btn--primary" id="run" type="button">
+                    Save &amp; run
+                  </button>
+                </div>
+              </div>
             </div>
-            <div class="editor__actions">
-              <button class="btn btn--ghost" id="refresh" type="button">
-                Reload
-              </button>
-              <button class="btn btn--ghost" id="save" type="button">
-                Save
-              </button>
-              <button class="btn btn--primary" id="run" type="button">
-                Save &amp; run
-              </button>
+          </section>
+
+          <!-- Section B: Binary Armory -->
+          <section class="accordion__section" id="accordion-armory">
+            <button
+              class="accordion__header"
+              id="accordion-armory-btn"
+              type="button"
+              aria-expanded="false"
+              aria-controls="accordion-armory-body"
+            >
+              <span class="accordion__title">Binary Armory</span>
+              <span class="badge badge--accent" id="armory-badge" hidden></span>
+              <svg
+                class="accordion__chevron"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="6 9 12 15 18 9"></polyline>
+              </svg>
+            </button>
+
+            <div
+              class="accordion__body accordion__body--scroll"
+              id="accordion-armory-body"
+            >
+              <!-- Upload zone -->
+              <div
+                class="upload-zone"
+                id="upload-zone"
+                role="button"
+                tabindex="0"
+                aria-label="Upload binary file"
+              >
+                <input
+                  type="file"
+                  id="binary-file-input"
+                  class="upload-zone__input"
+                  accept=".exe,.bin,.elf,.sh,.bat,.ps1,.cmd"
+                  aria-hidden="true"
+                  tabindex="-1"
+                />
+                <div class="upload-zone__prompt" id="upload-zone-prompt">
+                  <svg
+                    class="upload-zone__icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <polyline points="16 16 12 12 8 16"></polyline>
+                    <line x1="12" y1="12" x2="12" y2="21"></line>
+                    <path
+                      d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"
+                    ></path>
+                  </svg>
+                  <p class="upload-zone__text">
+                    Drag &amp; drop or click to upload
+                  </p>
+                  <p class="upload-zone__hint">Replaces current binary slot</p>
+                </div>
+                <div class="upload-zone__file" id="upload-file-display" hidden>
+                  <svg
+                    class="upload-zone__file-icon"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="1.8"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"
+                    ></path>
+                    <polyline points="13 2 13 9 20 9"></polyline>
+                  </svg>
+                  <span
+                    class="upload-zone__filename"
+                    id="upload-filename"
+                  ></span>
+                  <span class="upload-zone__size" id="upload-filesize"></span>
+                </div>
+              </div>
+
+              <!-- Upload progress -->
+              <div class="upload-progress" id="upload-progress" hidden>
+                <div
+                  class="upload-progress__bar"
+                  id="upload-progress-bar"
+                  style="width: 0%"
+                ></div>
+              </div>
+
+              <!-- Armory inline notice -->
+              <div
+                class="armory__notice notice notice--hidden"
+                id="armory-notice"
+                role="status"
+                aria-live="polite"
+                aria-atomic="true"
+              ></div>
+
+              <!-- OS target + actions -->
+              <div class="armory__controls">
+                <div class="field">
+                  <label class="field__label" for="inject-os">Target OS</label>
+                  <select
+                    id="inject-os"
+                    class="field__input field__input--select"
+                  >
+                    <option value="windows">Windows</option>
+                    <option value="linux">Linux</option>
+                    <option value="macos">macOS</option>
+                  </select>
+                </div>
+                <div class="armory__actions">
+                  <button
+                    class="btn btn--ghost"
+                    id="upload-binary-btn"
+                    type="button"
+                    disabled
+                  >
+                    Upload
+                  </button>
+                  <button
+                    class="btn btn--primary"
+                    id="inject-binary-btn"
+                    type="button"
+                    disabled
+                  >
+                    Inject
+                  </button>
+                </div>
+              </div>
+
+              <!-- Stager snippet preview -->
+              <div class="armory__snippet" id="armory-snippet" hidden>
+                <p class="armory__snippet-label">
+                  Stager command that will be typed:
+                </p>
+                <pre
+                  class="armory__snippet-code"
+                  id="armory-snippet-code"
+                ></pre>
+              </div>
             </div>
-          </div>
+          </section>
         </div>
 
         <!-- Right rail: about + layout + recent runs -->
         <aside class="sidebar sidebar--right">
-          <div class="panel">
-            <p class="panel__title">Library</p>
-            <p class="panel__text">Repository for custom payloads</p>
-            <div
-              id="payload-library"
-              class="library"
-              aria-label="Saved payloads"
-              aria-live="polite"
-            ></div>
-            <div class="library__save">
-              <label class="sr-only" for="save-as-name">Payload name</label>
-              <input
-                type="text"
-                id="save-as-name"
-                class="field__input"
-                placeholder="payload-name"
-                maxlength="48"
-                autocomplete="off"
-                autocorrect="off"
-                autocapitalize="off"
-                spellcheck="false"
-              />
-              <div>
-                <button
-                  class="btn btn--ghost btn--md"
-                  id="save-as-btn"
-                  type="button"
-                >
-                  Save as
-                </button>
-              </div>
-            </div>
-          </div>
-
           <div class="panel">
             <p class="panel__title">Layout</p>
             <p class="panel__text">Tell how the host interprets typed text.</p>
@@ -304,6 +444,22 @@
             <p class="panel__hint" data-bind="keyboard_layout_hint">
               Used for typed text and remembered on the device.
             </p>
+          </div>
+
+          <div class="panel">
+            <p class="panel__title">Loot</p>
+            <div id="loot-body">
+              <p class="history__empty">No loot collected yet.</p>
+            </div>
+            <div class="loot__actions" id="loot-actions" hidden>
+              <button
+                class="btn btn--ghost btn--wide"
+                id="loot-download"
+                type="button"
+              >
+                Download loot.json
+              </button>
+            </div>
           </div>
 
           <div class="panel">

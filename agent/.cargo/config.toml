@@ -1,0 +1,27 @@
+# Cross-compilation linkers for local development.
+#
+# macOS (homebrew):
+#   brew install mingw-w64                                    # x86_64 GNU Windows
+#   brew install filosottile/musl-cross/musl-cross            # Linux musl
+#   brew install llvm-mingw  (or download mstorsjo/llvm-mingw)# gnullvm Windows + arm64
+#
+# CI uses cargo-zigbuild + Zig for Windows and Linux targets — no system
+# cross-compiler required there.
+
+# ── Windows GNU (homebrew mingw-w64) ──────────────────────────────────────────
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32-gcc"
+
+# ── Windows UCRT/LLVM (llvm-mingw, used in CI via cargo-zigbuild) ─────────────
+[target.x86_64-pc-windows-gnullvm]
+linker = "x86_64-w64-mingw32-clang"
+
+[target.aarch64-pc-windows-gnullvm]
+linker = "aarch64-w64-mingw32-clang"
+
+# ── Linux musl (homebrew musl-cross on macOS) ─────────────────────────────────
+[target.x86_64-unknown-linux-musl]
+linker = "x86_64-linux-musl-gcc"
+
+[target.aarch64-unknown-linux-musl]
+linker = "aarch64-linux-musl-gcc"

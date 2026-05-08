@@ -31,8 +31,6 @@ def test_build_injects_runtime_config_overrides() -> None:
             'Studio Pico',
             '--ap-password',
             'keyboard42',
-            '--allow-unsafe',
-            'true',
         ],
         cwd=root,
         check=True,
@@ -41,7 +39,6 @@ def test_build_injects_runtime_config_overrides() -> None:
     bundled = (dist / 'boot.py').read_text(encoding='utf-8')
     assert "AP_SSID: str = 'Studio Pico'" in bundled
     assert "AP_PASSWORD: str = 'keyboard42'" in bundled
-    assert 'ALLOW_UNSAFE: bool = True' in bundled
     first_line = payload_seed.splitlines()[0].strip()
     assert first_line
     assert first_line in bundled
@@ -73,5 +70,5 @@ def test_build_emits_compiled_mpy_tree() -> None:
     assert 'boot.mpy' in compiled
     assert 'main.mpy' in compiled
     assert 'ducky/analysis.mpy' in compiled
-    assert 'server.mpy' in compiled
+    assert 'server/__init__.mpy' in compiled
     assert 'ducky/runtime.mpy' in compiled

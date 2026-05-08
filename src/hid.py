@@ -519,6 +519,7 @@ class HIDKeyboard:
             await sleep_ms(2)
             elapsed += 2
 
+
 def _mod_to_keycodes(modifier):
     result = []
     if modifier & 0x01:

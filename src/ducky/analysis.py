@@ -1,12 +1,10 @@
 import re
 
-from .constants import UNSAFE_COMMANDS, UNSAFE_INTERNALS
 from .errors import DuckyScriptError
 from .lexer import LexedLine, lex_script
 from .parser import parse_script
 
 _COLUMN_RE = re.compile(r' at column (\d+)$')
-_UNSAFE_INTERNAL_PREFIXES = ('_CAPSLOCK_', '_NUMLOCK_', '_SCROLLLOCK_', '_EXFIL_')
 _MULTILINE_ENDINGS = {
     'STRING': 'END_STRING',
     'STRINGLN': 'END_STRINGLN',
@@ -17,8 +15,6 @@ _MULTILINE_ENDINGS = {
 Statement = dict
 Branch = dict
 Diagnostic = dict
-UnsafeHit = dict
-UnsafeCommand = dict
 ParsedCommand = dict
 AnalysisResult = dict
 
@@ -92,123 +88,8 @@ def _parse_error_diagnostic(
     }
 
 
-def _unsafe_variable_hint(allow_unsafe: bool) -> str:
-    if allow_unsafe:
-        return 'This internal reflects host state. Review it carefully before running.'
-    return 'Turn on unsafe mode or remove this host-state dependent internal.'
-
-
-def _unsafe_command_hint(allow_unsafe: bool) -> str:
-    if allow_unsafe:
-        return 'This command can affect host state or device behavior. Review it carefully.'
-    return 'Turn on unsafe mode or remove this command before saving or running.'
-
-
-def _unsafe_variable_hits(
-    text: str,
-    *,
-    line_no: int,
-    allow_unsafe: bool,
-) -> list[dict]:
-    hits: list[UnsafeHit] = []
-    index = 0
-
-    while index < len(text):
-        if text[index] != '$':
-            index += 1
-            continue
-
-        if index + 1 < len(text) and text[index + 1] == '$':
-            index += 2
-            continue
-
-        start = index + 1
-        if start >= len(text) or not (text[start].isalpha() or text[start] == '_'):
-            index += 1
-            continue
-
-        end = start + 1
-        while end < len(text) and (text[end].isalnum() or text[end] == '_'):
-            end += 1
-
-        name = text[start:end]
-        if name in UNSAFE_INTERNALS or name.startswith(_UNSAFE_INTERNAL_PREFIXES):
-            severity = 'warning' if allow_unsafe else 'error'
-            hits.append(
-                {
-                    'code': 'unsafe_internal',
-                    'end_column': end + 1,
-                    'hint': _unsafe_variable_hint(allow_unsafe),
-                    'line': line_no,
-                    'message': f'${name} is gated behind unsafe mode.',
-                    'severity': severity,
-                    'column': index + 1,
-                    'command': f'${name}',
-                    'allowed': allow_unsafe,
-                }
-            )
-
-        index = end
-
-    return hits
-
-
-def _unsafe_hits(script: str, *, allow_unsafe: bool) -> list[dict]:
-    lines = lex_script(script)
-    hits: list[UnsafeHit] = []
-    multiline_end = ''
-
-    for line in lines:
-        if line.is_blank or line.is_comment:
-            continue
-
-        if multiline_end:
-            if line.upper == multiline_end:
-                multiline_end = ''
-                continue
-            hits.extend(
-                _unsafe_variable_hits(
-                    line.raw,
-                    line_no=line.line_no,
-                    allow_unsafe=allow_unsafe,
-                )
-            )
-            continue
-
-        multiline_end = _MULTILINE_ENDINGS.get(line.upper, '')
-        if multiline_end:
-            continue
-
-        if line.keyword in UNSAFE_COMMANDS:
-            start_column, end_column = _first_token_span(line.raw)
-            severity = 'warning' if allow_unsafe else 'error'
-            hits.append(
-                {
-                    'code': 'unsafe_command',
-                    'end_column': end_column,
-                    'hint': _unsafe_command_hint(allow_unsafe),
-                    'line': line.line_no,
-                    'message': f'{line.keyword} is gated behind unsafe mode.',
-                    'severity': severity,
-                    'column': start_column,
-                    'command': line.keyword,
-                    'allowed': allow_unsafe,
-                }
-            )
-
-        hits.extend(
-            _unsafe_variable_hits(
-                line.raw,
-                line_no=line.line_no,
-                allow_unsafe=allow_unsafe,
-            )
-        )
-
-    return hits
-
-
 def _layout_management_hits(lines: list[LexedLine]) -> list[dict]:
-    hits: list[UnsafeHit] = []
+    hits: list[dict] = []
     for line in lines:
         if line.is_blank or line.is_comment:
             continue
@@ -374,14 +255,12 @@ def _detail(*, errors: int, warnings: int) -> str:
     return 'No blocking issues detected. Save and run are available.'
 
 
-def _counts_label(*, commands: int, errors: int, warnings: int, unsafe: int) -> str:
+def _counts_label(*, commands: int, errors: int, warnings: int) -> str:
     parts = [f'{commands} commands']
     if errors:
         parts.append(f'{errors} errors')
     elif warnings:
         parts.append(f'{warnings} warnings')
-    if unsafe:
-        parts.append(f'{unsafe} unsafe')
     return ' · '.join(parts)
 
 
@@ -393,7 +272,7 @@ def _badge(*, errors: int, warnings: int) -> tuple[str, str]:
     return 'Ready', 'success'
 
 
-def analyze_script(script: str, *, allow_unsafe: bool) -> dict:
+def analyze_script(script: str) -> dict:
     normalized = script.replace('\r\n', '\n').replace('\r', '\n')
     line_total = _line_count(normalized)
 
@@ -411,7 +290,7 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict:
             'can_run': False,
             'can_save': False,
             'command_count': 0,
-            'counts_label': _counts_label(commands=0, errors=1, warnings=0, unsafe=0),
+            'counts_label': _counts_label(commands=0, errors=1, warnings=0),
             'diagnostics': diagnostics,
             'detail': detail,
             'error_count': 1,
@@ -419,8 +298,6 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict:
             'notice': notice,
             'parsed_commands': [],
             'summary': summary,
-            'unsafe_commands': [],
-            'unsafe_count': 0,
             'warning_count': 0,
         }
 
@@ -440,7 +317,7 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict:
             'can_run': False,
             'can_save': False,
             'command_count': 0,
-            'counts_label': _counts_label(commands=0, errors=1, warnings=0, unsafe=0),
+            'counts_label': _counts_label(commands=0, errors=1, warnings=0),
             'diagnostics': diagnostics,
             'detail': detail,
             'error_count': 1,
@@ -448,17 +325,13 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict:
             'notice': notice,
             'parsed_commands': [],
             'summary': summary,
-            'unsafe_commands': [],
-            'unsafe_count': 0,
             'warning_count': 0,
         }
 
     parsed_commands: list[ParsedCommand] = []
     _collect_commands(statements, commands=parsed_commands)
 
-    unsafe_hits = _unsafe_hits(normalized, allow_unsafe=allow_unsafe)
-    layout_hits = _layout_management_hits(lexed_lines)
-    combined_hits = unsafe_hits + layout_hits
+    combined_hits = _layout_management_hits(lexed_lines)
     diagnostics: list[Diagnostic] = [
         {
             'code': hit['code'],
@@ -470,17 +343,6 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict:
             'severity': hit['severity'],
         }
         for hit in combined_hits
-    ]
-    unsafe_commands: list[UnsafeCommand] = [
-        {
-            'allowed': hit['allowed'],
-            'command': hit['command'],
-            'hint': hit['hint'],
-            'line': hit['line'],
-            'message': hit['message'],
-            'severity': hit['severity'],
-        }
-        for hit in unsafe_hits
     ]
     error_count = sum(1 for diag in diagnostics if diag['severity'] == 'error')
     warning_count = sum(1 for diag in diagnostics if diag['severity'] == 'warning')
@@ -503,7 +365,6 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict:
             commands=len(parsed_commands),
             errors=error_count,
             warnings=warning_count,
-            unsafe=len(unsafe_commands),
         ),
         'diagnostics': diagnostics,
         'detail': detail,
@@ -512,7 +373,5 @@ def analyze_script(script: str, *, allow_unsafe: bool) -> dict:
         'notice': notice,
         'parsed_commands': parsed_commands,
         'summary': summary,
-        'unsafe_commands': unsafe_commands,
-        'unsafe_count': len(unsafe_commands),
         'warning_count': warning_count,
     }

