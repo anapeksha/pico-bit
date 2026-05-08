@@ -2,7 +2,9 @@
 name = "pico-bit"
 version = "0.0.1"
 description = "MicroPython DuckyScript runtime and frozen-firmware toolchain for Raspberry Pi Pico 2."
-authors = [{ name = "Anapeksha Mukherjee <anapeksha.mukherjee@gmail.com>" }]
+authors = [
+    { name = "Anapeksha Mukherjee", email = "anapeksha.mukherjee@gmail.com>" },
+]
 requires-python = ">=3.11,<3.15"
 readme = "README.md"
 license = "GPL-3.0-only"
@@ -13,6 +15,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
+
 dependencies = ["microdot>=2.6.1"]
 
 [dependency-groups]
