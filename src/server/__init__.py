@@ -136,9 +136,9 @@ class SetupServer(_Service):
             return Response(
                 b'',
                 303,
-                headers={
+                headers={  # type: ignore[arg-type]
                     'Location': '/',
-                    'Set-Cookie': self._session_cookie(token),
+                    'Set-Cookie': [self._session_cookie(token)],
                     'Cache-Control': 'no-store',
                 },
             )
@@ -327,7 +327,7 @@ class SetupServer(_Service):
 SERVER = SetupServer()
 
 
-async def start() -> None:
+async def start():
     await SERVER.start()
     if SERVER._server is not None:
         await maybe_wait_closed(SERVER._server)

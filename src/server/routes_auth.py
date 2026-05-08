@@ -8,9 +8,9 @@ async def handle_logout(portal, request):
     return Response(
         b'',
         303,
-        headers={
+        headers={  # type: ignore[arg-type]
             'Location': '/login',
-            'Set-Cookie': portal._expired_session_cookie(),
+            'Set-Cookie': [portal._expired_session_cookie()],
             'Cache-Control': 'no-store',
         },
     )
