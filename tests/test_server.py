@@ -771,6 +771,34 @@ def test_api_loot_get_returns_404_when_missing(tmp_path, monkeypatch) -> None:
     assert '404' in writer.text()
 
 
+def test_api_loot_download_returns_attachment_header(tmp_path, monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'loot.json').write_text('{"type":"recon"}')
+
+    req = _make_request('GET', '/api/loot/download')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
+
+    assert '200 OK' in writer.text()
+    assert 'attachment' in writer.text()
+    assert 'loot.json' in writer.text()
+    assert 'recon' in writer.text()
+
+
+def test_api_loot_download_returns_404_when_missing(tmp_path, monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.chdir(tmp_path)
+
+    req = _make_request('GET', '/api/loot/download')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
+
+    assert '404' in writer.text()
+
+
 # ── Binary upload stream ──────────────────────────────────────────────────────
 
 
@@ -862,3 +890,82 @@ def test_serve_payload_404_when_missing(tmp_path, monkeypatch) -> None:
     asyncio.run(portal._serve_payload(writer, req))
 
     assert '404' in writer.text()
+
+
+def test_serve_payload_requires_no_auth(tmp_path, monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'static').mkdir()
+    (tmp_path / 'static' / 'payload.bin').write_bytes(b'\xde\xad\xbe\xef')
+
+    req = _make_request('GET', '/static/payload.bin')
+    writer = FakeWriter()
+    asyncio.run(portal._dispatch(req, writer))
+
+    assert b'\xde\xad\xbe\xef' in writer.buffer
+
+
+# ── Inject binary ─────────────────────────────────────────────────────────────
+
+
+def test_inject_binary_returns_404_when_no_binary_staged(tmp_path, monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.chdir(tmp_path)
+
+    req = _make_request('POST', '/api/inject_binary', body=b'{"os":"windows"}')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
+
+    assert '404' in writer.text()
+
+
+def test_inject_binary_runs_stager_and_returns_run_history(tmp_path, monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'static').mkdir()
+    (tmp_path / 'static' / 'payload.bin').write_bytes(b'\x7fELF')
+
+    scripts_run: list[str] = []
+
+    async def fake_run(script: str) -> tuple[str, str]:
+        scripts_run.append(script)
+        return ('Payload executed.', 'success')
+
+    monkeypatch.setattr(portal, '_run_payload', fake_run)
+
+    req = _make_request('POST', '/api/inject_binary', body=b'{"os":"windows"}')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
+
+    assert '200 OK' in writer.text()
+    assert scripts_run
+    assert 'GUI r' in scripts_run[0]
+    assert '/static/payload.bin' in scripts_run[0]
+    body = json.loads(writer.text().split('\r\n\r\n', 1)[1])
+    assert 'run_history' in body
+
+
+def test_inject_binary_defaults_to_windows_when_os_omitted(tmp_path, monkeypatch) -> None:
+    portal = server.SetupServer()
+    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / 'static').mkdir()
+    (tmp_path / 'static' / 'payload.bin').write_bytes(b'\x7fELF')
+
+    scripts_run: list[str] = []
+
+    async def fake_run(script: str) -> tuple[str, str]:
+        scripts_run.append(script)
+        return ('Payload executed.', 'success')
+
+    monkeypatch.setattr(portal, '_run_payload', fake_run)
+
+    req = _make_request('POST', '/api/inject_binary', body=b'{}')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
+
+    assert scripts_run
+    assert 'pico_agent.exe' in scripts_run[0]
