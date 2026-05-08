@@ -13,6 +13,9 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
+dependencies = [
+    "microdot>=2.6.1",
+]
 
 [dependency-groups]
 dev = [
