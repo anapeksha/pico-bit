@@ -13,16 +13,10 @@ from status_led import STATUS_LED
 
 
 async def api_bootstrap(portal, request):
-    guard = portal._auth_guard(request)
-    if guard:
-        return guard
     return portal._json_response(portal._bootstrap_state())
 
 
 async def api_payload(portal, request):
-    guard = portal._auth_guard(request)
-    if guard:
-        return guard
     data = json.loads((request.body or b'').decode('utf-8', 'ignore') or '{}')
     payload = str(data.get('payload', '')).replace('\r\n', '\n')
     validation = portal._validation_state(payload)
@@ -38,9 +32,6 @@ async def api_payload(portal, request):
 
 
 async def api_validate(portal, request):
-    guard = portal._auth_guard(request)
-    if guard:
-        return guard
     data = json.loads((request.body or b'').decode('utf-8', 'ignore') or '{}')
     payload = str(data.get('payload', '')).replace('\r\n', '\n')
     validation = portal._validation_state(payload)
@@ -54,9 +45,6 @@ async def api_validate(portal, request):
 
 
 async def api_keyboard_layout(portal, request):
-    guard = portal._auth_guard(request)
-    if guard:
-        return guard
     data = json.loads((request.body or b'').decode('utf-8', 'ignore') or '{}')
     requested_os = data.get('os')
     requested_layout = data.get('layout')
@@ -97,9 +85,6 @@ async def api_keyboard_layout(portal, request):
 
 
 async def api_run(portal, request):
-    guard = portal._auth_guard(request)
-    if guard:
-        return guard
     data = json.loads((request.body or b'').decode('utf-8', 'ignore') or '{}')
     payload = str(data.get('payload', portal._read_payload())).replace('\r\n', '\n')
     validation = portal._validation_state(payload)

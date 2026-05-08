@@ -2,9 +2,8 @@ import gc
 import json
 import os
 
-from microdot.microdot import Response
-
 from .constants import _FILE_CHUNK_SIZE, _PAYLOAD_BIN
+from .micro_server import Response
 
 
 async def serve_payload(portal, request):
@@ -38,10 +37,6 @@ async def serve_payload(portal, request):
 
 
 async def upload_binary(portal, request):
-    guard = portal._auth_guard(request)
-    if guard:
-        return guard
-
     content_length = int(request.headers.get('Content-Length', 0) or 0)
     if not content_length:
         return portal._json_response({'message': 'No content received.', 'notice': 'error'}, 400)
@@ -80,9 +75,6 @@ async def upload_binary(portal, request):
 
 
 async def inject_binary(portal, request):
-    guard = portal._auth_guard(request)
-    if guard:
-        return guard
     if not portal._has_binary():
         return portal._json_response({'message': 'No binary uploaded yet.', 'notice': 'error'}, 404)
     try:

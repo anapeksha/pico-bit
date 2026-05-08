@@ -1,10 +1,6 @@
 import asyncio  # noqa: F401  — kept for monkeypatch.setattr(server.asyncio, ...) in tests
-import binascii
-import os
 
 import network
-from microdot import Microdot
-from microdot.microdot import Request, Response
 
 from device_config import (
     AP_PASSWORD,
@@ -29,11 +25,19 @@ from .constants import (
     _USB_ENUM_TIMEOUT_MS,  # noqa: F401  — read by tests as server._USB_ENUM_TIMEOUT_MS
     PORT,
     _parse_form,
-    _ticks_add,
-    _ticks_diff,
-    _ticks_ms,
 )
+from .micro_server import MicroServer, Request, Response, SessionAuth
 from .service import _Service
+
+
+def _secure_compare(a, b):
+    if len(a) != len(b):
+        return False
+    result = 0
+    for ca, cb in zip(a, b):  # noqa: B905
+        result |= ord(ca) ^ ord(cb)
+    return result == 0
+
 
 __all__ = ['SetupServer', 'SERVER', 'start']
 
@@ -43,7 +47,7 @@ Request.max_content_length = _MAX_BINARY_SIZE
 class SetupServer(_Service):
     def __init__(self, port=PORT):
         self.port = port
-        self.app = Microdot()
+        self.app = MicroServer()
         self._ap = None
         self._ap_ip = _DEFAULT_AP_IP
         self._kbd = None
@@ -54,59 +58,35 @@ class SetupServer(_Service):
         self._run_history = []
         self._run_sequence = 0
         self._server = None
-        self._sessions = {}
-        self._session_timestamps = {}
-        self._login_attempts = 0
-        self._login_lockout_until = 0
         self._wdt = None
+        self.auth = SessionAuth(
+            cookie_name=_SESSION_COOKIE,
+            timeout_ms=_SESSION_TIMEOUT_MS,
+            max_attempts=_MAX_LOGIN_ATTEMPTS,
+            lockout_ms=_LOGIN_LOCKOUT_MS,
+            enabled_fn=lambda: PORTAL_AUTH_ENABLED and bool(PORTAL_PASSWORD),
+        )
+
+        @self.auth.authenticate
+        def _verify(username, password):
+            return _secure_compare(username, PORTAL_USERNAME) and _secure_compare(
+                password, PORTAL_PASSWORD
+            )
+
         self._register_routes()
 
-    # ── Auth helpers (reference patchable module globals) ────────────────────
-
-    def _auth_enabled(self):
-        return PORTAL_AUTH_ENABLED and bool(PORTAL_PASSWORD)
-
-    def _is_authorized(self, request):
-        if not self._auth_enabled():
-            return True
-        token = request.cookies.get(_SESSION_COOKIE, '')
-        if token not in self._sessions:
-            return False
-        last = self._session_timestamps.get(token, _ticks_ms())
-        if _ticks_diff(_ticks_ms(), last) > _SESSION_TIMEOUT_MS:
-            self._sessions.pop(token, None)
-            self._session_timestamps.pop(token, None)
-            return False
-        self._session_timestamps[token] = _ticks_ms()
-        return True
-
-    def _new_session(self):
-        token = binascii.hexlify(os.urandom(16)).decode()
-        self._sessions[token] = PORTAL_USERNAME
-        self._session_timestamps[token] = _ticks_ms()
-        return token
-
-    def _lockout_remaining_s(self):
-        if not self._login_lockout_until:
-            return 0
-        remaining = _ticks_diff(self._login_lockout_until, _ticks_ms())
-        if remaining <= 0:
-            self._login_lockout_until = 0
-            return 0
-        return remaining // 1000 + 1
-
-    # ── Login handler (references PORTAL_USERNAME, PORTAL_PASSWORD, _ticks_*) ─
+    # ── Login handler ────────────────────────────────────────────────────────
 
     async def _handle_login(self, request):
-        if not self._auth_enabled():
+        if not self.auth.enabled:
             return Response(b'', 303, headers={'Location': '/'})
 
-        remaining_s = self._lockout_remaining_s()
+        remaining_s = self.auth.lockout_remaining_s()
 
         if request.method == 'GET':
             msg = f'Too many attempts. Try again in {remaining_s}s.' if remaining_s else ''
             return Response(
-                self._render_login(msg),
+                self._render_login(msg).encode('utf-8'),
                 200,
                 headers={
                     'Content-Type': 'text/html; charset=utf-8',
@@ -117,7 +97,9 @@ class SetupServer(_Service):
 
         if remaining_s:
             return Response(
-                self._render_login(f'Too many attempts. Try again in {remaining_s}s.'),
+                self._render_login(f'Too many attempts. Try again in {remaining_s}s.').encode(
+                    'utf-8'
+                ),
                 429,
                 headers={
                     'Content-Type': 'text/html; charset=utf-8',
@@ -129,32 +111,29 @@ class SetupServer(_Service):
         form = _parse_form(request.body or b'')
         username = form.get('username', '')
         password = form.get('password', '')
-        if username == PORTAL_USERNAME and password == PORTAL_PASSWORD:
-            self._login_attempts = 0
-            self._login_lockout_until = 0
-            token = self._new_session()
+        if await self.auth.verify(username, password):
+            self.auth.reset_attempts()
+            token = self.auth.login(username)
             return Response(
                 b'',
                 303,
                 headers={  # type: ignore[arg-type]
                     'Location': '/',
-                    'Set-Cookie': [self._session_cookie(token)],
+                    'Set-Cookie': [self.auth.session_cookie(token)],
                     'Cache-Control': 'no-store',
                 },
             )
 
-        self._login_attempts += 1
-        if self._login_attempts >= _MAX_LOGIN_ATTEMPTS:
-            self._login_lockout_until = _ticks_add(_ticks_ms(), _LOGIN_LOCKOUT_MS)
-            self._login_attempts = 0
-            remaining_s = _LOGIN_LOCKOUT_MS // 1000
+        lockout_s = self.auth.record_failed_attempt()
+        if lockout_s:
+            remaining_s = lockout_s
         return Response(
             self._render_login(
                 f'Too many attempts. Try again in {remaining_s}s.'
                 if remaining_s
                 else 'Invalid injector credentials.',
                 username=username,
-            ),
+            ).encode('utf-8'),
             401,
             headers={
                 'Content-Type': 'text/html; charset=utf-8',
@@ -163,7 +142,7 @@ class SetupServer(_Service):
             },
         )
 
-    # ── AP (references AP_PASSWORD, AP_SSID, network, sleep_ms) ─────────────
+    # ── AP ───────────────────────────────────────────────────────────────────
 
     async def _start_ap(self):
         ap_if = getattr(network, 'AP_IF', getattr(network.WLAN, 'IF_AP', 1))
@@ -205,7 +184,7 @@ class SetupServer(_Service):
         self._ap_ip = _DEFAULT_AP_IP
         return self._ap_ip
 
-    # ── HID execution (references validate_script, run_script, STATUS_LED) ───
+    # ── HID execution ────────────────────────────────────────────────────────
 
     async def execute_script(self, script):
         async with self._run_lock_obj():
@@ -218,6 +197,7 @@ class SetupServer(_Service):
 
     def _register_routes(self):
         app = self.app
+        auth = self.auth
 
         from .routes_auth import handle_index, handle_logout
         from .routes_binary import inject_binary, serve_payload, upload_binary
@@ -231,10 +211,18 @@ class SetupServer(_Service):
         )
 
         @app.after_request
-        async def _add_cors(request, response):
+        async def _add_headers(request, response):
             cors = self._cors_headers(request)
             for key, value in cors.items():
                 response.headers[key] = value
+            response.headers['X-Frame-Options'] = 'DENY'
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            response.headers['Referrer-Policy'] = 'no-referrer'
+            response.headers['Content-Security-Policy'] = (
+                "default-src 'self'; script-src 'self'; "
+                "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+                "frame-ancestors 'none'"
+            )
             return response
 
         @app.route('/portal.css', methods=['GET'])
@@ -280,42 +268,52 @@ class SetupServer(_Service):
             return await serve_payload(self, request)
 
         @app.post('/api/upload_binary')
+        @auth.api
         async def _upload_binary(request):
             return await upload_binary(self, request)
 
         @app.get('/api/bootstrap')
+        @auth.api
         async def _api_bootstrap_route(request):
             return await api_bootstrap(self, request)
 
         @app.post('/api/payload')
+        @auth.api
         async def _api_payload_route(request):
             return await api_payload(self, request)
 
         @app.post('/api/validate')
+        @auth.api
         async def _api_validate_route(request):
             return await api_validate(self, request)
 
         @app.post('/api/keyboard-layout')
+        @auth.api
         async def _api_keyboard_layout_route(request):
             return await api_keyboard_layout(self, request)
 
         @app.post('/api/run')
+        @auth.api
         async def _api_run_route(request):
             return await api_run(self, request)
 
         @app.get('/api/loot')
+        @auth.api
         async def _api_loot_get_route(request):
             return await get_loot(self, request)
 
         @app.get('/api/loot/download')
+        @auth.api
         async def _api_loot_download_route(request):
             return await download_loot(self, request)
 
         @app.post('/api/inject_binary')
+        @auth.api
         async def _api_inject_binary_route(request):
             return await inject_binary(self, request)
 
         @app.get('/')
+        @auth
         async def _index_route(request):
             return await handle_index(self, request)
 

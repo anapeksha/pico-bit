@@ -2,10 +2,6 @@ import asyncio
 import gc
 import json
 import os
-from types import MethodType
-
-from microdot import Microdot
-from microdot.microdot import Response
 
 from device_config import CORS_ALLOW_CREDENTIALS, CORS_ALLOWED_ORIGIN
 from ducky import (
@@ -34,13 +30,13 @@ from .constants import (
     _KEYBOARD_LAYOUT_FILE,
     _PAYLOAD_BIN,
     _RUN_HISTORY_LIMIT,
-    _SESSION_COOKIE,
     _STATIC_DIR,
     _USB_ENUM_TIMEOUT_MS,
     _WDT_TIMEOUT_MS,
     _esc,
     _ticks_ms,
 )
+from .micro_server import MicroServer, Response, SessionAuth
 
 
 class _Service:
@@ -56,16 +52,13 @@ class _Service:
     _run_history = []
     _run_sequence = 0
     _server = None
-    _sessions = {}
-    _session_timestamps = {}
     _wdt = None
-    app = Microdot()
+    app = MicroServer()
+    auth = SessionAuth()
     port = 0
 
     # Methods implemented in SetupServer — declared here as stubs so that
     # _Service methods can call them through self without checker errors.
-    def _auth_enabled(self): ...
-    def _is_authorized(self, _): ...
     async def _start_ap(self): ...
     async def execute_script(self, _): ...
 
@@ -240,7 +233,7 @@ class _Service:
             'ap_ip': self._ap_ip,
             'ap_password': self._ap_password_in_use or 'Open network',
             'ap_ssid': AP_SSID,
-            'auth_enabled': self._auth_enabled(),
+            'auth_enabled': self.auth.enabled,
             'keyboard_ready': self._keyboard_ready(),
             'message': message,
             'notice': notice,
@@ -251,20 +244,6 @@ class _Service:
         }
         state.update(self._keyboard_layout_state())
         return state
-
-    # ── Session helpers ──────────────────────────────────────────────────────
-
-    def _clear_session(self, request):
-        token = request.cookies.get(_SESSION_COOKIE, '')
-        if token:
-            self._sessions.pop(token, None)
-            self._session_timestamps.pop(token, None)
-
-    def _session_cookie(self, token):
-        return f'{_SESSION_COOKIE}={token}; Path=/; HttpOnly; SameSite=Strict'
-
-    def _expired_session_cookie(self):
-        return f'{_SESSION_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Strict'
 
     # ── Response helpers ─────────────────────────────────────────────────────
 
@@ -293,31 +272,26 @@ class _Service:
         }
         if extra_headers:
             headers.update(extra_headers)
-        return Response(json.dumps(data), status_code, headers=headers)
-
-    def _auth_guard(self, request):
-        if not self._is_authorized(request):
-            return self._json_response({'message': 'Sign in required.'}, 401)
-        return None
+        return Response(json.dumps(data).encode('utf-8'), status_code, headers=headers)
 
     # ── TCP serving ──────────────────────────────────────────────────────────
 
     async def _serve(self, reader, writer):
         if not hasattr(writer, 'awrite'):
 
-            async def _aw(self, data):
-                self.write(data)
-                await self.drain()
+            async def _aw(data):
+                writer.write(data)
+                await writer.drain()
 
-            async def _ac(self):
-                self.close()
+            async def _ac():
+                writer.close()
                 try:
-                    await self.wait_closed()
+                    await writer.wait_closed()
                 except Exception:
                     pass
 
-            writer.awrite = MethodType(_aw, writer)
-            writer.aclose = MethodType(_ac, writer)
+            writer.awrite = _aw
+            writer.aclose = _ac
         await self.app.handle_request(reader, writer)
 
     # ── Keyboard / HID ───────────────────────────────────────────────────────
@@ -405,7 +379,6 @@ class _Service:
             except OSError:
                 pass
             self._ap = None
-        self._sessions = {}
 
     async def _restart_tcp_server(self):
         if self._server is not None:

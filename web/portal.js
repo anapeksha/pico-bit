@@ -218,7 +218,8 @@ function updateControls() {
       !validation.can_run;
   }
   if (keyboardOsSelect) keyboardOsSelect.disabled = uiState.changingTarget;
-  if (keyboardLayoutSelect) keyboardLayoutSelect.disabled = uiState.changingTarget;
+  if (keyboardLayoutSelect)
+    keyboardLayoutSelect.disabled = uiState.changingTarget;
 }
 
 function itemTitle(item) {
@@ -262,7 +263,8 @@ function renderRunHistory(entries = []) {
     badge.className = `history__badge ${isOk ? 'history__badge--ok' : 'history__badge--err'}`;
     badge.textContent = isOk ? 'OK' : 'Err';
 
-    item.title = `${sourceLabel} run #${entry.sequence}\n${entry.message || ''}`.trim();
+    item.title =
+      `${sourceLabel} run #${entry.sequence}\n${entry.message || ''}`.trim();
 
     item.appendChild(tag);
     item.appendChild(text);
@@ -280,11 +282,6 @@ async function requestJson(path, options = {}) {
     },
     ...options,
   });
-
-  if (response.status === 401) {
-    window.location.href = '/login';
-    throw new Error('Unauthorized');
-  }
 
   const data = await response.json().catch(() => ({}));
   if (!response.ok) {

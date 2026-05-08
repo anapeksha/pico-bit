@@ -1,9 +1,8 @@
 import gc
 import json
 
-from microdot.microdot import Response
-
 from .constants import _LOOT_FILE
+from .micro_server import Response
 
 
 async def receive_loot(portal, request):
@@ -22,14 +21,11 @@ async def receive_loot(portal, request):
 
 
 async def get_loot(portal, request):
-    guard = portal._auth_guard(request)
-    if guard:
-        return guard
     try:
         with open(_LOOT_FILE) as f:
             content = f.read()
         return Response(
-            content,
+            content.encode('utf-8'),
             200,
             headers={
                 'Content-Type': 'application/json; charset=utf-8',
@@ -42,14 +38,11 @@ async def get_loot(portal, request):
 
 
 async def download_loot(portal, request):
-    guard = portal._auth_guard(request)
-    if guard:
-        return guard
     try:
         with open(_LOOT_FILE) as f:
             content = f.read()
         return Response(
-            content,
+            content.encode('utf-8'),
             200,
             headers={
                 'Content-Type': 'application/json; charset=utf-8',

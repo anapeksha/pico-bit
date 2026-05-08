@@ -7,9 +7,10 @@ import types
 from typing import Any, cast
 
 import pytest
-from microdot.test_client import TestClient
 
 import server
+import server.micro_server as _micro_server
+from _test_client import TestClient
 
 
 def test_singleton_is_exported() -> None:
@@ -305,7 +306,7 @@ def test_login_success_sets_cookie(monkeypatch) -> None:
     monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
     monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
     monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
-    monkeypatch.setattr(portal, '_new_session', lambda: 'token123')
+    monkeypatch.setattr(portal.auth, 'login', lambda username: 'token123')
 
     client = TestClient(portal.app)
     res = asyncio.run(client.post('/login', body=b'username=admin&password=secret'))
@@ -317,7 +318,7 @@ def test_login_success_sets_cookie(monkeypatch) -> None:
 def test_api_bootstrap_returns_json_when_authorized(monkeypatch) -> None:
     portal = server.SetupServer()
     monkeypatch.setattr(portal, '_bootstrap_state', lambda: {'payload': 'REM hi\n'})
-    portal._sessions['token123'] = 'admin'
+    portal.auth._sessions['token123'] = 'admin'
 
     client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
     res = asyncio.run(client.get('/api/bootstrap'))
@@ -338,7 +339,7 @@ def test_api_keyboard_layout_updates_runtime_state(monkeypatch) -> None:
         'show',
         lambda stage: asyncio.sleep(0, result=events.append(stage)),
     )
-    portal._sessions['token123'] = 'admin'
+    portal.auth._sessions['token123'] = 'admin'
 
     client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
     res = asyncio.run(client.post('/api/keyboard-layout', body=b'{"os": "WIN", "layout": "DE"}'))
@@ -361,7 +362,7 @@ def test_api_keyboard_layout_switches_os_and_uses_platform_default(monkeypatch) 
     persisted: list[str] = []
     monkeypatch.setattr(portal, '_persist_keyboard_layout', lambda code: persisted.append(code))
     monkeypatch.setattr(server.STATUS_LED, 'show', lambda _stage: asyncio.sleep(0))
-    portal._sessions['token123'] = 'admin'
+    portal.auth._sessions['token123'] = 'admin'
 
     client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
     res = asyncio.run(client.post('/api/keyboard-layout', body=b'{"os": "MAC"}'))
@@ -381,7 +382,7 @@ def test_api_keyboard_layout_switches_os_and_uses_platform_default(monkeypatch) 
 
 def test_api_keyboard_layout_rejects_unknown_value() -> None:
     portal = server.SetupServer()
-    portal._sessions['token123'] = 'admin'
+    portal.auth._sessions['token123'] = 'admin'
 
     client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
     res = asyncio.run(client.post('/api/keyboard-layout', body=b'{"os": "MAC", "layout": "DE"}'))
@@ -398,7 +399,7 @@ def test_api_validate_returns_dry_run_state(monkeypatch) -> None:
         '_validation_state',
         lambda script: {'blocking': False, 'summary': f'validated {script}', 'notice': 'success'},
     )
-    portal._sessions['token123'] = 'admin'
+    portal.auth._sessions['token123'] = 'admin'
 
     client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
     res = asyncio.run(client.post('/api/validate', body=b'{"payload": "STRING hi\\n"}'))
@@ -416,7 +417,7 @@ def test_api_payload_rejects_blocking_validation(monkeypatch) -> None:
         '_validation_state',
         lambda _script: {'blocking': True, 'summary': 'Fix 1 error.', 'notice': 'error'},
     )
-    portal._sessions['token123'] = 'admin'
+    portal.auth._sessions['token123'] = 'admin'
 
     client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
     res = asyncio.run(client.post('/api/payload', body=b'{"payload": "WAIT_FOR_CAPS_ON\\n"}'))
@@ -445,7 +446,7 @@ def test_api_run_returns_recent_history(monkeypatch) -> None:
         '_recent_runs',
         lambda: [{'sequence': 1, 'notice': 'success', 'preview': 'STRING hi'}],
     )
-    portal._sessions['token123'] = 'admin'
+    portal.auth._sessions['token123'] = 'admin'
 
     client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
     res = asyncio.run(client.post('/api/run', body=b'{"payload": "STRING hi\\n", "save": true}'))
@@ -464,8 +465,6 @@ def test_login_lockout_after_max_failed_attempts(monkeypatch) -> None:
     monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
     monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
     monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
-    now = [1_000_000]
-    monkeypatch.setattr(server, '_ticks_ms', lambda: now[0])
 
     async def run() -> None:
         client = TestClient(portal.app)
@@ -473,7 +472,7 @@ def test_login_lockout_after_max_failed_attempts(monkeypatch) -> None:
             await client.post('/login', body=b'username=admin&password=wrong')
 
     asyncio.run(run())
-    assert portal._login_lockout_until > 0
+    assert portal.auth._lockout_until > 0
 
 
 def test_locked_out_login_blocks_post(monkeypatch) -> None:
@@ -482,8 +481,8 @@ def test_locked_out_login_blocks_post(monkeypatch) -> None:
     monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
     monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
     now = [1_000_000]
-    monkeypatch.setattr(server, '_ticks_ms', lambda: now[0])
-    portal._login_lockout_until = server._ticks_add(now[0], server._LOGIN_LOCKOUT_MS)
+    monkeypatch.setattr(_micro_server, '_ticks_ms', lambda: now[0])
+    portal.auth._lockout_until = now[0] + server._LOGIN_LOCKOUT_MS
 
     client = TestClient(portal.app)
     res = asyncio.run(client.post('/login', body=b'username=admin&password=secret'))
@@ -498,8 +497,8 @@ def test_locked_out_login_shows_wait_on_get(monkeypatch) -> None:
     monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
     monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
     now = [1_000_000]
-    monkeypatch.setattr(server, '_ticks_ms', lambda: now[0])
-    portal._login_lockout_until = server._ticks_add(now[0], server._LOGIN_LOCKOUT_MS)
+    monkeypatch.setattr(_micro_server, '_ticks_ms', lambda: now[0])
+    portal.auth._lockout_until = now[0] + server._LOGIN_LOCKOUT_MS
 
     client = TestClient(portal.app)
     res = asyncio.run(client.get('/login'))
@@ -514,14 +513,13 @@ def test_login_success_resets_lockout_counter(monkeypatch) -> None:
     monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
     monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
     monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
-    monkeypatch.setattr(server, '_ticks_ms', lambda: 1_000_000)
-    portal._login_attempts = 3
+    portal.auth._attempts = 3
 
     client = TestClient(portal.app)
     asyncio.run(client.post('/login', body=b'username=admin&password=secret'))
 
-    assert portal._login_attempts == 0
-    assert portal._login_lockout_until == 0
+    assert portal.auth._attempts == 0
+    assert portal.auth._lockout_until == 0
 
 
 # ── Session timeout ───────────────────────────────────────────────────────────
@@ -532,13 +530,13 @@ def test_expired_session_is_rejected(monkeypatch) -> None:
     monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
     monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
     long_ago = 0
-    monkeypatch.setattr(server, '_ticks_ms', lambda: server._SESSION_TIMEOUT_MS + 1)
-    portal._sessions['tok'] = 'admin'
-    portal._session_timestamps['tok'] = long_ago
+    monkeypatch.setattr(_micro_server, '_ticks_ms', lambda: server._SESSION_TIMEOUT_MS + 1)
+    portal.auth._sessions['tok'] = 'admin'
+    portal.auth._timestamps['tok'] = long_ago
 
     req = types.SimpleNamespace(cookies={'pico_bit_session': 'tok'})
-    assert portal._is_authorized(req) is False
-    assert 'tok' not in portal._sessions
+    assert portal.auth._check_session(req) is None
+    assert 'tok' not in portal.auth._sessions
 
 
 def test_active_session_is_not_expired(monkeypatch) -> None:
@@ -546,12 +544,12 @@ def test_active_session_is_not_expired(monkeypatch) -> None:
     monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
     monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
     now = 5_000_000
-    monkeypatch.setattr(server, '_ticks_ms', lambda: now)
-    portal._sessions['tok'] = 'admin'
-    portal._session_timestamps['tok'] = now - 60_000  # 1 min ago
+    monkeypatch.setattr(_micro_server, '_ticks_ms', lambda: now)
+    portal.auth._sessions['tok'] = 'admin'
+    portal.auth._timestamps['tok'] = now - 60_000
 
     req = types.SimpleNamespace(cookies={'pico_bit_session': 'tok'})
-    assert portal._is_authorized(req) is True
+    assert portal.auth._check_session(req) is not None
 
 
 def test_stop_closes_server_and_ap() -> None:
