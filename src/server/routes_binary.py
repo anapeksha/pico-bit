@@ -26,7 +26,7 @@ async def serve_payload(portal, request):
             pass
 
     return Response(
-        _chunks(),
+        _chunks(),  # type: ignore
         200,
         headers={
             'Content-Type': 'application/octet-stream',

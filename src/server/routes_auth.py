@@ -10,7 +10,7 @@ async def handle_logout(portal, request):
         303,
         headers={
             'Location': '/login',
-            'Set-Cookie': [portal._expired_session_cookie()],
+            'Set-Cookie': portal._expired_session_cookie(),
             'Cache-Control': 'no-store',
         },
     )

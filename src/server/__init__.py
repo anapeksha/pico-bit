@@ -138,7 +138,7 @@ class SetupServer(_Service):
                 303,
                 headers={
                     'Location': '/',
-                    'Set-Cookie': [self._session_cookie(token)],
+                    'Set-Cookie': self._session_cookie(token),
                     'Cache-Control': 'no-store',
                 },
             )

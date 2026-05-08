@@ -38,7 +38,7 @@ testpaths = ["tests"]
 [tool.pyright]
 typeCheckingMode = "basic"
 reportMissingModuleSource = false
-include = ["build.py", "deploy.py", "scripts", "src", "tests"]
+include = ["build.py", "release.py", "scripts", "src", "tests"]
 exclude = [
     "dist",
     ".venv",

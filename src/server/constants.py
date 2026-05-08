@@ -51,19 +51,19 @@ def _parse_form(body):
 def _ticks_ms():
     fn = getattr(time, 'ticks_ms', None)
     if callable(fn):
-        return int(fn())
+        return int(fn())  # type: ignore
     return int(time.monotonic() * 1000)
 
 
 def _ticks_add(t, delta):
     fn = getattr(time, 'ticks_add', None)
     if callable(fn):
-        return int(fn(t, delta))
+        return int(fn(t, delta))  # type: ignore
     return t + delta
 
 
 def _ticks_diff(end, start):
     fn = getattr(time, 'ticks_diff', None)
     if callable(fn):
-        return int(fn(end, start))
+        return int(fn(end, start))  # type: ignore
     return end - start
