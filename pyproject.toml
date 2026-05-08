@@ -13,9 +13,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
 ]
-dependencies = [
-    "microdot>=2.6.1",
-]
+dependencies = ["microdot>=2.6.1"]
 
 [dependency-groups]
 dev = [
@@ -56,6 +54,7 @@ executionEnvironments = [{ root = ".", extraPaths = ["src"] }]
 line-length = 100
 target-version = "py311"
 src = ["scripts", "src", "tests"]
+exclude = ["src/web_assets.py"]
 extend-exclude = ["dist", "venv", "node_modules"]
 
 [tool.ruff.format]
