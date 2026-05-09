@@ -11,11 +11,11 @@ Thanks for helping improve `pico-bit`.
 
 ## Development Setup
 
-1. Install Poetry.
+1. Install `uv`.
 2. Install the project dependencies:
 
 ```bash
-poetry install
+uv sync
 ```
 
 ## Before You Open a Change
@@ -23,24 +23,26 @@ poetry install
 Run the local checks:
 
 ```bash
-poetry run pytest
-poetry run pyright
-poetry run ruff check build.py deploy.py scripts src tests
-poetry run ruff format --check .
-poetry run python3 build.py
+uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
+uv run pytest
+uv run pyright
+uv run ruff check build.py release.py scripts src tests
+uv run ruff format --check .
+uv run python build.py
 ```
 
 If you intentionally change formatting, run:
 
 ```bash
-poetry run ruff format .
+uv run ruff format .
 ```
 
 ## Code Organization
 
 - Put DuckyScript parsing work in `src/ducky/lexer.py` and `src/ducky/parser.py`.
 - Put runtime execution behavior in `src/ducky/runtime.py`.
-- Keep hardware-facing code in `src/hid.py`, `src/main.py`, and `src/server.py`.
+- Keep hardware-facing code in `src/hid.py`, `src/main.py`, and `src/server/`.
+- Keep Rust agent binaries and collectors in `agent/src/`.
 - Keep host-side tests in the top-level `tests/` directory.
 
 ## Tests
@@ -50,6 +52,8 @@ Please add or update tests when you change:
 - lexer tokenization,
 - parser validation rules,
 - runtime command behavior,
+- server routes or release metadata,
+- Rust agent collection or packaging behavior,
 - payload discovery,
 - or bundler output behavior.
 
@@ -58,14 +62,14 @@ Please add or update tests when you change:
 For local testing, build script with
 
 ```bash
-poetry run python3 build.py
+uv run python build.py
 ```
 
 Copy `dist/boot.py` to Pico2 and reboot.
 
 ## Bundled Firmware Output
 
-Firmware should be built using `deploy.py`
+Firmware should be built using `release.py`.
 
 Install prerequisites
 
@@ -76,7 +80,17 @@ sudo apt-get install -y build-essential cmake gcc-arm-none-eabi libnewlib-arm-no
 Rebuild it with:
 
 ```bash
-poetry run python3 deploy.py build-uf2 --micropython-ref v1.28.0 --board RPI_PICO2_W --release-version 0.0.1
+uv run python release.py build-uf2 --micropython-ref v1.28.0 --board RPI_PICO2_W --release-version 0.0.1
+```
+
+## Agent Binaries
+
+Rust agent binaries live under `agent/`.
+
+For local checks there, use:
+
+```bash
+cargo check --manifest-path agent/Cargo.toml --bins
 ```
 
 ## Documentation
@@ -85,7 +99,8 @@ Update `README.md` when you change:
 
 - setup mode behavior,
 - required hardware assumptions,
-- or deployment steps.
+- deployment steps,
+- or the agent upload/injection workflow.
 
 ## Security and Responsible Use
 
