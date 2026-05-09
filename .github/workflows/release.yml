@@ -15,6 +15,16 @@ on:
         required: false
         default: main
         type: string
+      build_firmware:
+        description: Build and publish the frozen UF2 firmware
+        required: false
+        default: true
+        type: boolean
+      build_agents:
+        description: Build and publish the agent executables
+        required: false
+        default: true
+        type: boolean
 
 permissions:
   contents: write
@@ -23,6 +33,7 @@ jobs:
   # ── Frozen firmware ──────────────────────────────────────────────────────────
   build-uf2:
     name: Build Frozen UF2
+    if: github.event_name != 'workflow_dispatch' || inputs.build_firmware
     runs-on: ubuntu-latest
 
     steps:
@@ -84,6 +95,7 @@ jobs:
   # ── Agent binaries — native per OS + architecture runner ────────────────────
   build-agent-binaries:
     name: Build Agent (${{ matrix.platform }} ${{ matrix.arch }})
+    if: github.event_name != 'workflow_dispatch' || inputs.build_agents
     strategy:
       fail-fast: false
       matrix:
@@ -208,6 +220,7 @@ jobs:
   package-agent-zips:
     name: Package Agent Payload Zips
     needs: build-agent-binaries
+    if: github.event_name != 'workflow_dispatch' || inputs.build_agents
     runs-on: ubuntu-latest
 
     steps:
@@ -243,16 +256,33 @@ jobs:
     needs:
       - build-uf2
       - package-agent-zips
+    if: >
+      always() &&
+      !cancelled() &&
+      (
+        needs.build-uf2.result == 'success' ||
+        needs.package-agent-zips.result == 'success'
+      ) &&
+      (
+        needs.build-uf2.result == 'success' ||
+        needs.build-uf2.result == 'skipped'
+      ) &&
+      (
+        needs.package-agent-zips.result == 'success' ||
+        needs.package-agent-zips.result == 'skipped'
+      )
     runs-on: ubuntu-latest
 
     steps:
       - name: Download UF2 artifacts
+        if: needs.build-uf2.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: pico-bit-uf2
           path: dist
 
       - name: Download agent zip artifacts
+        if: needs.package-agent-zips.result == 'success'
         uses: actions/download-artifact@v4
         with:
           name: pico-bit-agent-zips
