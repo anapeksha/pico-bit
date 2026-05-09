@@ -49,7 +49,6 @@ exclude = [
     "**/__pycache__",
     "**/node_modules",
     "**/.*",
-    "tests/_test_client.py",
 ]
 stubPath = "stubs"
 executionEnvironments = [{ root = ".", extraPaths = ["src", "src/server"] }]

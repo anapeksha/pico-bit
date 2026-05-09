@@ -1,53 +1,59 @@
-import asyncio  # noqa: F401  — kept for monkeypatch.setattr(server.asyncio, ...) in tests
+import asyncio
+import gc
 
 import network
 
 from device_config import (
     AP_PASSWORD,
     AP_SSID,
-    PORTAL_AUTH_ENABLED,
-    PORTAL_PASSWORD,
-    PORTAL_USERNAME,
+    CORS_ALLOW_CREDENTIALS,
+    CORS_ALLOWED_ORIGIN,
 )
-from ducky import run_script, validate_script
+from ducky import DuckyScriptError, run_script, validate_script
 from helpers import maybe_wait_closed, sleep_ms
 from keyboard_layouts import DEFAULT_LAYOUT_CODE
 from status_led import STATUS_LED
-from web_assets import PORTAL_CSS, PORTAL_JS
+from web_assets import INDEX_HTML, PORTAL_CSS, PORTAL_JS
 
-from .constants import (
+from ._http import (
+    _AP_CHECK_INTERVAL_MS,
     _DEFAULT_AP_IP,
     _LOGIN_LOCKOUT_MS,
     _MAX_BINARY_SIZE,
     _MAX_LOGIN_ATTEMPTS,
-    _SESSION_COOKIE,
+    _NO_STORE,
     _SESSION_TIMEOUT_MS,
-    _USB_ENUM_TIMEOUT_MS,  # noqa: F401  — read by tests as server._USB_ENUM_TIMEOUT_MS
+    _STATIC_CACHE,
+    _USB_ENUM_TIMEOUT_MS,
+    _WDT_TIMEOUT_MS,
     PORT,
-    _parse_form,
+    _merge_headers,
+    _read_request_headers,
+    _ticks_add,
+    _ticks_ms,
 )
-from .micro_server import MicroServer, Request, Response, SessionAuth
-from .service import _Service
+from .routes_auth import _AuthMixin
+from .routes_binary import _BinaryMixin
+from .routes_loot import _LootMixin
+from .routes_payload import _PayloadMixin
+
+__all__ = [
+    'SetupServer',
+    'SERVER',
+    'start',
+    '_LOGIN_LOCKOUT_MS',
+    '_MAX_BINARY_SIZE',
+    '_MAX_LOGIN_ATTEMPTS',
+    '_SESSION_TIMEOUT_MS',
+    '_USB_ENUM_TIMEOUT_MS',
+    '_ticks_add',
+    '_ticks_ms',
+]
 
 
-def _secure_compare(a, b):
-    if len(a) != len(b):
-        return False
-    result = 0
-    for ca, cb in zip(a, b):  # noqa: B905
-        result |= ord(ca) ^ ord(cb)
-    return result == 0
-
-
-__all__ = ['SetupServer', 'SERVER', 'start']
-
-Request.max_content_length = _MAX_BINARY_SIZE
-
-
-class SetupServer(_Service):
-    def __init__(self, port=PORT):
+class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _PayloadMixin):
+    def __init__(self, port: int = PORT) -> None:
         self.port = port
-        self.app = MicroServer()
         self._ap = None
         self._ap_ip = _DEFAULT_AP_IP
         self._kbd = None
@@ -55,96 +61,97 @@ class SetupServer(_Service):
         self._keyboard_layout = DEFAULT_LAYOUT_CODE
         self._payload_seeded = False
         self._run_lock = None
-        self._run_history = []
+        self._run_history: list[dict[str, object]] = []
         self._run_sequence = 0
         self._server = None
+        self._sessions: dict[str, str] = {}
+        self._session_timestamps: dict[str, int] = {}
+        self._login_attempts: int = 0
+        self._login_lockout_until: int = 0
         self._wdt = None
-        self.auth = SessionAuth(
-            cookie_name=_SESSION_COOKIE,
-            timeout_ms=_SESSION_TIMEOUT_MS,
-            max_attempts=_MAX_LOGIN_ATTEMPTS,
-            lockout_ms=_LOGIN_LOCKOUT_MS,
-            enabled_fn=lambda: PORTAL_AUTH_ENABLED and bool(PORTAL_PASSWORD),
+
+    async def _send_headers(self, writer, request, status: str, headers=None) -> None:
+        gc.collect()
+        response_headers = _merge_headers(
+            {'Connection': 'close', 'X-Content-Type-Options': 'nosniff'},
+            headers,
+            self._cors_headers(request),
+        )
+        header_lines = [f'HTTP/1.1 {status}']
+        for key, value in response_headers.items():
+            header_lines.append(f'{key}: {value}')
+        header_lines.append('')
+        header_lines.append('')
+        writer.write('\r\n'.join(header_lines).encode())
+        await writer.drain()
+
+    def _keyboard_ready(self) -> bool:
+        return self._kbd is not None and self._kbd.is_open()
+
+    def _cors_headers(self, request) -> dict[str, str]:
+        if not CORS_ALLOWED_ORIGIN:
+            return {}
+
+        origin = request['headers'].get('origin', '')
+        if CORS_ALLOWED_ORIGIN != '*' and origin != CORS_ALLOWED_ORIGIN:
+            return {}
+
+        headers = {
+            'Access-Control-Allow-Headers': 'Content-Type',
+            'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+            'Access-Control-Allow-Origin': CORS_ALLOWED_ORIGIN if CORS_ALLOWED_ORIGIN else origin,
+        }
+        if CORS_ALLOWED_ORIGIN != '*':
+            headers['Vary'] = 'Origin'
+        if CORS_ALLOW_CREDENTIALS and CORS_ALLOWED_ORIGIN != '*':
+            headers['Access-Control-Allow-Credentials'] = 'true'
+        return headers
+
+    async def _send(self, writer, request, status: str, body: str | bytes, headers=None) -> None:
+        gc.collect()
+        response_headers = _merge_headers(
+            {'Connection': 'close', 'X-Content-Type-Options': 'nosniff'},
+            headers,
+            self._cors_headers(request),
+        )
+        if isinstance(body, str):
+            body = body.encode()
+        response_headers['Content-Length'] = str(len(body))
+
+        header_lines = [f'HTTP/1.1 {status}']
+        for key, value in response_headers.items():
+            header_lines.append(f'{key}: {value}')
+        header_lines.append('')
+        header_lines.append('')
+
+        writer.write('\r\n'.join(header_lines).encode())
+        writer.write(body)
+        await writer.drain()
+
+    async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None:
+        import json
+
+        await self._send(
+            writer,
+            request,
+            status,
+            json.dumps(data),
+            headers=_merge_headers(
+                {'Content-Type': 'application/json; charset=utf-8'},
+                _NO_STORE,
+            ),
         )
 
-        @self.auth.authenticate
-        def _verify(username, password):
-            return _secure_compare(username, PORTAL_USERNAME) and _secure_compare(
-                password, PORTAL_PASSWORD
-            )
-
-        self._register_routes()
-
-    # ── Login handler ────────────────────────────────────────────────────────
-
-    async def _handle_login(self, request):
-        if not self.auth.enabled:
-            return Response(b'', 303, headers={'Location': '/'})
-
-        remaining_s = self.auth.lockout_remaining_s()
-
-        if request.method == 'GET':
-            msg = f'Too many attempts. Try again in {remaining_s}s.' if remaining_s else ''
-            return Response(
-                self._render_login(msg).encode('utf-8'),
-                200,
-                headers={
-                    'Content-Type': 'text/html; charset=utf-8',
-                    'Cache-Control': 'no-store',
-                    'X-Content-Type-Options': 'nosniff',
-                },
-            )
-
-        if remaining_s:
-            return Response(
-                self._render_login(f'Too many attempts. Try again in {remaining_s}s.').encode(
-                    'utf-8'
-                ),
-                429,
-                headers={
-                    'Content-Type': 'text/html; charset=utf-8',
-                    'Cache-Control': 'no-store',
-                    'X-Content-Type-Options': 'nosniff',
-                },
-            )
-
-        form = _parse_form(request.body or b'')
-        username = form.get('username', '')
-        password = form.get('password', '')
-        if await self.auth.verify(username, password):
-            self.auth.reset_attempts()
-            token = self.auth.login(username)
-            return Response(
-                b'',
-                303,
-                headers={  # type: ignore[arg-type]
-                    'Location': '/',
-                    'Set-Cookie': [self.auth.session_cookie(token)],
-                    'Cache-Control': 'no-store',
-                },
-            )
-
-        lockout_s = self.auth.record_failed_attempt()
-        if lockout_s:
-            remaining_s = lockout_s
-        return Response(
-            self._render_login(
-                f'Too many attempts. Try again in {remaining_s}s.'
-                if remaining_s
-                else 'Invalid injector credentials.',
-                username=username,
-            ).encode('utf-8'),
-            401,
-            headers={
-                'Content-Type': 'text/html; charset=utf-8',
-                'Cache-Control': 'no-store',
-                'X-Content-Type-Options': 'nosniff',
-            },
+    async def _redirect(self, writer, request, location: str, headers=None) -> None:
+        await self._send(
+            writer,
+            request,
+            '303 See Other',
+            '',
+            headers=_merge_headers({'Location': location}, headers),
         )
 
-    # ── AP ───────────────────────────────────────────────────────────────────
-
-    async def _start_ap(self):
+    async def _start_ap(self) -> str:
         ap_if = getattr(network, 'AP_IF', getattr(network.WLAN, 'IF_AP', 1))
         ap = network.WLAN(ap_if)
         self._ap = ap
@@ -184,148 +191,252 @@ class SetupServer(_Service):
         self._ap_ip = _DEFAULT_AP_IP
         return self._ap_ip
 
-    # ── HID execution ────────────────────────────────────────────────────────
+    def _run_lock_obj(self):
+        if self._run_lock is None:
+            self._run_lock = asyncio.Lock()
+        return self._run_lock
 
-    async def execute_script(self, script):
+    def _keyboard(self):
+        if self._kbd is None:
+            from hid import HIDKeyboard
+
+            self._kbd = HIDKeyboard()
+        return self._kbd
+
+    def keyboard(self):
+        return self._keyboard()
+
+    async def _ensure_keyboard(self):
+        keyboard = self._keyboard()
+        ready = await keyboard.wait_open(_USB_ENUM_TIMEOUT_MS)
+        if not ready:
+            raise OSError('USB HID did not enumerate within 5 s')
+        return keyboard
+
+    async def execute_script(self, script: str) -> None:
         async with self._run_lock_obj():
             validate_script(script)
             keyboard = await self._ensure_keyboard()
             await STATUS_LED.show('payload_running')
             await run_script(keyboard, script, default_layout=self._keyboard_layout)
 
-    # ── Route registration ───────────────────────────────────────────────────
+    async def _prepare_server(self) -> None:
+        if self._server is not None:
+            return
 
-    def _register_routes(self):
-        app = self.app
-        auth = self.auth
+        self._load_keyboard_layout()
+        self._seed_payload()
 
-        from .routes_auth import handle_index, handle_logout
-        from .routes_binary import inject_binary, serve_payload, upload_binary
-        from .routes_loot import download_loot, get_loot, receive_loot
-        from .routes_payload import (
-            api_bootstrap,
-            api_keyboard_layout,
-            api_payload,
-            api_run,
-            api_validate,
-        )
+        await STATUS_LED.show('setup_ap_starting')
+        await self._start_ap()
+        await STATUS_LED.show('setup_ap_ready')
 
-        @app.after_request
-        async def _add_headers(request, response):
-            cors = self._cors_headers(request)
-            for key, value in cors.items():
-                response.headers[key] = value
-            response.headers['X-Frame-Options'] = 'DENY'
-            response.headers['X-Content-Type-Options'] = 'nosniff'
-            response.headers['Referrer-Policy'] = 'no-referrer'
-            response.headers['Content-Security-Policy'] = (
-                "default-src 'self'; script-src 'self'; "
-                "style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
-                "frame-ancestors 'none'"
+        try:
+            self._server = await asyncio.start_server(
+                self._handle_request,
+                '0.0.0.0',
+                self.port,
+                backlog=3,
             )
-            return response
+        except OSError as exc:
+            raise RuntimeError('setup server bind failed') from exc
 
-        @app.route('/portal.css', methods=['GET'])
-        @app.route('/assets/portal.css', methods=['GET'])
-        async def _serve_css(request):
-            return Response(
+        await STATUS_LED.show('setup_server_ready')
+        STATUS_LED.on()
+
+    async def _run_payload(self, script: str, *, source: str = 'portal') -> tuple[str, str]:
+        try:
+            await self.execute_script(script)
+            message, notice = 'Payload executed.', 'success'
+        except DuckyScriptError as exc:
+            message, notice = f'Error: {exc}', 'error'
+        except OSError as exc:
+            message, notice = f'USB error: {exc}', 'error'
+        self._record_run(script, message, notice, source=source)
+        return message, notice
+
+    async def _dispatch(self, request, writer) -> None:
+        gc.collect()
+        if request['method'] == 'OPTIONS':
+            await self._send(writer, request, '204 No Content', '', headers=_NO_STORE)
+            return
+
+        if request['path'] in ('/portal.css', '/assets/portal.css'):
+            await self._send(
+                writer,
+                request,
+                '200 OK',
                 PORTAL_CSS,
-                200,
-                headers={
-                    'Content-Type': 'text/css; charset=utf-8',
-                    'Cache-Control': 'public, max-age=86400',
-                    'X-Content-Type-Options': 'nosniff',
-                },
+                headers=_merge_headers({'Content-Type': 'text/css; charset=utf-8'}, _STATIC_CACHE),
             )
+            return
 
-        @app.route('/portal.js', methods=['GET'])
-        @app.route('/assets/portal.js', methods=['GET'])
-        async def _serve_js(request):
-            return Response(
+        if request['path'] in ('/portal.js', '/assets/portal.js'):
+            await self._send(
+                writer,
+                request,
+                '200 OK',
                 PORTAL_JS,
-                200,
-                headers={
-                    'Content-Type': 'application/javascript; charset=utf-8',
-                    'Cache-Control': 'public, max-age=86400',
-                    'X-Content-Type-Options': 'nosniff',
-                },
+                headers=_merge_headers(
+                    {'Content-Type': 'application/javascript; charset=utf-8'},
+                    _STATIC_CACHE,
+                ),
             )
+            return
 
-        @app.route('/login', methods=['GET', 'POST'])
-        async def _login_route(request):
-            return await self._handle_login(request)
+        if request['path'] == '/login':
+            await self._handle_login(request, writer)
+            return
 
-        @app.route('/logout', methods=['GET', 'POST'])
-        async def _logout_route(request):
-            return await handle_logout(self, request)
+        if request['path'] == '/logout':
+            self._clear_session(request)
+            await self._redirect(
+                writer,
+                request,
+                '/login',
+                headers=_merge_headers(
+                    {'Set-Cookie': self._expired_session_cookie()},
+                    _NO_STORE,
+                ),
+            )
+            return
 
-        @app.post('/api/loot')
-        async def _loot_receive(request):
-            return await receive_loot(self, request)
+        if request['method'] == 'POST' and request['path'] == '/api/loot':
+            await self._handle_loot_receive(request, writer)
+            return
 
-        @app.get('/static/payload.bin')
-        async def _serve_payload_route(request):
-            return await serve_payload(self, request)
+        if request['path'].startswith('/api/'):
+            await self._handle_api(request, writer)
+            return
 
-        @app.post('/api/upload_binary')
-        @auth.api
-        async def _upload_binary(request):
-            return await upload_binary(self, request)
+        if request['method'] == 'GET' and request['path'] == '/static/payload.bin':
+            await self._serve_payload(writer, request)
+            return
 
-        @app.get('/api/bootstrap')
-        @auth.api
-        async def _api_bootstrap_route(request):
-            return await api_bootstrap(self, request)
+        if not self._is_authorized(request):
+            await self._redirect(writer, request, '/login')
+            return
 
-        @app.post('/api/payload')
-        @auth.api
-        async def _api_payload_route(request):
-            return await api_payload(self, request)
+        if request['path'] == '/':
+            await self._send(
+                writer,
+                request,
+                '200 OK',
+                INDEX_HTML,
+                headers=_merge_headers({'Content-Type': 'text/html; charset=utf-8'}, _NO_STORE),
+            )
+            return
 
-        @app.post('/api/validate')
-        @auth.api
-        async def _api_validate_route(request):
-            return await api_validate(self, request)
+        await self._send(writer, request, '404 Not Found', '404', headers=_NO_STORE)
 
-        @app.post('/api/keyboard-layout')
-        @auth.api
-        async def _api_keyboard_layout_route(request):
-            return await api_keyboard_layout(self, request)
+    async def _handle_request(self, reader, writer) -> None:
+        try:
+            partial = await _read_request_headers(reader)
+            if partial is None:
+                return
+            content_length = int(partial['headers'].get('content-length', '0') or 0)
+            if partial['method'] == 'POST' and partial['path'] == '/api/upload_binary':
+                await self._handle_binary_upload_stream(reader, writer, partial, content_length)
+                return
+            body = b''
+            if content_length:
+                body = await reader.readexactly(content_length)
+            partial['body'] = body
+            await self._dispatch(partial, writer)
+        except ValueError:
+            fallback = {'method': 'GET', 'path': '/', 'headers': {}, 'body': b'', 'cookies': {}}
+            try:
+                await self._send_json(
+                    writer,
+                    fallback,
+                    '400 Bad Request',
+                    {'message': 'Malformed request.'},
+                )
+            except Exception:
+                pass
+        except Exception:
+            fallback = {'method': 'GET', 'path': '/', 'headers': {}, 'body': b'', 'cookies': {}}
+            try:
+                await self._send_json(
+                    writer,
+                    fallback,
+                    '500 Internal Server Error',
+                    {'message': 'Unexpected server error.'},
+                )
+            except Exception:
+                pass
+        finally:
+            writer.close()
+            await maybe_wait_closed(writer)
 
-        @app.post('/api/run')
-        @auth.api
-        async def _api_run_route(request):
-            return await api_run(self, request)
+    async def _restart_tcp_server(self) -> None:
+        if self._server is not None:
+            try:
+                self._server.close()
+                await maybe_wait_closed(self._server)
+            except Exception:
+                pass
+            self._server = None
+        try:
+            self._server = await asyncio.start_server(
+                self._handle_request, '0.0.0.0', self.port, backlog=3
+            )
+        except OSError:
+            pass
 
-        @app.get('/api/loot')
-        @auth.api
-        async def _api_loot_get_route(request):
-            return await get_loot(self, request)
+    async def _ensure_ap_active(self) -> None:
+        if self._ap is None:
+            return
+        try:
+            if self._ap.active():
+                return
+        except Exception:
+            return
+        try:
+            await self._start_ap()
+        except Exception:
+            return
+        await self._restart_tcp_server()
 
-        @app.get('/api/loot/download')
-        @auth.api
-        async def _api_loot_download_route(request):
-            return await download_loot(self, request)
+    async def _ap_watchdog(self) -> None:
+        while True:
+            await sleep_ms(_AP_CHECK_INTERVAL_MS)
+            if self._wdt is not None:
+                self._wdt.feed()
+            try:
+                await self._ensure_ap_active()
+            except Exception:
+                pass
 
-        @app.post('/api/inject_binary')
-        @auth.api
-        async def _api_inject_binary_route(request):
-            return await inject_binary(self, request)
+    async def start(self) -> None:
+        await self._prepare_server()
+        try:
+            import machine
 
-        @app.get('/')
-        @auth
-        async def _index_route(request):
-            return await handle_index(self, request)
+            _WDT = getattr(machine, 'WDT', None)
+            self._wdt = _WDT(timeout=_WDT_TIMEOUT_MS) if _WDT is not None else None
+        except Exception:
+            self._wdt = None
+        asyncio.create_task(self._ap_watchdog())
 
-        @app.route('/<path:path>', methods=['OPTIONS'])
-        async def _options_handler(request, path):
-            return Response(b'', 204, headers={'Cache-Control': 'no-store'})
+    async def stop(self) -> None:
+        if self._server is not None:
+            self._server.close()
+            await maybe_wait_closed(self._server)
+            self._server = None
+        if self._ap is not None:
+            try:
+                self._ap.active(False)
+            except OSError:
+                pass
+            self._ap = None
+        self._sessions = {}
 
 
 SERVER = SetupServer()
 
 
-async def start():
+async def start() -> None:
     await SERVER.start()
     if SERVER._server is not None:
         await maybe_wait_closed(SERVER._server)

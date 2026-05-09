@@ -9,8 +9,45 @@ from typing import Any, cast
 import pytest
 
 import server
-import server.micro_server as _micro_server
-from _test_client import TestClient
+
+
+class FakeWriter:
+    def __init__(self) -> None:
+        self.buffer = b''
+        self.closed = False
+
+    def write(self, data: bytes) -> None:
+        self.buffer += data
+
+    async def drain(self) -> None:
+        return None
+
+    def close(self) -> None:
+        self.closed = True
+
+    async def wait_closed(self) -> None:
+        return None
+
+    def text(self) -> str:
+        return self.buffer.decode('utf-8', 'ignore')
+
+
+def _make_request(
+    method: str,
+    path: str,
+    *,
+    body: bytes = b'',
+    headers: dict[str, str] | None = None,
+    cookies: dict[str, str] | None = None,
+):
+    return {
+        'method': method,
+        'path': path,
+        'target': path,
+        'headers': headers or {},
+        'body': body,
+        'cookies': cookies or {},
+    }
 
 
 def test_singleton_is_exported() -> None:
@@ -33,8 +70,8 @@ def test_bootstrap_state_reports_payload_and_auth(monkeypatch) -> None:
     portal._payload_seeded = True
     portal._ap_password_in_use = ''
     monkeypatch.setattr(portal, '_read_payload', lambda: 'REM test\n')
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
-    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_PASSWORD', 'secret')
 
     state = portal._bootstrap_state()
 
@@ -280,57 +317,71 @@ def test_run_payload_records_recent_history(monkeypatch) -> None:
 
 def test_dispatch_redirects_to_login_when_not_authorized(monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
-    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    writer = FakeWriter()
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_PASSWORD', 'secret')
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.get('/'))
+    asyncio.run(portal._dispatch(_make_request('GET', '/'), writer))
 
-    assert res.status_code == 303
-    assert res.headers.get('Location') == '/login'
+    assert '303 See Other' in writer.text()
+    assert 'Location: /login' in writer.text()
 
 
 def test_dispatch_serves_assets_without_auth() -> None:
     portal = server.SetupServer()
-    client = TestClient(portal.app)
+    writer = FakeWriter()
 
-    res = asyncio.run(client.get('/assets/portal.js'))
+    asyncio.run(portal._dispatch(_make_request('GET', '/assets/portal.js'), writer))
 
-    assert res.status_code == 200
-    assert 'application/javascript' in res.headers.get('Content-Type', '')
-    assert 'loadBootstrap' in (res.text or '')
+    response = writer.text()
+    assert '200 OK' in response
+    assert 'application/javascript' in response
+    assert 'loadBootstrap' in response
 
 
 def test_login_success_sets_cookie(monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
-    monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
-    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
-    monkeypatch.setattr(portal.auth, 'login', lambda username: 'token123')
+    writer = FakeWriter()
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_USERNAME', 'admin')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_PASSWORD', 'secret')
+    monkeypatch.setattr(portal, '_new_session', lambda: 'token123')
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.post('/login', body=b'username=admin&password=secret'))
+    request = _make_request(
+        'POST',
+        '/login',
+        body=b'username=admin&password=secret',
+    )
 
-    assert res.status_code == 303
-    assert client.cookies.get('pico_bit_session') == 'token123'
+    asyncio.run(portal._handle_login(request, writer))
+
+    assert '303 See Other' in writer.text()
+    assert 'Set-Cookie: pico_bit_session=token123;' in writer.text()
 
 
 def test_api_bootstrap_returns_json_when_authorized(monkeypatch) -> None:
     portal = server.SetupServer()
+    writer = FakeWriter()
     monkeypatch.setattr(portal, '_bootstrap_state', lambda: {'payload': 'REM hi\n'})
-    portal.auth._sessions['token123'] = 'admin'
 
-    client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
-    res = asyncio.run(client.get('/api/bootstrap'))
+    request = _make_request(
+        'GET',
+        '/api/bootstrap',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
 
-    assert res.status_code == 200
-    assert 'application/json' in res.headers.get('Content-Type', '')
-    assert res.json is not None
-    assert res.json['payload'] == 'REM hi\n'
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    assert '200 OK' in head
+    assert 'application/json' in head
+    assert json.loads(body)['payload'] == 'REM hi\n'
 
 
 def test_api_keyboard_layout_updates_runtime_state(monkeypatch) -> None:
     portal = server.SetupServer()
+    writer = FakeWriter()
     events: list[str] = []
     persisted: list[str] = []
     monkeypatch.setattr(portal, '_persist_keyboard_layout', lambda code: persisted.append(code))
@@ -339,19 +390,25 @@ def test_api_keyboard_layout_updates_runtime_state(monkeypatch) -> None:
         'show',
         lambda stage: asyncio.sleep(0, result=events.append(stage)),
     )
-    portal.auth._sessions['token123'] = 'admin'
+    request = _make_request(
+        'POST',
+        '/api/keyboard-layout',
+        body=b'{"os": "WIN", "layout": "DE"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
 
-    client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
-    res = asyncio.run(client.post('/api/keyboard-layout', body=b'{"os": "WIN", "layout": "DE"}'))
+    asyncio.run(portal._handle_api(request, writer))
 
-    assert res.status_code == 200
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
     assert portal._keyboard_layout == 'WIN_DE'
-    assert res.json is not None
-    assert res.json['keyboard_layout_code'] == 'DE'
-    assert res.json['keyboard_layout_label'] == 'German (DE)'
-    assert res.json['keyboard_layout_profile_code'] == 'WIN_DE'
-    assert res.json['keyboard_os_code'] == 'WIN'
-    assert res.json['message'] == 'Typing target set to Windows · German (DE).'
+    assert payload['keyboard_layout_code'] == 'DE'
+    assert payload['keyboard_layout_label'] == 'German (DE)'
+    assert payload['keyboard_layout_profile_code'] == 'WIN_DE'
+    assert payload['keyboard_os_code'] == 'WIN'
+    assert payload['message'] == 'Typing target set to Windows · German (DE).'
     assert persisted == ['WIN_DE']
     assert events == ['keyboard_layout_changed']
 
@@ -359,77 +416,106 @@ def test_api_keyboard_layout_updates_runtime_state(monkeypatch) -> None:
 def test_api_keyboard_layout_switches_os_and_uses_platform_default(monkeypatch) -> None:
     portal = server.SetupServer()
     portal._keyboard_layout = 'WIN_DE'
+    writer = FakeWriter()
     persisted: list[str] = []
     monkeypatch.setattr(portal, '_persist_keyboard_layout', lambda code: persisted.append(code))
     monkeypatch.setattr(server.STATUS_LED, 'show', lambda _stage: asyncio.sleep(0))
-    portal.auth._sessions['token123'] = 'admin'
+    request = _make_request(
+        'POST',
+        '/api/keyboard-layout',
+        body=b'{"os": "MAC"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
 
-    client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
-    res = asyncio.run(client.post('/api/keyboard-layout', body=b'{"os": "MAC"}'))
+    asyncio.run(portal._handle_api(request, writer))
 
-    assert res.status_code == 200
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
     assert portal._keyboard_layout == 'MAC_US'
-    assert res.json is not None
-    assert res.json['keyboard_os_code'] == 'MAC'
-    assert res.json['keyboard_layout_code'] == 'US'
-    assert res.json['keyboard_layouts'] == [
+    assert payload['keyboard_os_code'] == 'MAC'
+    assert payload['keyboard_layout_code'] == 'US'
+    assert payload['keyboard_layouts'] == [
         {'code': 'US', 'label': 'English (US)'},
         {'code': 'FR', 'label': 'French (FR)'},
     ]
-    assert res.json['message'] == 'Typing target set to macOS · English (US).'
+    assert payload['message'] == 'Typing target set to macOS · English (US).'
     assert persisted == ['MAC_US']
 
 
 def test_api_keyboard_layout_rejects_unknown_value() -> None:
     portal = server.SetupServer()
-    portal.auth._sessions['token123'] = 'admin'
+    writer = FakeWriter()
+    request = _make_request(
+        'POST',
+        '/api/keyboard-layout',
+        body=b'{"os": "MAC", "layout": "DE"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
 
-    client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
-    res = asyncio.run(client.post('/api/keyboard-layout', body=b'{"os": "MAC", "layout": "DE"}'))
+    asyncio.run(portal._handle_api(request, writer))
 
-    assert res.status_code == 400
-    assert res.json is not None
-    assert res.json['message'] == 'Unsupported keyboard layout for macOS.'
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '400 Bad Request' in head
+    assert payload['message'] == 'Unsupported keyboard layout for macOS.'
 
 
 def test_api_validate_returns_dry_run_state(monkeypatch) -> None:
     portal = server.SetupServer()
+    writer = FakeWriter()
     monkeypatch.setattr(
         portal,
         '_validation_state',
         lambda script: {'blocking': False, 'summary': f'validated {script}', 'notice': 'success'},
     )
-    portal.auth._sessions['token123'] = 'admin'
+    request = _make_request(
+        'POST',
+        '/api/validate',
+        body=b'{"payload": "STRING hi\\n"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
 
-    client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
-    res = asyncio.run(client.post('/api/validate', body=b'{"payload": "STRING hi\\n"}'))
+    asyncio.run(portal._handle_api(request, writer))
 
-    assert res.status_code == 200
-    assert res.json is not None
-    assert res.json['message'] == 'validated STRING hi\n'
-    assert res.json['validation']['blocking'] is False
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
+    assert payload['message'] == 'validated STRING hi\n'
+    assert payload['validation']['blocking'] is False
 
 
 def test_api_payload_rejects_blocking_validation(monkeypatch) -> None:
     portal = server.SetupServer()
+    writer = FakeWriter()
     monkeypatch.setattr(
         portal,
         '_validation_state',
         lambda _script: {'blocking': True, 'summary': 'Fix 1 error.', 'notice': 'error'},
     )
-    portal.auth._sessions['token123'] = 'admin'
+    request = _make_request(
+        'POST',
+        '/api/payload',
+        body=b'{"payload": "WAIT_FOR_CAPS_ON\\n"}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
 
-    client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
-    res = asyncio.run(client.post('/api/payload', body=b'{"payload": "WAIT_FOR_CAPS_ON\\n"}'))
+    asyncio.run(portal._handle_api(request, writer))
 
-    assert res.status_code == 400
-    assert res.json is not None
-    assert res.json['message'] == 'Fix 1 error.'
-    assert res.json['validation']['blocking'] is True
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '400 Bad Request' in head
+    assert payload['message'] == 'Fix 1 error.'
+    assert payload['validation']['blocking'] is True
 
 
 def test_api_run_returns_recent_history(monkeypatch) -> None:
     portal = server.SetupServer()
+    writer = FakeWriter()
     monkeypatch.setattr(
         portal,
         '_validation_state',
@@ -446,15 +532,22 @@ def test_api_run_returns_recent_history(monkeypatch) -> None:
         '_recent_runs',
         lambda: [{'sequence': 1, 'notice': 'success', 'preview': 'STRING hi'}],
     )
-    portal.auth._sessions['token123'] = 'admin'
 
-    client = TestClient(portal.app, cookies={'pico_bit_session': 'token123'})
-    res = asyncio.run(client.post('/api/run', body=b'{"payload": "STRING hi\\n", "save": true}'))
+    request = _make_request(
+        'POST',
+        '/api/run',
+        body=b'{"payload": "STRING hi\\n", "save": true}',
+        cookies={'pico_bit_session': 'token123'},
+    )
+    portal._sessions['token123'] = 'admin'
 
-    assert res.status_code == 200
-    assert res.json is not None
-    assert res.json['run_history'] == [{'sequence': 1, 'notice': 'success', 'preview': 'STRING hi'}]
-    assert res.json['validation']['blocking'] is False
+    asyncio.run(portal._handle_api(request, writer))
+
+    head, body = writer.text().split('\r\n\r\n', 1)
+    payload = json.loads(body)
+    assert '200 OK' in head
+    assert payload['run_history'] == [{'sequence': 1, 'notice': 'success', 'preview': 'STRING hi'}]
+    assert payload['validation']['blocking'] is False
 
 
 # ── Rate limiting ────────────────────────────────────────────────────────────
@@ -462,64 +555,74 @@ def test_api_run_returns_recent_history(monkeypatch) -> None:
 
 def test_login_lockout_after_max_failed_attempts(monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
-    monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
-    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_USERNAME', 'admin')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_PASSWORD', 'secret')
+    now = [1_000_000]
+    monkeypatch.setattr(server.routes_auth, '_ticks_ms', lambda: now[0])
 
-    async def run() -> None:
-        client = TestClient(portal.app)
-        for _ in range(server._MAX_LOGIN_ATTEMPTS):
-            await client.post('/login', body=b'username=admin&password=wrong')
+    req = _make_request('POST', '/login', body=b'username=admin&password=wrong')
+    writer = FakeWriter()
+    for _ in range(server._MAX_LOGIN_ATTEMPTS):
+        writer = FakeWriter()
+        asyncio.run(portal._handle_login(req, writer))
 
-    asyncio.run(run())
-    assert portal.auth._lockout_until > 0
+    assert portal._login_lockout_until > 0
 
 
 def test_locked_out_login_blocks_post(monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
-    monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
-    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_USERNAME', 'admin')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_PASSWORD', 'secret')
     now = [1_000_000]
-    monkeypatch.setattr(_micro_server, '_ticks_ms', lambda: now[0])
-    portal.auth._lockout_until = now[0] + server._LOGIN_LOCKOUT_MS
+    monkeypatch.setattr(server.routes_auth, '_ticks_ms', lambda: now[0])
+    portal._login_lockout_until = server._ticks_add(now[0], server._LOGIN_LOCKOUT_MS)
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.post('/login', body=b'username=admin&password=secret'))
+    writer = FakeWriter()
+    asyncio.run(
+        portal._handle_login(
+            _make_request('POST', '/login', body=b'username=admin&password=secret'),
+            writer,
+        )
+    )
 
-    assert res.status_code == 429
-    assert res.text is not None
-    assert 'Try again in' in res.text
+    assert '429 Too Many Requests' in writer.text()
+    assert 'Try again in' in writer.text()
 
 
 def test_locked_out_login_shows_wait_on_get(monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
-    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_PASSWORD', 'secret')
     now = [1_000_000]
-    monkeypatch.setattr(_micro_server, '_ticks_ms', lambda: now[0])
-    portal.auth._lockout_until = now[0] + server._LOGIN_LOCKOUT_MS
+    monkeypatch.setattr(server.routes_auth, '_ticks_ms', lambda: now[0])
+    portal._login_lockout_until = server._ticks_add(now[0], server._LOGIN_LOCKOUT_MS)
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.get('/login'))
+    writer = FakeWriter()
+    asyncio.run(portal._handle_login(_make_request('GET', '/login'), writer))
 
-    assert res.status_code == 200
-    assert res.text is not None
-    assert 'Try again in' in res.text
+    assert '200 OK' in writer.text()
+    assert 'Try again in' in writer.text()
 
 
 def test_login_success_resets_lockout_counter(monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
-    monkeypatch.setattr(server, 'PORTAL_USERNAME', 'admin')
-    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
-    portal.auth._attempts = 3
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_USERNAME', 'admin')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_PASSWORD', 'secret')
+    monkeypatch.setattr(server.routes_auth, '_ticks_ms', lambda: 1_000_000)
+    portal._login_attempts = 3
 
-    client = TestClient(portal.app)
-    asyncio.run(client.post('/login', body=b'username=admin&password=secret'))
+    asyncio.run(
+        portal._handle_login(
+            _make_request('POST', '/login', body=b'username=admin&password=secret'),
+            FakeWriter(),
+        )
+    )
 
-    assert portal.auth._attempts == 0
-    assert portal.auth._lockout_until == 0
+    assert portal._login_attempts == 0
+    assert portal._login_lockout_until == 0
 
 
 # ── Session timeout ───────────────────────────────────────────────────────────
@@ -527,29 +630,29 @@ def test_login_success_resets_lockout_counter(monkeypatch) -> None:
 
 def test_expired_session_is_rejected(monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
-    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_PASSWORD', 'secret')
     long_ago = 0
-    monkeypatch.setattr(_micro_server, '_ticks_ms', lambda: server._SESSION_TIMEOUT_MS + 1)
-    portal.auth._sessions['tok'] = 'admin'
-    portal.auth._timestamps['tok'] = long_ago
+    monkeypatch.setattr(server.routes_auth, '_ticks_ms', lambda: server._SESSION_TIMEOUT_MS + 1)
+    portal._sessions['tok'] = 'admin'
+    portal._session_timestamps['tok'] = long_ago
 
-    req = types.SimpleNamespace(cookies={'pico_bit_session': 'tok'})
-    assert portal.auth._check_session(req) is None
-    assert 'tok' not in portal.auth._sessions
+    req = _make_request('GET', '/api/bootstrap', cookies={'pico_bit_session': 'tok'})
+    assert portal._is_authorized(req) is False
+    assert 'tok' not in portal._sessions
 
 
 def test_active_session_is_not_expired(monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
-    monkeypatch.setattr(server, 'PORTAL_PASSWORD', 'secret')
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_PASSWORD', 'secret')
     now = 5_000_000
-    monkeypatch.setattr(_micro_server, '_ticks_ms', lambda: now)
-    portal.auth._sessions['tok'] = 'admin'
-    portal.auth._timestamps['tok'] = now - 60_000
+    monkeypatch.setattr(server.routes_auth, '_ticks_ms', lambda: now)
+    portal._sessions['tok'] = 'admin'
+    portal._session_timestamps['tok'] = now - 60_000  # 1 min ago
 
-    req = types.SimpleNamespace(cookies={'pico_bit_session': 'tok'})
-    assert portal.auth._check_session(req) is not None
+    req = _make_request('GET', '/api/bootstrap', cookies={'pico_bit_session': 'tok'})
+    assert portal._is_authorized(req) is True
 
 
 def test_stop_closes_server_and_ap() -> None:
@@ -619,10 +722,11 @@ def test_loot_receive_saves_json(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
 
     payload = json.dumps({'type': 'recon', 'system': {'hostname': 'victim'}})
-    client = TestClient(portal.app)
-    res = asyncio.run(client.post('/api/loot', body=payload.encode()))
+    req = _make_request('POST', '/api/loot', body=payload.encode())
+    writer = FakeWriter()
+    asyncio.run(portal._handle_loot_receive(req, writer))
 
-    assert res.status_code == 200
+    assert '200 OK' in writer.text()
     saved = json.loads((tmp_path / 'loot.json').read_text())
     assert saved['system']['hostname'] == 'victim'
 
@@ -631,10 +735,11 @@ def test_loot_receive_rejects_invalid_json(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
     monkeypatch.chdir(tmp_path)
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.post('/api/loot', body=b'not json!!!'))
+    req = _make_request('POST', '/api/loot', body=b'not json!!!')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_loot_receive(req, writer))
 
-    assert res.status_code == 400
+    assert '400' in writer.text()
 
 
 # ── Loot GET ──────────────────────────────────────────────────────────────────
@@ -642,102 +747,107 @@ def test_loot_receive_rejects_invalid_json(tmp_path, monkeypatch) -> None:
 
 def test_api_loot_get_returns_saved_data(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', False)
     monkeypatch.chdir(tmp_path)
     (tmp_path / 'loot.json').write_text('{"type":"exfil"}')
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.get('/api/loot'))
+    req = _make_request('GET', '/api/loot')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
 
-    assert res.status_code == 200
-    assert res.text is not None
-    assert 'exfil' in res.text
+    assert '200 OK' in writer.text()
+    assert 'exfil' in writer.text()
 
 
 def test_api_loot_get_returns_404_when_missing(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', False)
     monkeypatch.chdir(tmp_path)
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.get('/api/loot'))
+    req = _make_request('GET', '/api/loot')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
 
-    assert res.status_code == 404
+    assert '404' in writer.text()
 
 
 def test_api_loot_download_returns_attachment_header(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', False)
     monkeypatch.chdir(tmp_path)
     (tmp_path / 'loot.json').write_text('{"type":"recon"}')
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.get('/api/loot/download'))
+    req = _make_request('GET', '/api/loot/download')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
 
-    assert res.status_code == 200
-    assert 'attachment' in res.headers.get('Content-Disposition', '')
-    assert 'loot.json' in res.headers.get('Content-Disposition', '')
-    assert res.text is not None
-    assert 'recon' in res.text
+    assert '200 OK' in writer.text()
+    assert 'attachment' in writer.text()
+    assert 'loot.json' in writer.text()
+    assert 'recon' in writer.text()
 
 
 def test_api_loot_download_returns_404_when_missing(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', False)
     monkeypatch.chdir(tmp_path)
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.get('/api/loot/download'))
+    req = _make_request('GET', '/api/loot/download')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
 
-    assert res.status_code == 404
+    assert '404' in writer.text()
 
 
-# ── Binary upload ─────────────────────────────────────────────────────────────
+# ── Binary upload stream ──────────────────────────────────────────────────────
+
+
+class FakeReader:
+    def __init__(self, data: bytes) -> None:
+        self._data = data
+        self._pos = 0
+
+    async def read(self, n: int) -> bytes:
+        chunk = self._data[self._pos : self._pos + n]
+        self._pos += n
+        return chunk
+
+    async def readexactly(self, n: int) -> bytes:
+        return await self.read(n)
 
 
 def test_upload_binary_writes_to_static_payload_bin(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', False)
     monkeypatch.chdir(tmp_path)
 
     body = b'\x7fELF' + b'\x00' * 60
-
-    client = TestClient(portal.app)
-    res = asyncio.run(
-        client.post(
-            '/api/upload_binary',
-            headers={'X-Filename': 'recon', 'Content-Type': 'application/octet-stream'},
-            body=body,
-        )
+    partial = _make_request(
+        'POST',
+        '/api/upload_binary',
+        headers={'content-length': str(len(body)), 'x-filename': 'recon'},
     )
+    writer = FakeWriter()
+    asyncio.run(portal._handle_binary_upload_stream(FakeReader(body), writer, partial, len(body)))
 
-    assert res.status_code == 200
+    assert '200 OK' in writer.text()
     written = (tmp_path / 'static' / 'payload.bin').read_bytes()
     assert written == body
 
 
 def test_upload_binary_rejects_oversized_body(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', False)
     monkeypatch.chdir(tmp_path)
 
     big = server._MAX_BINARY_SIZE + 1
+    partial = _make_request('POST', '/api/upload_binary', headers={'content-length': str(big)})
+    writer = FakeWriter()
+    asyncio.run(
+        portal._handle_binary_upload_stream(FakeReader(b'\x00' * big), writer, partial, big)
+    )
 
-    async def run():
-        client = TestClient(portal.app)
-        # Spoof Content-Length; Microdot rejects before body is read
-        return await client.request(
-            'POST',
-            '/api/upload_binary',
-            headers={
-                'Content-Length': str(big),
-                'Content-Type': 'application/octet-stream',
-            },
-            body=b'',
-        )
-
-    res = asyncio.run(run())
-    assert res.status_code == 413
+    assert '413' in writer.text()
 
 
 # ── has_binary / static serve ─────────────────────────────────────────────────
@@ -763,38 +873,37 @@ def test_serve_payload_returns_binary(tmp_path, monkeypatch) -> None:
     (tmp_path / 'static').mkdir()
     (tmp_path / 'static' / 'payload.bin').write_bytes(b'\xca\xfe\xba\xbe')
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.get('/static/payload.bin'))
+    req = _make_request('GET', '/static/payload.bin')
+    writer = FakeWriter()
+    asyncio.run(portal._serve_payload(writer, req))
 
-    assert res.status_code == 200
-    assert res.body is not None
-    assert b'\xca\xfe\xba\xbe' in res.body
-    assert 'application/octet-stream' in res.headers.get('Content-Type', '')
+    assert b'\xca\xfe\xba\xbe' in writer.buffer
+    assert 'application/octet-stream' in writer.text()
 
 
 def test_serve_payload_404_when_missing(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
     monkeypatch.chdir(tmp_path)
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.get('/static/payload.bin'))
+    req = _make_request('GET', '/static/payload.bin')
+    writer = FakeWriter()
+    asyncio.run(portal._serve_payload(writer, req))
 
-    assert res.status_code == 404
+    assert '404' in writer.text()
 
 
 def test_serve_payload_requires_no_auth(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', True)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', True)
     monkeypatch.chdir(tmp_path)
     (tmp_path / 'static').mkdir()
     (tmp_path / 'static' / 'payload.bin').write_bytes(b'\xde\xad\xbe\xef')
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.get('/static/payload.bin'))
+    req = _make_request('GET', '/static/payload.bin')
+    writer = FakeWriter()
+    asyncio.run(portal._dispatch(req, writer))
 
-    assert res.status_code == 200
-    assert res.body is not None
-    assert b'\xde\xad\xbe\xef' in res.body
+    assert b'\xde\xad\xbe\xef' in writer.buffer
 
 
 # ── Inject binary ─────────────────────────────────────────────────────────────
@@ -802,18 +911,19 @@ def test_serve_payload_requires_no_auth(tmp_path, monkeypatch) -> None:
 
 def test_inject_binary_returns_404_when_no_binary_staged(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', False)
     monkeypatch.chdir(tmp_path)
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.post('/api/inject_binary', body=b'{"os":"windows"}'))
+    req = _make_request('POST', '/api/inject_binary', body=b'{"os":"windows"}')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
 
-    assert res.status_code == 404
+    assert '404' in writer.text()
 
 
 def test_inject_binary_runs_stager_and_returns_run_history(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', False)
     monkeypatch.chdir(tmp_path)
     (tmp_path / 'static').mkdir()
     (tmp_path / 'static' / 'payload.bin').write_bytes(b'\x7fELF')
@@ -826,20 +936,21 @@ def test_inject_binary_runs_stager_and_returns_run_history(tmp_path, monkeypatch
 
     monkeypatch.setattr(portal, '_run_payload', fake_run)
 
-    client = TestClient(portal.app)
-    res = asyncio.run(client.post('/api/inject_binary', body=b'{"os":"windows"}'))
+    req = _make_request('POST', '/api/inject_binary', body=b'{"os":"windows"}')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
 
-    assert res.status_code == 200
+    assert '200 OK' in writer.text()
     assert scripts_run
     assert 'GUI r' in scripts_run[0]
     assert '/static/payload.bin' in scripts_run[0]
-    assert res.json is not None
-    assert 'run_history' in res.json
+    body = json.loads(writer.text().split('\r\n\r\n', 1)[1])
+    assert 'run_history' in body
 
 
 def test_inject_binary_defaults_to_windows_when_os_omitted(tmp_path, monkeypatch) -> None:
     portal = server.SetupServer()
-    monkeypatch.setattr(server, 'PORTAL_AUTH_ENABLED', False)
+    monkeypatch.setattr(server.routes_auth, 'PORTAL_AUTH_ENABLED', False)
     monkeypatch.chdir(tmp_path)
     (tmp_path / 'static').mkdir()
     (tmp_path / 'static' / 'payload.bin').write_bytes(b'\x7fELF')
@@ -852,8 +963,9 @@ def test_inject_binary_defaults_to_windows_when_os_omitted(tmp_path, monkeypatch
 
     monkeypatch.setattr(portal, '_run_payload', fake_run)
 
-    client = TestClient(portal.app)
-    asyncio.run(client.post('/api/inject_binary', body=b'{}'))
+    req = _make_request('POST', '/api/inject_binary', body=b'{}')
+    writer = FakeWriter()
+    asyncio.run(portal._handle_api(req, writer))
 
     assert scripts_run
     assert 'pico_agent.exe' in scripts_run[0]
