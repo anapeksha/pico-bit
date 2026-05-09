@@ -627,7 +627,7 @@ async function loadBootstrap() {
   measureEditor();
   renderHighlight();
   renderEditorDecorations({ diagnostics: [] });
-  loadLoot();
+  await loadLootSnapshot();
   setBoundText('ap_ssid', state.ap_ssid);
   setBoundText('ap_password', state.ap_password || 'Open network');
   renderKeyboardLayouts(state);
@@ -648,7 +648,7 @@ async function loadBootstrap() {
   }
   setNotice(state.message || '', state.notice || 'quiet');
   if (state.has_binary) setArmoryBinaryReady(_TMP_BINARY_NAME);
-  startLootPolling();
+  startLootStream();
 }
 
 async function changeKeyboardTarget(payload) {
@@ -846,7 +846,7 @@ loadBootstrap().catch((error) => setNotice(error.message, 'error'));
 
 // ─── Loot ─────────────────────────────────────────────────────────────────
 
-async function loadLoot() {
+async function loadLootSnapshot() {
   try {
     const r = await fetch('/api/loot');
     if (r.status === 404) {
@@ -988,24 +988,41 @@ function renderLoot(data) {
   }
 }
 
-// ─── Loot polling ─────────────────────────────────────────────────────────
+// ─── Loot live updates (SSE) ─────────────────────────────────────────────
 
-let _lootPollTimer = null;
-let _lastLootTimestamp = 0;
+let _lootStream = null;
 
-function startLootPolling() {
-  if (_lootPollTimer) return;
-  _lootPollTimer = setInterval(async () => {
+function applyLootUpdate(data) {
+  if (!data || typeof data !== 'object') {
+    renderLootEmpty();
+    return;
+  }
+  renderLoot(data);
+}
+
+function startLootStream() {
+  if (_lootStream || !window.EventSource) return;
+
+  const stream = new EventSource('/api/loot/stream');
+  _lootStream = stream;
+
+  stream.addEventListener('loot', (event) => {
     try {
-      const r = await fetch('/api/loot');
-      if (!r.ok) return;
-      const data = await r.json();
-      if (data.timestamp && data.timestamp !== _lastLootTimestamp) {
-        _lastLootTimestamp = data.timestamp;
-        renderLoot(data);
-      }
+      applyLootUpdate(JSON.parse(event.data));
     } catch (_) {}
-  }, 3000);
+  });
+
+  stream.addEventListener('empty', () => {
+    renderLootEmpty();
+  });
+
+  stream.onerror = async () => {
+    // EventSource reconnects automatically. Refresh a snapshot in case the
+    // stream is still settling so the loot panel never looks stale.
+    try {
+      await loadLootSnapshot();
+    } catch (_) {}
+  };
 }
 
 // ─── Accordion ────────────────────────────────────────────────────────────

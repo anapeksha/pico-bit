@@ -2,6 +2,7 @@ import asyncio
 import json
 
 import server.routes_binary as routes_binary
+import server.routes_loot as routes_loot
 import server.routes_payload as routes_payload
 from server import SetupServer
 
@@ -163,3 +164,49 @@ def test_handle_binary_upload_stream_accepts_extensionless_elf_binary(
     assert payload['filename'] == 'agent'
     assert payload['size'] == len(body)
     assert payload_bin.read_bytes() == body
+
+
+def test_handle_loot_receive_persists_timestamp_and_publishes(tmp_path, monkeypatch) -> None:
+    loot_file = tmp_path / 'loot.json'
+    server = SetupServer()
+    monkeypatch.setattr(routes_loot, '_LOOT_FILE', str(loot_file))
+
+    writer = FakeWriter()
+    request = _request('/api/loot', body={'system': {'hostname': 'test-host'}})
+
+    asyncio.run(server._handle_loot_receive(request, writer))
+    status, payload = _json_response(writer)
+
+    saved = json.loads(loot_file.read_text(encoding='utf-8'))
+    revision, published = server._loot_stream.snapshot()
+
+    assert status == 'HTTP/1.1 200 OK'
+    assert payload['message'] == 'Loot saved.'
+    assert isinstance(payload['timestamp'], int)
+    assert saved['system']['hostname'] == 'test-host'
+    assert saved['timestamp'] == payload['timestamp']
+    assert revision == 1
+    assert json.loads(published)['timestamp'] == payload['timestamp']
+
+
+def test_handle_loot_get_returns_saved_record(tmp_path, monkeypatch) -> None:
+    loot_file = tmp_path / 'loot.json'
+    loot_file.write_text(
+        json.dumps({'system': {'hostname': 'pico'}, 'timestamp': 123}),
+        encoding='utf-8',
+    )
+    server = SetupServer()
+    monkeypatch.setattr(routes_loot, '_LOOT_FILE', str(loot_file))
+
+    writer = FakeWriter()
+    request = _request('/api/loot', method='GET')
+
+    asyncio.run(server._handle_loot_get(request, writer))
+    status, payload = _json_response(writer)
+
+    system = payload['system']
+
+    assert status == 'HTTP/1.1 200 OK'
+    assert isinstance(system, dict)
+    assert system['hostname'] == 'pico'
+    assert payload['timestamp'] == 123
