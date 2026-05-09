@@ -301,7 +301,6 @@
                   type="file"
                   id="binary-file-input"
                   class="upload-zone__input"
-                  accept=".exe,.bin,.elf,.sh,.bat,.ps1,.cmd"
                   aria-hidden="true"
                   tabindex="-1"
                 />
@@ -325,7 +324,10 @@
                   <p class="upload-zone__text">
                     Drag &amp; drop or click to upload
                   </p>
-                  <p class="upload-zone__hint">Replaces current binary slot</p>
+                  <p class="upload-zone__hint">
+                    EXE, ELF, or Mach-O binaries only. Unix binaries may be
+                    extensionless.
+                  </p>
                 </div>
                 <div class="upload-zone__file" id="upload-file-display" hidden>
                   <svg
