@@ -25,15 +25,7 @@ from keyboard_layouts import (
 )
 from status_led import STATUS_LED
 
-from ._http import (
-    _JSON_HEADERS,
-    _KEYBOARD_LAYOUT_FILE,
-    _LOOT_FILE,
-    _NO_STORE,
-    _RUN_HISTORY_LIMIT,
-    _merge_headers,
-    _ticks_ms,
-)
+from ._http import _KEYBOARD_LAYOUT_FILE, _RUN_HISTORY_LIMIT, _ticks_ms
 
 
 class _PayloadMixin:
@@ -51,6 +43,9 @@ class _PayloadMixin:
     def _keyboard_ready(self) -> bool: ...
     def _has_binary(self) -> bool: ...
     def _stager_script(self, target_os: str) -> str: ...
+    async def _handle_loot_get(self, request, writer) -> None: ...
+    async def _handle_loot_download(self, request, writer) -> None: ...
+    async def _handle_loot_stream(self, request, writer) -> None: ...
     async def _send(self, writer, request, status: str, body, headers=None) -> None: ...
     async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None: ...
     async def _run_payload(self, script: str, *, source: str = 'portal') -> tuple[str, str]: ...
@@ -337,41 +332,15 @@ class _PayloadMixin:
         method = request['method']
 
         if path == '/api/loot' and method == 'GET':
-            try:
-                with open(_LOOT_FILE) as f:
-                    content = f.read()
-                await self._send(
-                    writer,
-                    request,
-                    '200 OK',
-                    content.encode(),
-                    headers=_merge_headers(_JSON_HEADERS, _NO_STORE),
-                )
-            except OSError:
-                await self._send_json(
-                    writer, request, '404 Not Found', {'message': 'No loot collected yet.'}
-                )
+            await self._handle_loot_get(request, writer)
             return
 
         if path == '/api/loot/download' and method == 'GET':
-            try:
-                with open(_LOOT_FILE) as f:
-                    content = f.read()
-                await self._send(
-                    writer,
-                    request,
-                    '200 OK',
-                    content.encode(),
-                    headers=_merge_headers(
-                        _JSON_HEADERS,
-                        {'Content-Disposition': 'attachment; filename="loot.json"'},
-                        _NO_STORE,
-                    ),
-                )
-            except OSError:
-                await self._send_json(
-                    writer, request, '404 Not Found', {'message': 'No loot collected yet.'}
-                )
+            await self._handle_loot_download(request, writer)
+            return
+
+        if path == '/api/loot/stream' and method == 'GET':
+            await self._handle_loot_stream(request, writer)
             return
 
         if path == '/api/inject_binary' and method == 'POST':
