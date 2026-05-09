@@ -113,9 +113,7 @@ def collect_release_assets(dist_dir: Path = DIST_DIR) -> list[dict[str, object]]
 
 
 def refresh_release_metadata(release_json: Path = RELEASE_JSON) -> dict[str, object]:
-    metadata = (
-        json.loads(release_json.read_text(encoding='utf-8')) if release_json.exists() else {}
-    )
+    metadata = json.loads(release_json.read_text(encoding='utf-8')) if release_json.exists() else {}
     assets = collect_release_assets(release_json.parent)
     metadata['assets'] = assets
 
