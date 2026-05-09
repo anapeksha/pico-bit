@@ -8,6 +8,44 @@ from ._http import (
     _STATIC_DIR,
 )
 
+_ALLOWED_BINARY_EXTENSIONS = {'bin', 'elf', 'exe', 'appimage'}
+_MACH_O_MAGICS = (
+    b'\xfe\xed\xfa\xce',
+    b'\xce\xfa\xed\xfe',
+    b'\xfe\xed\xfa\xcf',
+    b'\xcf\xfa\xed\xfe',
+    b'\xca\xfe\xba\xbe',
+    b'\xbe\xba\xfe\xca',
+    b'\xca\xfe\xba\xbf',
+    b'\xbf\xba\xfe\xca',
+)
+
+
+def _sanitize_upload_filename(raw: str) -> str:
+    normalized = (raw or '').replace('\\', '/').strip()
+    if not normalized:
+        return ''
+    return normalized.rsplit('/', 1)[-1].strip()
+
+
+def _is_supported_upload_name(name: str) -> bool:
+    if not name or name in {'.', '..'}:
+        return False
+    if name.startswith('.'):
+        return False
+    if '.' not in name:
+        return True
+    extension = name.rsplit('.', 1)[-1].lower()
+    return extension in _ALLOWED_BINARY_EXTENSIONS
+
+
+def _looks_like_executable_binary(prefix: bytes) -> bool:
+    if prefix.startswith(b'MZ'):
+        return True
+    if prefix.startswith(b'\x7fELF'):
+        return True
+    return prefix[:4] in _MACH_O_MAGICS
+
 
 class _BinaryMixin:
     # Attributes provided by SetupServer.__init__
@@ -31,6 +69,13 @@ class _BinaryMixin:
             return True
         except OSError:
             return False
+
+    async def _discard_request_body(self, reader, remaining: int) -> None:
+        while remaining > 0:
+            chunk = await reader.read(min(_FILE_CHUNK_SIZE, remaining))
+            if not chunk:
+                break
+            remaining -= len(chunk)
 
     def _stager_script(self, target_os: str) -> str:
         url = 'http://' + self._ap_ip + '/static/payload.bin'
@@ -68,13 +113,22 @@ class _BinaryMixin:
             )
             return
 
+        fname = _sanitize_upload_filename(partial['headers'].get('x-filename', 'payload.bin'))
+        if not _is_supported_upload_name(fname):
+            await self._discard_request_body(reader, content_length)
+            await self._send_json(
+                writer,
+                partial,
+                '400 Bad Request',
+                {
+                    'message': 'Upload a compiled EXE, ELF, or Mach-O binary.',
+                    'notice': 'error',
+                },
+            )
+            return
+
         if content_length > _MAX_BINARY_SIZE:
-            remaining = content_length
-            while remaining > 0:
-                chunk = await reader.read(min(_FILE_CHUNK_SIZE, remaining))
-                if not chunk:
-                    break
-                remaining -= len(chunk)
+            await self._discard_request_body(reader, content_length)
             await self._send_json(
                 writer,
                 partial,
@@ -87,6 +141,7 @@ class _BinaryMixin:
             return
 
         written = 0
+        prefix = b''
         try:
             self._ensure_static_dir()
             gc.collect()
@@ -96,6 +151,8 @@ class _BinaryMixin:
                     chunk = await reader.read(min(_FILE_CHUNK_SIZE, remaining))
                     if not chunk:
                         break
+                    if len(prefix) < 8:
+                        prefix += chunk[: 8 - len(prefix)]
                     f.write(chunk)
                     written += len(chunk)
                     remaining -= len(chunk)
@@ -108,7 +165,22 @@ class _BinaryMixin:
             )
             return
 
-        fname = partial['headers'].get('x-filename', 'payload.bin')
+        if not _looks_like_executable_binary(prefix):
+            try:
+                os.remove(_PAYLOAD_BIN)
+            except OSError:
+                pass
+            await self._send_json(
+                writer,
+                partial,
+                '400 Bad Request',
+                {
+                    'message': 'Only executable EXE, ELF, or Mach-O binaries can be uploaded.',
+                    'notice': 'error',
+                },
+            )
+            return
+
         await self._send_json(
             writer,
             partial,
