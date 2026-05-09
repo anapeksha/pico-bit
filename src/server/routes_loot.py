@@ -147,9 +147,7 @@ class _LootMixin:
                         sse_event(event='loot', data=current_text, event_id=current_revision)
                     )
                 else:
-                    writer.write(
-                        sse_event(event='empty', data='{}', event_id=current_revision)
-                    )
+                    writer.write(sse_event(event='empty', data='{}', event_id=current_revision))
                 await writer.drain()
                 last_revision = current_revision
                 continue
