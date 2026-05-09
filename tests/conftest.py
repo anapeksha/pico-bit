@@ -7,7 +7,10 @@ from typing import Any, cast
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / 'src'
+SERVER_SRC = SRC / 'server'
 
+if str(SERVER_SRC) not in sys.path:
+    sys.path.insert(0, str(SERVER_SRC))
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 

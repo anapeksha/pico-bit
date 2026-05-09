@@ -16,7 +16,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 
-dependencies = ["microdot>=2.6.1"]
+dependencies = []
 
 [dependency-groups]
 dev = [
@@ -51,7 +51,7 @@ exclude = [
     "**/.*",
 ]
 stubPath = "stubs"
-executionEnvironments = [{ root = ".", extraPaths = ["src"] }]
+executionEnvironments = [{ root = ".", extraPaths = ["src", "src/server"] }]
 
 [tool.ruff]
 line-length = 100
