@@ -2,22 +2,23 @@
 
 <img src="images/pico-bit.jpeg" alt="Pico Bit home">
 
-`pico-bit` turns a Raspberry Pi Pico 2 W into a wireless keystroke injector and C2 access point. Plug it into a target machine via USB — it types a DuckyScript payload as a keyboard, then starts a Wi-Fi hotspot so you can control everything from a phone or laptop browser.
+`pico-bit` turns a Raspberry Pi Pico 2 W into a Wi-Fi-controlled keystroke injector and lightweight C2 access point. It runs a DuckyScript payload over USB HID, hosts a browser portal at `192.168.4.1`, and can stage one uploaded agent binary for a target machine to fetch and execute.
 
-## What it does
+## Features
 
-- **Injects keystrokes** — runs `payload.dd` as a USB HID keyboard payload on every boot
-- **Browser portal** — edit, save, and run payloads from any device connected to the Pico's Wi-Fi AP
-- **Payload library** — store multiple named scripts on-device and load them with one click
-- **Keyboard targeting** — choose the target OS and keyboard layout (Windows, macOS, Linux × EN/DE/FR/ES/IT) so typed characters land correctly on any keyboard
-- **Agent drop** — upload a small recon or exfil binary to the Pico; the portal injects a one-liner stager that downloads and runs it on the target machine
-- **Loot collection** — after an agent runs it phones home and posts collected data back to the Pico; view and download the results from the portal
-- **Dry-run validation** — the editor checks your DuckyScript for errors before you save or run it
+- Runs `payload.dd` automatically at boot and on demand from the portal
+- Browser editor with reload, save, and save-and-run actions
+- Dry-run validation with line-level diagnostics before save or execution
+- Host typing target selection by operating system and keyboard layout
+- Binary Armory for uploading one staged agent binary at a time
+- HID-injected stager generation for Windows, macOS, and Linux targets
+- Loot collection and `loot.json` download from the portal
+- Recent run history in the portal UI
 
 ## Hardware
 
 - Supported board: Raspberry Pi Pico 2 W (`RPI_PICO2_W`) only
-- Use the Pico's own USB data port for HID — not a carrier-only power port
+- Use the Pico's own USB data port for HID, not a carrier-only power port
 
 ## Default access
 
@@ -29,43 +30,51 @@
 | Portal username | `admin` |
 | Portal password | `PicoBit24Admin` |
 
-## Get started
-
-### 1. Flash the firmware
+## Flashing
 
 1. Hold `BOOTSEL` while connecting the Pico to your computer.
 2. Download the latest `pico-bit-RPI_PICO2_W-<version>.uf2` from the [Releases page](https://github.com/anapeksha/pico-bit/releases/latest).
 3. Copy it to the `RPI-RP2` drive that appears.
 4. The board reboots automatically.
 
-On first boot, Pico Bit creates `payload.dd` with a placeholder payload if the file does not exist yet.
+On first boot, Pico Bit creates `payload.dd` if it does not already exist.
 
-### 2. Use the injector
+## Using the portal
 
 1. Plug the Pico into the target machine's USB port.
 2. From another device, join the `PicoBit` Wi-Fi network.
 3. Open `http://192.168.4.1` and sign in.
-4. Write or load a DuckyScript payload, then click **Run**.
+4. Edit `payload.dd`, review validation results, then click **Save** or **Save & run**.
+5. If needed, change the host typing target under **Layout** so typed characters match the target system.
 
 The payload also runs automatically at boot once the USB keyboard is ready.
 
-### 3. Drop an agent (optional)
+## Optional agent workflow
 
-Agents are small programs compiled for Windows, Linux, or macOS. They collect data from the target machine and send it back to the Pico automatically.
+The portal can hold one staged binary in its Armory slot. That binary is served from the Pico, and the portal can inject a one-line stager that downloads and runs it on the target.
 
-To deploy:
-1. In the portal, drag and drop an agent binary onto the **Armory** panel to upload it to the Pico.
-2. Click **Copy payload** next to the binary to get the DuckyScript one-liner.
-3. Run the payload — it types a download command on the target that fetches and executes the agent.
-4. Results appear in the **Loot** panel once the agent reports back.
+1. Open **Binary Armory** in the portal.
+2. Upload a binary for the target platform.
+3. Choose the target OS.
+4. Click **Inject** to type the stager on the target machine.
+5. View or download the latest collected data from the **Loot** panel.
 
 Pre-built agent binaries for Windows, Linux, and macOS are attached to each [release](https://github.com/anapeksha/pico-bit/releases/latest).
 
-## Payload file
+## Device files
 
-- The active payload is `payload.dd` on the Pico's internal filesystem
-- It survives firmware updates and can be edited from the portal at any time
-- The payload library stores additional named scripts under the `payloads/` directory
+- `payload.dd` is the active HID payload and stays writable on the Pico filesystem
+- `keyboard_layout.txt` stores the selected OS + keyboard layout target
+- `static/payload.bin` is the currently staged Armory binary
+- `loot.json` stores the latest collected loot snapshot
+
+## Development
+
+```bash
+uv sync
+uv run pytest
+uv run python build.py
+```
 
 ## Responsible use
 

@@ -5,8 +5,10 @@
 #   brew install filosottile/musl-cross/musl-cross            # Linux musl
 #   brew install llvm-mingw  (or download mstorsjo/llvm-mingw)# gnullvm Windows + arm64
 #
-# CI uses cargo-zigbuild + Zig for Windows and Linux targets — no system
-# cross-compiler required there.
+# CI now builds agent binaries on native GitHub-hosted runners per OS/arch.
+# Linux release jobs still use cargo-zigbuild for musl output, but Windows
+# release jobs use native MSVC runners and macOS release jobs use native Apple
+# runners.
 
 # ── Windows GNU (homebrew mingw-w64) ──────────────────────────────────────────
 [target.x86_64-pc-windows-gnu]
