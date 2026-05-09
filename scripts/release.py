@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import subprocess
 import tomllib
@@ -28,6 +29,8 @@ DEFAULT_BOARD = 'RPI_PICO2_W'
 DEFAULT_MICROPYTHON_REF = 'v1.28.0'
 DEFAULT_REPO = 'https://github.com/micropython/micropython.git'
 PYPROJECT = ROOT / 'pyproject.toml'
+RELEASE_JSON = DIST_DIR / 'release.json'
+ASSET_PATTERNS = ('*.uf2', 'payloads-*.zip')
 
 
 def _run(cmd: list[str], cwd: Path | None = None) -> None:
@@ -82,6 +85,59 @@ def release_filename(board: str, artifact_version: str | None) -> str:
     return f'pico-bit-{board}.uf2'
 
 
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open('rb') as f:
+        while True:
+            chunk = f.read(65536)
+            if not chunk:
+                break
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def collect_release_assets(dist_dir: Path = DIST_DIR) -> list[dict[str, object]]:
+    assets: list[dict[str, object]] = []
+    for pattern in ASSET_PATTERNS:
+        for path in sorted(dist_dir.glob(pattern)):
+            kind = 'firmware' if path.suffix == '.uf2' else 'bundle'
+            assets.append(
+                {
+                    'kind': kind,
+                    'name': path.name,
+                    'sha256': sha256_file(path),
+                    'size_bytes': path.stat().st_size,
+                }
+            )
+    return assets
+
+
+def refresh_release_metadata(release_json: Path = RELEASE_JSON) -> dict[str, object]:
+    metadata = json.loads(release_json.read_text(encoding='utf-8')) if release_json.exists() else {}
+    assets = collect_release_assets(release_json.parent)
+    metadata['assets'] = assets
+
+    firmware_name = next(
+        (asset['name'] for asset in assets if asset.get('kind') == 'firmware'),
+        None,
+    )
+    if firmware_name is not None:
+        metadata['firmware'] = firmware_name
+        firmware_sha = next(
+            (
+                asset['sha256']
+                for asset in assets
+                if asset.get('kind') == 'firmware' and asset.get('name') == firmware_name
+            ),
+            None,
+        )
+        if firmware_sha is not None:
+            metadata['firmware_sha256'] = firmware_sha
+
+    release_json.write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    return metadata
+
+
 def build_firmware(
     board: str,
     ref: str,
@@ -112,7 +168,7 @@ def build_firmware(
     output = DIST_DIR / release_name
     output.write_bytes(firmware.read_bytes())
 
-    metadata = {
+    metadata: dict[str, object] = {
         'artifact_version': artifact_version,
         'board': board,
         'config_overrides': overrides,
@@ -121,7 +177,8 @@ def build_firmware(
         'micropython_ref': ref,
         'module_count': len(list(MPY_DIR.rglob('*.mpy'))),
     }
-    (DIST_DIR / 'release.json').write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    RELEASE_JSON.write_text(json.dumps(metadata, indent=2), encoding='utf-8')
+    refresh_release_metadata(RELEASE_JSON)
     return output
 
 
@@ -131,7 +188,7 @@ def _build_parser() -> argparse.ArgumentParser:
         'command',
         nargs='?',
         default='build-uf2',
-        choices=['build-uf2', 'sync-assets'],
+        choices=['build-uf2', 'refresh-release-json', 'sync-assets'],
     )
     parser.add_argument('--board', default=DEFAULT_BOARD)
     parser.add_argument('--micropython-ref', default=DEFAULT_MICROPYTHON_REF)
@@ -153,6 +210,10 @@ def run_release(argv: list[str] | None = None) -> int:
 
     if args.command == 'sync-assets':
         sync_web_assets()
+        return 0
+
+    if args.command == 'refresh-release-json':
+        refresh_release_metadata(RELEASE_JSON)
         return 0
 
     try:

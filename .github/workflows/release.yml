@@ -274,6 +274,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.ref }}
+
       - name: Download UF2 artifacts
         if: needs.build-uf2.result == 'success'
         uses: actions/download-artifact@v4
@@ -287,6 +292,9 @@ jobs:
         with:
           name: pico-bit-agent-zips
           path: dist
+
+      - name: Refresh release.json checksums
+        run: python3 release.py refresh-release-json
 
       - name: Publish release assets
         uses: softprops/action-gh-release@v2

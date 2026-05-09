@@ -98,6 +98,63 @@ def test_release_filename_uses_optional_version_suffix() -> None:
     assert RELEASE.release_filename('RPI_PICO2_W', None) == 'pico-bit-RPI_PICO2_W.uf2'
 
 
+def test_collect_release_assets_includes_sha256_and_size(tmp_path) -> None:
+    firmware = tmp_path / 'pico-bit-RPI_PICO2_W-v1.2.3.uf2'
+    linux_zip = tmp_path / 'payloads-linux.zip'
+    firmware.write_bytes(b'firmware-bytes')
+    linux_zip.write_bytes(b'zip-bytes')
+
+    assets = RELEASE.collect_release_assets(tmp_path)
+
+    assert assets == [
+        {
+            'kind': 'firmware',
+            'name': firmware.name,
+            'sha256': RELEASE.sha256_file(firmware),
+            'size_bytes': len(b'firmware-bytes'),
+        },
+        {
+            'kind': 'bundle',
+            'name': linux_zip.name,
+            'sha256': RELEASE.sha256_file(linux_zip),
+            'size_bytes': len(b'zip-bytes'),
+        },
+    ]
+
+
+def test_refresh_release_metadata_merges_asset_checksums(tmp_path) -> None:
+    firmware = tmp_path / 'pico-bit-RPI_PICO2_W-v1.2.3.uf2'
+    windows_zip = tmp_path / 'payloads-windows.zip'
+    firmware.write_bytes(b'firmware')
+    windows_zip.write_bytes(b'windows-zip')
+    release_json = tmp_path / 'release.json'
+    release_json.write_text(
+        '{"board": "RPI_PICO2_W", "artifact_version": "v1.2.3"}',
+        encoding='utf-8',
+    )
+
+    metadata = RELEASE.refresh_release_metadata(release_json)
+
+    assert metadata['board'] == 'RPI_PICO2_W'
+    assert metadata['artifact_version'] == 'v1.2.3'
+    assert metadata['firmware'] == firmware.name
+    assert metadata['firmware_sha256'] == RELEASE.sha256_file(firmware)
+    assert metadata['assets'] == [
+        {
+            'kind': 'firmware',
+            'name': firmware.name,
+            'sha256': RELEASE.sha256_file(firmware),
+            'size_bytes': len(b'firmware'),
+        },
+        {
+            'kind': 'bundle',
+            'name': windows_zip.name,
+            'sha256': RELEASE.sha256_file(windows_zip),
+            'size_bytes': len(b'windows-zip'),
+        },
+    ]
+
+
 def test_render_device_config_keeps_portal_password_independent() -> None:
     source = (ROOT / 'src' / 'device_config.py').read_text(encoding='utf-8')
 
