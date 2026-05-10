@@ -789,6 +789,8 @@ a {
 
 /* ─── Loot panel ─────────────────────────────── */
 .loot__actions {
+  display: grid;
+  gap: 0.45rem;
   margin-top: 0.75rem;
 }
 
@@ -1250,6 +1252,35 @@ a {
   gap: 0.5rem;
   flex-shrink: 0;
   padding-bottom: 1px;
+}
+
+.armory__usb {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.armory__usb-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.armory__usb-label {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.armory__usb-state {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
 }
 
 .armory__snippet {

@@ -45,7 +45,11 @@ pub fn collect() -> Value {
     let output = Command::new("dpkg")
         .args(["-l"])
         .output()
-        .or_else(|_| Command::new("rpm").args(["-qa", "--queryformat", "%{NAME} %{VERSION}\n"]).output())
+        .or_else(|_| {
+            Command::new("rpm")
+                .args(["-qa", "--queryformat", "%{NAME} %{VERSION}\n"])
+                .output()
+        })
         .or_else(|_| Command::new("pacman").args(["-Q"]).output());
     let Ok(output) = output else {
         return Value::Array(vec![]);

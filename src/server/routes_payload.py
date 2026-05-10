@@ -42,10 +42,13 @@ class _PayloadMixin:
     def _is_authorized(self, request) -> bool: ...
     def _keyboard_ready(self) -> bool: ...
     def _has_binary(self) -> bool: ...
-    def _stager_script(self, target_os: str) -> str: ...
+    def _stager_script(self, target_os: str, delivery: str = 'network') -> str: ...
+    def _usb_agent_state(self) -> dict[str, object]: ...
     async def _handle_loot_get(self, request, writer) -> None: ...
     async def _handle_loot_download(self, request, writer) -> None: ...
+    async def _handle_usb_loot_import(self, request, writer) -> None: ...
     async def _handle_loot_stream(self, request, writer) -> None: ...
+    async def _handle_usb_agent(self, request, writer) -> None: ...
     async def _send(self, writer, request, status: str, body, headers=None) -> None: ...
     async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None: ...
     async def _run_payload(self, script: str, *, source: str = 'portal') -> tuple[str, str]: ...
@@ -173,6 +176,7 @@ class _PayloadMixin:
             'run_history': self._recent_runs(),
             'seeded': self._payload_seeded,
             'has_binary': self._has_binary(),
+            'usb_agent': self._usb_agent_state(),
         }
         state.update(self._keyboard_layout_state())
         return state
@@ -339,8 +343,16 @@ class _PayloadMixin:
             await self._handle_loot_download(request, writer)
             return
 
+        if path == '/api/loot/import-usb' and method == 'POST':
+            await self._handle_usb_loot_import(request, writer)
+            return
+
         if path == '/api/loot/stream' and method == 'GET':
             await self._handle_loot_stream(request, writer)
+            return
+
+        if path == '/api/usb-agent':
+            await self._handle_usb_agent(request, writer)
             return
 
         if path == '/api/inject_binary' and method == 'POST':
@@ -357,14 +369,43 @@ class _PayloadMixin:
             except ValueError:
                 data = {}
             target_os = str(data.get('os', 'windows')).lower()
-            script = self._stager_script(target_os)
-            message, notice = await self._run_payload(script)
+            delivery = str(data.get('delivery', 'network')).lower()
+            if delivery not in {'network', 'usb_drive'}:
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {'message': 'Unsupported delivery mode.', 'notice': 'error'},
+                )
+                return
+            if delivery == 'usb_drive' and not self._usb_agent_state().get('mounted'):
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {
+                        'message': 'Mount the USB agent drive before injecting the USB stager.',
+                        'notice': 'error',
+                        'usb_agent': self._usb_agent_state(),
+                    },
+                )
+                return
+            await STATUS_LED.show('binary_injecting')
+            script = self._stager_script(target_os, delivery=delivery)
+            message, notice = await self._run_payload(script, source='binary:' + delivery)
+            if notice != 'success':
+                await STATUS_LED.show('binary_inject_failed')
             status = '200 OK' if notice == 'success' else '400 Bad Request'
             await self._send_json(
                 writer,
                 request,
                 status,
-                {'message': message, 'notice': notice, 'run_history': self._recent_runs()},
+                {
+                    'message': message,
+                    'notice': notice,
+                    'run_history': self._recent_runs(),
+                    'usb_agent': self._usb_agent_state(),
+                },
             )
             return
 

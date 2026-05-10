@@ -156,6 +156,9 @@ def build_firmware(
             # Python module saves ~50–80 KB of flash and reduces init overhead.
             'MICROPY_PY_BLUETOOTH=0',
             'MICROPY_BLUETOOTH_NIMBLE=0',
+            # Primary offline delivery uses built-in USB MSC, then appends the
+            # runtime HID keyboard interface from src/hid.py.
+            'CFLAGS_EXTRA=-DMICROPY_HW_USB_CDC=0 -DMICROPY_HW_USB_MSC=1',
         ],
         cwd=MICROPYTHON_DIR,
     )
@@ -176,6 +179,7 @@ def build_firmware(
         'manifest': str(MANIFEST),
         'micropython_ref': ref,
         'module_count': len(list(MPY_DIR.rglob('*.mpy'))),
+        'usb_msc_enabled': True,
     }
     RELEASE_JSON.write_text(json.dumps(metadata, indent=2), encoding='utf-8')
     refresh_release_metadata(RELEASE_JSON)

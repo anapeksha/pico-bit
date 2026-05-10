@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import json
 import sys
 from argparse import Namespace
 from pathlib import Path
@@ -153,6 +154,40 @@ def test_refresh_release_metadata_merges_asset_checksums(tmp_path) -> None:
             'size_bytes': len(b'windows-zip'),
         },
     ]
+
+
+def test_build_firmware_enables_usb_msc_and_records_metadata(tmp_path, monkeypatch) -> None:
+    micropython = tmp_path / 'micropython'
+    firmware = micropython / 'ports' / 'rp2' / 'build-RPI_PICO2_W' / 'firmware.uf2'
+    firmware.parent.mkdir(parents=True)
+    firmware.write_bytes(b'uf2')
+    mpy_dir = tmp_path / 'mpy'
+    mpy_dir.mkdir()
+    (mpy_dir / 'boot.mpy').write_bytes(b'mpy')
+    dist_dir = tmp_path / 'dist'
+    release_json = dist_dir / 'release.json'
+    calls: list[list[str]] = []
+
+    def fake_run(cmd: list[str], cwd: Path | None = None) -> None:
+        assert cwd == micropython
+        calls.append(cmd)
+
+    monkeypatch.setattr(RELEASE, 'MICROPYTHON_DIR', micropython)
+    monkeypatch.setattr(RELEASE, 'DIST_DIR', dist_dir)
+    monkeypatch.setattr(RELEASE, 'RELEASE_JSON', release_json)
+    monkeypatch.setattr(RELEASE, 'MPY_DIR', mpy_dir)
+    monkeypatch.setattr(RELEASE, 'MANIFEST', tmp_path / 'manifest.py')
+    monkeypatch.setattr(RELEASE, '_run', fake_run)
+
+    output = RELEASE.build_firmware('RPI_PICO2_W', 'v1.28.0', {}, 'v0.0.1')
+
+    assert output == dist_dir / 'pico-bit-RPI_PICO2_W-v0.0.1.uf2'
+    assert output.read_bytes() == b'uf2'
+    assert calls
+    assert 'CFLAGS_EXTRA=-DMICROPY_HW_USB_CDC=0 -DMICROPY_HW_USB_MSC=1' in calls[0]
+    metadata = json.loads(release_json.read_text(encoding='utf-8'))
+    assert metadata['usb_msc_enabled'] is True
+    assert metadata['firmware'] == output.name
 
 
 def test_render_device_config_keeps_portal_password_independent() -> None:

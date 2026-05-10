@@ -1,7 +1,9 @@
 import gc
 import json
+import os
 
 from helpers import sleep_ms
+from status_led import STATUS_LED
 
 from ._http import _JSON_HEADERS, _LOOT_FILE, _NO_STORE, _merge_headers, _ticks_ms
 from .loot_stream import LootStreamState
@@ -9,6 +11,7 @@ from .sse import sse_comment, sse_event
 
 _LOOT_STREAM_HEARTBEAT_MS = 15_000
 _LOOT_STREAM_STEP_MS = 250
+_USB_LOOT_FILE = 'loot-usb.json'
 
 
 class _LootMixin:
@@ -35,6 +38,16 @@ class _LootMixin:
     def _publish_loot_text(self, text: str) -> int:
         return self._loot_stream.publish(text)
 
+    def _save_loot_data(self, data, *, source: str) -> dict[str, object]:
+        record = self._normalize_loot_record(data)
+        record['source'] = source
+        text = self._serialize_loot_record(record)
+        gc.collect()
+        with open(_LOOT_FILE, 'w') as f:
+            f.write(text)
+        self._publish_loot_text(text)
+        return record
+
     async def _handle_loot_receive(self, request, writer) -> None:
         gc.collect()
         try:
@@ -42,23 +55,73 @@ class _LootMixin:
         except ValueError:
             await self._send_json(writer, request, '400 Bad Request', {'message': 'Invalid JSON.'})
             return
-        record = self._normalize_loot_record(data)
-        text = self._serialize_loot_record(record)
         try:
-            gc.collect()
-            with open(_LOOT_FILE, 'w') as f:
-                f.write(text)
+            record = self._save_loot_data(data, source='network')
         except (OSError, MemoryError):
             await self._send_json(
                 writer, request, '500 Internal Server Error', {'message': 'Write failed.'}
             )
             return
-        self._publish_loot_text(text)
         await self._send_json(
             writer,
             request,
             '200 OK',
             {'message': 'Loot saved.', 'timestamp': record['timestamp']},
+        )
+
+    async def _handle_usb_loot_import(self, request, writer) -> None:
+        gc.collect()
+        try:
+            with open(_USB_LOOT_FILE) as f:
+                raw = f.read()
+        except OSError:
+            await self._send_json(
+                writer,
+                request,
+                '404 Not Found',
+                {'message': 'No USB loot file found.', 'notice': 'error'},
+            )
+            return
+
+        try:
+            data = json.loads(raw or '{}')
+        except ValueError:
+            await self._send_json(
+                writer,
+                request,
+                '400 Bad Request',
+                {'message': 'USB loot file is not valid JSON.', 'notice': 'error'},
+            )
+            return
+
+        try:
+            record = self._save_loot_data(data, source='usb_drive')
+        except (OSError, MemoryError):
+            await self._send_json(
+                writer,
+                request,
+                '500 Internal Server Error',
+                {'message': 'USB loot import failed.', 'notice': 'error'},
+            )
+            return
+
+        try:
+            os.remove(_USB_LOOT_FILE)
+        except OSError:
+            pass
+
+        await STATUS_LED.show('loot_imported')
+
+        await self._send_json(
+            writer,
+            request,
+            '200 OK',
+            {
+                'loot': record,
+                'message': 'USB loot imported.',
+                'notice': 'success',
+                'timestamp': record['timestamp'],
+            },
         )
 
     async def _handle_loot_get(self, request, writer) -> None:

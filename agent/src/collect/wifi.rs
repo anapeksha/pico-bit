@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 #[cfg(target_os = "windows")]
 pub fn collect() -> Value {
@@ -27,7 +27,13 @@ pub fn collect() -> Value {
         .iter()
         .map(|ssid| {
             let key_output = Command::new("netsh")
-                .args(["wlan", "show", "profile", &format!("name={ssid}"), "key=clear"])
+                .args([
+                    "wlan",
+                    "show",
+                    "profile",
+                    &format!("name={ssid}"),
+                    "key=clear",
+                ])
                 .output();
             let password = key_output
                 .ok()
@@ -93,13 +99,18 @@ pub fn collect() -> Value {
             let name = l.split(':').next()?.to_string();
             let pw_output = Command::new("nmcli")
                 .args([
-                    "-s", "-g",
+                    "-s",
+                    "-g",
                     "802-11-wireless-security.psk",
-                    "connection", "show", &name,
+                    "connection",
+                    "show",
+                    &name,
                 ])
                 .output()
                 .ok()?;
-            let password = String::from_utf8_lossy(&pw_output.stdout).trim().to_string();
+            let password = String::from_utf8_lossy(&pw_output.stdout)
+                .trim()
+                .to_string();
             Some(json!({ "ssid": name, "password": password }))
         })
         .collect();

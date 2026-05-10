@@ -180,7 +180,9 @@ uv run python build.py
 
 - `src/web_assets.py` is generated from `web/` and should not be edited by hand
 - `payload.dd` is writable on the Pico filesystem and is not frozen into firmware
-- the portal can stage one executable at a time as `static/payload.bin`
+- the portal stages one executable at a time as extensionless `pico-agent`; `/static/payload.bin` remains the unauthenticated network download URL
+- release UF2 builds expose the Pico filesystem as a `PICOBIT` USB drive and append the HID keyboard interface for offline agent delivery
+- USB-delivered agents can write `loot-usb.json` to the Pico drive; the portal imports it into canonical `loot.json`
 - release workflows build firmware and agent artifacts separately, then publish them together
 
 ## Releases
