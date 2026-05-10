@@ -42,16 +42,16 @@ wheels = [
 
 [[package]]
 name = "mpy-cross"
-version = "1.27.0.post2"
+version = "1.28.0rc0.post2"
 source = { registry = "https://pypi.org/simple" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e5/82/48b9dd1ed5fe739ca94a122a5d957150c661ffc8e274d4541fada83eda1f/mpy_cross-1.27.0.post2-py2.py3-none-macosx_11_0_universal2.whl", hash = "sha256:9a7a7027d58c336a98f4d78eb43da42f5a23d81be268e113e8f0b863ec7849fc", size = 1821699, upload-time = "2025-12-13T17:12:51.987Z" },
-    { url = "https://files.pythonhosted.org/packages/ed/54/098d4c292c555be8746e53bbadd5a0060550d7694518771a1da0a7cf06f3/mpy_cross-1.27.0.post2-py2.py3-none-manylinux1_i686.whl", hash = "sha256:d264ab8fef6c21cd7d842c8d3e9bea59694fefadd8f529bf93a168e25c201c0a", size = 1046954, upload-time = "2025-12-13T17:12:53.967Z" },
-    { url = "https://files.pythonhosted.org/packages/ea/96/22553824dad4f7b3a9dc1fb437b0edf37bb09d17ce0ecb6bc7a209326477/mpy_cross-1.27.0.post2-py2.py3-none-manylinux1_x86_64.whl", hash = "sha256:28821aeaac4e2b1e365605afc0c0767505be4f4acded4f652c07d8f76b9409a6", size = 1052470, upload-time = "2025-12-13T17:12:55.931Z" },
-    { url = "https://files.pythonhosted.org/packages/88/9e/7b21955c32d286ae2ee0b13a4b9909445931ec326442141f4aed63323a7f/mpy_cross-1.27.0.post2-py2.py3-none-manylinux2014_aarch64.whl", hash = "sha256:d0454bf49ce6a4cd4b67a51c3ff43cc1040d12bec05adbcb20209e2983d75d83", size = 1151815, upload-time = "2025-12-13T17:12:57.812Z" },
-    { url = "https://files.pythonhosted.org/packages/7c/a5/feac9c5a51e5fca35c9ee5069819721949de6cdbf79f6e270e705a48e835/mpy_cross-1.27.0.post2-py2.py3-none-manylinux2014_armv7l.whl", hash = "sha256:d66d2b265cc1ec65f223019e721a9a66d8a999ad656cea31e3e0145e406e4d0b", size = 1056046, upload-time = "2025-12-13T17:12:59.705Z" },
-    { url = "https://files.pythonhosted.org/packages/32/4e/6f18221bd52df032914aa489ce78cd8dc353c8f7b8f03a9cd585563f1c7e/mpy_cross-1.27.0.post2-py2.py3-none-win32.whl", hash = "sha256:1379497695e1a75087e43ce06c4044a6385f5fc28ed9073921d98b49322caad6", size = 1082278, upload-time = "2025-12-13T17:13:01.485Z" },
-    { url = "https://files.pythonhosted.org/packages/30/ad/3bcdc53142c0058a44b5b9036142896af882ccf406982f29c259c7b8136c/mpy_cross-1.27.0.post2-py2.py3-none-win_amd64.whl", hash = "sha256:c2a4060b256c0946a51630511507678a4cca3ad071b4f60583c34742e3a692d5", size = 1166245, upload-time = "2025-12-13T17:13:03.168Z" },
+    { url = "https://files.pythonhosted.org/packages/47/5f/842538668c6321892ee01d14cef8cc997504b0f48014a7d070c7cd0fd2e9/mpy_cross-1.28.0rc0.post2-py2.py3-none-macosx_11_0_universal2.whl", hash = "sha256:49ae7b84cc0e43f3176f687486b5f067bc6b9ced3e2a32ea43c4f9273d4bf04e", size = 1821788, upload-time = "2025-12-20T17:07:02.813Z" },
+    { url = "https://files.pythonhosted.org/packages/ec/2b/d643b836b4a883a7fce263ea21e0492e44167f441103c75060db8ecf17d0/mpy_cross-1.28.0rc0.post2-py2.py3-none-manylinux1_i686.whl", hash = "sha256:b3354d12698055dd414f419f4eee2c38304e44851881d35ba2cceef575688c20", size = 1047072, upload-time = "2025-12-20T17:07:04.987Z" },
+    { url = "https://files.pythonhosted.org/packages/0d/7f/df1e948f7330254c83d668be460d77183b6381706f71ed2731cb69c40de9/mpy_cross-1.28.0rc0.post2-py2.py3-none-manylinux1_x86_64.whl", hash = "sha256:88e3820c4c8fb7552c9c2a27f641c6d543f8fca06e0ae135962e2ccb4faf8902", size = 1052593, upload-time = "2025-12-20T17:07:06.98Z" },
+    { url = "https://files.pythonhosted.org/packages/a7/6d/b4652febc0726ca4a7eb0a77e14f729abe4bd5149281b1299aade1db40fc/mpy_cross-1.28.0rc0.post2-py2.py3-none-manylinux2014_aarch64.whl", hash = "sha256:9e2656d0edf45f883045732e5e041ad17cdac80ea6820470c063643249252e9f", size = 1151921, upload-time = "2025-12-20T17:07:08.887Z" },
+    { url = "https://files.pythonhosted.org/packages/19/a7/23df5b0a44bb442a5b7e55495f8504e9be79026b3678bc024d14a4ccfcc5/mpy_cross-1.28.0rc0.post2-py2.py3-none-manylinux2014_armv7l.whl", hash = "sha256:3536c0a2ba04d9786fcea8b93f783c7c9871ce9d251fbf9bc843fd064572c878", size = 1056166, upload-time = "2025-12-20T17:07:10.828Z" },
+    { url = "https://files.pythonhosted.org/packages/d9/49/ca5d2b62a19d7010713d4571d014481fba863c9805bdc5a425c597fb6d7f/mpy_cross-1.28.0rc0.post2-py2.py3-none-win32.whl", hash = "sha256:a3180c1fafa74c7f571f90ea460a968647308ad11024b39af7353f996dad45f0", size = 1082397, upload-time = "2025-12-20T17:07:12.766Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/43/048dd66e9cfd461d0d6ec8779ac55485f6f6759c1e99ba9da6b739e07bc4/mpy_cross-1.28.0rc0.post2-py2.py3-none-win_amd64.whl", hash = "sha256:8b20b46aa24ba07386ba32ccf0015c65cb9b57041e6e1db81728cd01f1552821", size = 1166370, upload-time = "2025-12-20T17:07:14.667Z" },
 ]
 
 [[package]]
@@ -91,7 +91,7 @@ dev = [
 [package.metadata.requires-dev]
 dev = [
     { name = "micropython-rp2-rpi-pico2-w-stubs", specifier = "<=1.28.0.post3" },
-    { name = "mpy-cross", specifier = ">=1.27.0.post2,<2" },
+    { name = "mpy-cross", specifier = ">=1.28.0rc0.post2,<2" },
     { name = "pyright", specifier = ">=1.1.405,<2" },
     { name = "pytest", specifier = ">=8.4,<10.0" },
     { name = "ruff", specifier = ">=0.14.0,<=0.15.12" },

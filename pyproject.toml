@@ -20,11 +20,11 @@ dependencies = []
 
 [dependency-groups]
 dev = [
-    "mpy-cross>=1.27.0.post2,<2",
+    "micropython-rp2-rpi_pico2_w-stubs<=1.28.0.post3",
+    "mpy-cross>=1.28.0rc0.post2,<2",
     "pytest>=8.4,<10.0",
     "pyright>=1.1.405,<2",
     "ruff>=0.14.0,<=0.15.12",
-    "micropython-rp2-rpi_pico2_w-stubs<=1.28.0.post3",
 ]
 
 [tool.uv]
