@@ -21,15 +21,15 @@ wheels = [
 ]
 
 [[package]]
-name = "micropython-rp2-stubs"
+name = "micropython-rp2-rpi-pico2-w-stubs"
 version = "1.28.0.post3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "micropython-stdlib-stubs" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/85/12/03800a1cadee25d8dd23a7e85dd753fcd1818215e87833e6210c2f88755e/micropython_rp2_stubs-1.28.0.post3.tar.gz", hash = "sha256:0433b03c81d2ef5ffd94801567d8d1528edf383cede79b7b2f3e3f2fef34f831", size = 97668, upload-time = "2026-04-28T08:13:46.245Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/41/57ce5132d03d6f5c565bdddfb9406dc739151951b2cfbfd419e01ee9fcf4/micropython_rp2_rpi_pico2_w_stubs-1.28.0.post3.tar.gz", hash = "sha256:4c984e8f03225d3573553b6a7b48825ec4f9d3c84c103200d770e93b6c69b84b", size = 97779, upload-time = "2026-04-28T08:14:52.368Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c3/ff/bb0c24907bb02027802158274282b04fc2a14b029101b706bb083c3d15ab/micropython_rp2_stubs-1.28.0.post3-py2.py3-none-any.whl", hash = "sha256:c65d7480cd6feb55a000df479c2ed684e7a4e1cb1ad79c7876d58bbf3d2dcc98", size = 124994, upload-time = "2026-04-28T08:13:47.377Z" },
+    { url = "https://files.pythonhosted.org/packages/58/ee/190db90f643868ac96f9e73a50eef7c192d5325121f38203b228f89192f9/micropython_rp2_rpi_pico2_w_stubs-1.28.0.post3-py2.py3-none-any.whl", hash = "sha256:e63a4b9fac57b14ecf280869f19500c17e29e3e788a9f0e8fa152e0b4de92638", size = 125267, upload-time = "2026-04-28T08:14:53.701Z" },
 ]
 
 [[package]]
@@ -79,7 +79,7 @@ source = { virtual = "." }
 
 [package.dev-dependencies]
 dev = [
-    { name = "micropython-rp2-stubs" },
+    { name = "micropython-rp2-rpi-pico2-w-stubs" },
     { name = "mpy-cross" },
     { name = "pyright" },
     { name = "pytest" },
@@ -90,7 +90,7 @@ dev = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "micropython-rp2-stubs" },
+    { name = "micropython-rp2-rpi-pico2-w-stubs", specifier = "<=1.28.0.post3" },
     { name = "mpy-cross", specifier = ">=1.27.0.post2,<2" },
     { name = "pyright", specifier = ">=1.1.405,<2" },
     { name = "pytest", specifier = ">=8.4,<10.0" },
