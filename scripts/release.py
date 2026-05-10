@@ -157,7 +157,7 @@ def build_firmware(
             'MICROPY_PY_BLUETOOTH=0',
             'MICROPY_BLUETOOTH_NIMBLE=0',
             # Primary offline delivery uses built-in USB MSC, then appends the
-            # runtime HID keyboard interface from src/hid.py.
+            # runtime HID keyboard interface from src/keyboard.py.
             'CFLAGS_EXTRA=-DMICROPY_HW_USB_CDC=0 -DMICROPY_HW_USB_MSC=1',
         ],
         cwd=MICROPYTHON_DIR,

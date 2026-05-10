@@ -4,6 +4,7 @@ import os
 from usb import (
     USB_AGENT_UNIX_NAME,
     USB_AGENT_WINDOWS_NAME,
+    USBService,
     staged_binary_matches_target,
     staged_binary_name,
     staged_binary_path,
@@ -65,6 +66,10 @@ def _binary_target_path(kind: str) -> str:
     return _PAYLOAD_EXE if kind == 'windows' else _PAYLOAD_BIN
 
 
+def _basename(path: str) -> str:
+    return path.replace('\\', '/').rsplit('/', 1)[-1]
+
+
 def _clear_staged_binaries(*, keep: str = '') -> None:
     for candidate in (_PAYLOAD_EXE, _PAYLOAD_BIN, _STAGED_UPLOAD_TEMP):
         if candidate == keep:
@@ -76,6 +81,8 @@ def _clear_staged_binaries(*, keep: str = '') -> None:
 
 
 class _BinaryMixin:
+    _usb: USBService
+
     # Methods provided by SetupServer / other mixins
     def _is_authorized(self, request) -> bool: ...
     async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None: ...
@@ -241,6 +248,11 @@ class _BinaryMixin:
             )
             return
 
+        if self._usb.set_mounted(True).get('mounted'):
+            self._usb.refresh()
+        usb_agent = self._usb.state()
+        usb_agent['has_binary'] = self._has_binary()
+
         await self._send_json(
             writer,
             partial,
@@ -249,7 +261,8 @@ class _BinaryMixin:
                 'message': f'Binary uploaded ({written} bytes).',
                 'notice': 'success',
                 'size': written,
-                'filename': os.path.basename(target_path),
+                'filename': _basename(target_path),
+                'usb_agent': usb_agent,
             },
         )
 

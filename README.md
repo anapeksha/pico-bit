@@ -11,7 +11,7 @@
 - a Wi-Fi-hosted browser portal at `http://192.168.4.1`
 - a lightweight staging flow for Rust agent binaries and loot collection
 
-The Pico types payloads over USB, serves the operator portal over its access point, and can stage a single uploaded agent binary for a target machine to fetch and run.
+The Pico types payloads over USB, serves the operator portal over its access point, and can stage one uploaded agent binary on the Pico filesystem for USB-based execution.
 
 ## Features
 
@@ -20,9 +20,10 @@ The Pico types payloads over USB, serves the operator portal over its access poi
 - Dry-run validation with line-level diagnostics
 - Host typing target selection by OS and keyboard layout
 - Binary Armory for one staged executable at a time
-- HID-injected download stagers for Windows, Linux, and macOS
+- USB execution stagers for Windows, Linux, and macOS
+- Top-level Host USB status for the shared MSC/HID device
 - Live loot updates in the portal
-- Downloadable `loot.json`
+- Parsed loot summary plus downloadable `loot.json`
 
 ## Hardware Support
 
@@ -181,8 +182,12 @@ uv run python build.py
 - `src/web_assets.py` is generated from `web/` and should not be edited by hand
 - `payload.dd` is writable on the Pico filesystem and is not frozen into firmware
 - the portal stages one executable at a time as `payload.exe` for Windows agents or `payload.bin` for Linux/macOS agents
-- release UF2 builds expose the Pico filesystem over USB MSC and append the HID keyboard interface for offline agent delivery; host volume names may vary and can appear as `No Name`
+- `src/usb.py` is the source of truth for the shared `machine.USBDevice` singleton, MSC capability detection, runtime `active()` state, and staged binary filenames
+- `src/keyboard.py` owns the HID keyboard runtime and keyboard layout metadata; `src/boot.py` initializes USB first, then keyboard
+- release UF2 builds expose the Pico filesystem over built-in USB MSC and append the HID keyboard interface for offline agent delivery; host volume names may vary and can appear as `No Name`
+- successful binary uploads activate and refresh the shared USB device so `payload.exe` or `payload.bin` is visible on the mounted Pico drive
 - USB-delivered agents can write `loot-usb.json` to the Pico drive; the portal imports it into canonical `loot.json`
+- the Loot panel summarizes known agent fields and keeps an icon-only `loot.json` download action
 - release workflows build firmware and agent artifacts separately, then publish them together
 
 ## Releases

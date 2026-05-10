@@ -55,3 +55,78 @@ def test_usb_and_keyboard_initializers_share_runtime_state() -> None:
     assert keyboard.keyboard_initialized() is True
     assert kbd is keyboard.get_keyboard()
     assert usb_runtime_active() is True
+
+
+class _BuiltinMscDriver:
+    itf_max = 1
+    ep_max = 2
+    str_max = 3
+    desc_dev = b'\x12\x01'
+    desc_cfg = bytes(
+        [
+            9,
+            2,
+            32,
+            0,
+            1,
+            1,
+            0,
+            0x80,
+            50,
+            9,
+            4,
+            0,
+            0,
+            2,
+            0x08,
+            0x06,
+            0x50,
+            0,
+        ]
+    )
+
+
+class _DefaultMscDevice:
+    BUILTIN_DEFAULT = _BuiltinMscDriver()
+
+
+class _ExplicitMscDevice:
+    BUILTIN_MSC = _BuiltinMscDriver()
+
+
+def test_usb_service_detects_msc_from_builtin_default_descriptor() -> None:
+    drive = USBService()
+    drive._device = _DefaultMscDevice()  # type: ignore[assignment]
+
+    assert drive.msc_supported() is True
+    assert drive.builtin_msc_driver() is _DefaultMscDevice.BUILTIN_DEFAULT
+
+
+def test_usb_service_accepts_explicit_builtin_msc_driver() -> None:
+    drive = USBService()
+    drive._device = _ExplicitMscDevice()  # type: ignore[assignment]
+
+    assert drive.msc_supported() is True
+    assert drive.builtin_msc_driver() is _ExplicitMscDevice.BUILTIN_MSC
+
+
+class _RuntimeWithLazyOpen:
+    def __init__(self) -> None:
+        self.active = False
+
+    def set_active(self, active: bool) -> None:
+        self.active = active
+
+    def is_open(self) -> bool:
+        return False
+
+
+def test_usb_service_reports_active_after_runtime_is_bound() -> None:
+    drive = USBService()
+    drive._available = True
+    runtime = _RuntimeWithLazyOpen()
+
+    drive.bind_runtime(runtime)
+
+    assert drive.runtime_active() is True
+    assert drive.state()['state'] == 'active'
