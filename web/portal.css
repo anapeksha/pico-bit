@@ -117,12 +117,15 @@ a {
 
 /* ─── Stats ──────────────────────────────────── */
 .stats {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
+  justify-content: space-around;
 }
 
 .stat {
+  flex: 0 1 calc((100% - 2rem) / 5);
+  min-width: 0;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;
@@ -1316,6 +1319,18 @@ a {
   }
 }
 
+@media (min-width: 900px) and (max-width: 1199px) {
+  .stat {
+    flex-basis: calc((100% - 1rem) / 3);
+  }
+}
+
+@media (min-width: 681px) and (max-width: 899px) {
+  .stat {
+    flex-basis: calc((100% - 0.5rem) / 2);
+  }
+}
+
 /* Two-panel: editor | right rail, left rail below */
 @media (min-width: 820px) and (max-width: 1119px) {
   .workspace {
@@ -1341,8 +1356,8 @@ a {
 }
 
 @media (max-width: 680px) {
-  .stats {
-    grid-template-columns: 1fr 1fr;
+  .stat {
+    flex-basis: 100%;
   }
 
   .layout {

@@ -24,7 +24,6 @@ from ._http import (
     _MAX_LOGIN_ATTEMPTS,
     _NO_STORE,
     _SESSION_TIMEOUT_MS,
-    _STATIC_CACHE,
     _USB_ENUM_TIMEOUT_MS,
     _WDT_TIMEOUT_MS,
     PORT,
@@ -267,7 +266,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
                 request,
                 '200 OK',
                 PORTAL_CSS,
-                headers=_merge_headers({'Content-Type': 'text/css; charset=utf-8'}, _STATIC_CACHE),
+                headers=_merge_headers({'Content-Type': 'text/css; charset=utf-8'}, _NO_STORE),
             )
             return
 
@@ -279,7 +278,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
                 PORTAL_JS,
                 headers=_merge_headers(
                     {'Content-Type': 'application/javascript; charset=utf-8'},
-                    _STATIC_CACHE,
+                    _NO_STORE,
                 ),
             )
             return
