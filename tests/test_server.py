@@ -430,24 +430,107 @@ def test_inject_binary_uses_usb_drive_delivery(monkeypatch) -> None:
     assert shown == ['binary_injecting']
 
 
+def test_inject_binary_ignores_client_supplied_stager_command(monkeypatch) -> None:
+    captured: dict[str, object] = {}
+    server = SetupServer()
+    server._is_authorized = lambda request: True  # type: ignore[method-assign]
+    server._has_binary = lambda: True  # type: ignore[method-assign]
+    fake_drive = FakeUSBService()
+    fake_drive.mounted = True
+    server._usb = fake_drive
+
+    async def fake_run_payload(script: str, *, source: str = 'portal') -> tuple[str, str]:
+        captured['script'] = script
+        captured['source'] = source
+        return 'Payload executed.', 'success'
+
+    async def fake_show(_stage: str) -> None:
+        return None
+
+    monkeypatch.setattr(routes_payload.STATUS_LED, 'show', fake_show)
+    server._run_payload = fake_run_payload  # type: ignore[method-assign]
+    server._binary_matches_target = lambda target_os: True  # type: ignore[method-assign]
+
+    writer = FakeWriter()
+    request = _request(
+        '/api/inject_binary',
+        body={
+            'os': 'macos',
+            'command': 'echo client-controlled',
+            'script': 'STRING echo client-controlled',
+        },
+    )
+
+    asyncio.run(server._handle_api(request, writer))
+    status, payload = _json_response(writer)
+
+    assert status == 'HTTP/1.1 200 OK'
+    assert payload['notice'] == 'success'
+    assert captured['source'] == 'binary:usb'
+    assert 'client-controlled' not in str(captured['script'])
+    assert 'STRING for d in /Volumes/*; do\nENTER' in str(captured['script'])
+
+
+def test_inject_binary_rejects_unknown_target_os() -> None:
+    server = SetupServer()
+    server._is_authorized = lambda request: True  # type: ignore[method-assign]
+    server._has_binary = lambda: True  # type: ignore[method-assign]
+    fake_drive = FakeUSBService()
+    fake_drive.mounted = True
+    server._usb = fake_drive
+
+    writer = FakeWriter()
+    request = _request('/api/inject_binary', body={'os': 'freebsd'})
+
+    asyncio.run(server._handle_api(request, writer))
+    status, payload = _json_response(writer)
+
+    assert status == 'HTTP/1.1 400 Bad Request'
+    assert payload['notice'] == 'error'
+    assert payload['message'] == 'Unsupported binary injection target OS.'
+
+
 def test_usb_drive_windows_stager_copies_extensionless_agent_to_exe() -> None:
     server = SetupServer()
     script = server._stager_script('windows')
 
+    assert 'powershell -NoProfile -ExecutionPolicy Bypass' in script
+    assert 'DEFAULTCHARDELAY 8' in script
     assert 'payload.exe' in script
     assert '--loot-out' in script
     assert 'loot-usb.json' in script
     assert 'pico_agent.exe' in script
     assert 'Remove-Item' in script
+    assert 'STRING $r = ""\nENTER' in script
 
 
 def test_usb_drive_linux_stager_writes_usb_loot_and_removes_temp_agent() -> None:
     server = SetupServer()
     script = server._stager_script('linux')
 
+    assert 'CTRL-ALT t' in script
+    assert 'DEFAULTCHARDELAY 8' in script
+    assert 'STRING for d in /media/$USER/* /run/media/$USER/* /mnt/*; do\nENTER' in script
+    assert 'STRING if [ -f "$d/payload.bin" ]; then\nENTER' in script
     assert 'payload.bin' in script
     assert '--loot-out "$d/loot-usb.json"' in script
     assert 'rm -f /tmp/pico_agent' in script
+    assert script.count('\nENTER\n') >= 8
+
+
+def test_usb_drive_macos_stager_waits_for_terminal_and_types_multiline_script() -> None:
+    server = SetupServer()
+    script = server._stager_script('macos')
+
+    assert 'GUI SPACE' in script
+    assert 'STRING Terminal\nENTER' in script
+    assert 'DELAY 2200' in script
+    assert 'DEFAULTCHARDELAY 8' in script
+    assert 'STRING for d in /Volumes/*; do\nENTER' in script
+    assert 'STRING if [ -f "$d/payload.bin" ]; then\nENTER' in script
+    assert '--loot-out "$d/loot-usb.json"' in script
+    assert 'rm -f /tmp/pico_agent' in script
+    assert script.count('\nENTER\n') >= 8
 
 
 def test_inject_binary_rejects_mismatched_binary_for_target() -> None:

