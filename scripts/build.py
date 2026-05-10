@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import cast
 
 from .asset_pipeline import sync_web_assets
-from .build_support import (
+from .build_pipeline import (
     OverrideInjector,
     build_config_overrides,
     build_module_overrides,

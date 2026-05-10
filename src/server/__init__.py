@@ -11,9 +11,9 @@ from device_config import (
 )
 from ducky import DuckyScriptError, run_script, validate_script
 from helpers import maybe_wait_closed, sleep_ms
-from keyboard_layouts import DEFAULT_LAYOUT_CODE
+from keyboard import DEFAULT_LAYOUT_CODE, get_keyboard, keyboard_ready
 from status_led import STATUS_LED
-from usb_agent_drive import UsbAgentDrive
+from usb import USB
 from web_assets import INDEX_HTML, PORTAL_CSS, PORTAL_JS
 
 from ._http import (
@@ -59,11 +59,10 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         self.port = port
         self._ap = None
         self._ap_ip = _DEFAULT_AP_IP
-        self._kbd = None
         self._ap_password_in_use = AP_PASSWORD
         self._keyboard_layout = DEFAULT_LAYOUT_CODE
         self._loot_stream = LootStreamState()
-        self._usb_agent_drive = UsbAgentDrive()
+        self._usb = USB
         self._payload_seeded = False
         self._run_lock = None
         self._run_history: list[dict[str, object]] = []
@@ -91,7 +90,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         await writer.drain()
 
     def _keyboard_ready(self) -> bool:
-        return self._kbd is not None and self._kbd.is_open()
+        return keyboard_ready()
 
     def _cors_headers(self, request) -> dict[str, str]:
         if not CORS_ALLOWED_ORIGIN:
@@ -202,11 +201,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         return self._run_lock
 
     def _keyboard(self):
-        if self._kbd is None:
-            from hid import HIDKeyboard
-
-            self._kbd = HIDKeyboard()
-        return self._kbd
+        return get_keyboard()
 
     def keyboard(self):
         return self._keyboard()
@@ -312,10 +307,6 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
 
         if request['path'].startswith('/api/'):
             await self._handle_api(request, writer)
-            return
-
-        if request['method'] == 'GET' and request['path'] == '/static/payload.bin':
-            await self._serve_payload(writer, request)
             return
 
         if not self._is_authorized(request):

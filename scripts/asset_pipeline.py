@@ -86,6 +86,6 @@ def sync_web_assets(check: bool = False) -> bool:
     if current == rendered:
         return False
     if check:
-        raise SystemExit('src/web_assets.py is out of date. Run asset sync first.')
+        raise Warning('src/web_assets.py is out of date. Run asset sync first.')
     OUTPUT.write_text(rendered, encoding='utf-8')
     return True

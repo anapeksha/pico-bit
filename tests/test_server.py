@@ -6,7 +6,7 @@ import server.routes_loot as routes_loot
 import server.routes_payload as routes_payload
 import server.routes_usb_agent as routes_usb_agent
 from server import SetupServer
-from usb_agent_drive import UsbAgentDrive
+from usb import USBService
 
 
 class FakeReader:
@@ -121,12 +121,14 @@ def test_handle_api_rejects_unsupported_layout_for_platform(monkeypatch) -> None
 
 
 def test_handle_binary_upload_stream_rejects_non_binary_content(tmp_path, monkeypatch) -> None:
-    static_dir = tmp_path / 'static'
-    payload_bin = static_dir / 'payload.bin'
+    payload_bin = tmp_path / 'payload.bin'
+    payload_exe = tmp_path / 'payload.exe'
+    upload_tmp = tmp_path / 'payload.upload'
     server = SetupServer()
     server._is_authorized = lambda request: True  # type: ignore[method-assign]
-    monkeypatch.setattr(routes_binary, '_STATIC_DIR', str(static_dir))
     monkeypatch.setattr(routes_binary, '_PAYLOAD_BIN', str(payload_bin))
+    monkeypatch.setattr(routes_binary, '_PAYLOAD_EXE', str(payload_exe))
+    monkeypatch.setattr(routes_binary, '_STAGED_UPLOAD_TEMP', str(upload_tmp))
 
     body = b'\x89PNG\r\n\x1a\nnot a binary payload'
     reader = FakeReader(body)
@@ -141,17 +143,20 @@ def test_handle_binary_upload_stream_rejects_non_binary_content(tmp_path, monkey
     assert payload['message'] == 'Only executable EXE, ELF, or Mach-O binaries can be uploaded.'
     assert reader.bytes_read == len(body)
     assert not payload_bin.exists()
+    assert not payload_exe.exists()
 
 
 def test_handle_binary_upload_stream_accepts_extensionless_elf_binary(
     tmp_path, monkeypatch
 ) -> None:
-    static_dir = tmp_path / 'static'
-    payload_bin = static_dir / 'payload.bin'
+    payload_bin = tmp_path / 'payload.bin'
+    payload_exe = tmp_path / 'payload.exe'
+    upload_tmp = tmp_path / 'payload.upload'
     server = SetupServer()
     server._is_authorized = lambda request: True  # type: ignore[method-assign]
-    monkeypatch.setattr(routes_binary, '_STATIC_DIR', str(static_dir))
     monkeypatch.setattr(routes_binary, '_PAYLOAD_BIN', str(payload_bin))
+    monkeypatch.setattr(routes_binary, '_PAYLOAD_EXE', str(payload_exe))
+    monkeypatch.setattr(routes_binary, '_STAGED_UPLOAD_TEMP', str(upload_tmp))
 
     body = b'\x7fELF\x02\x01\x01\x00hello'
     reader = FakeReader(body)
@@ -163,9 +168,10 @@ def test_handle_binary_upload_stream_accepts_extensionless_elf_binary(
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['notice'] == 'success'
-    assert payload['filename'] == 'agent'
+    assert payload['filename'] == 'payload.bin'
     assert payload['size'] == len(body)
     assert payload_bin.read_bytes() == body
+    assert not payload_exe.exists()
 
 
 def test_handle_loot_receive_persists_timestamp_and_publishes(tmp_path, monkeypatch) -> None:
@@ -266,24 +272,27 @@ def test_handle_usb_loot_import_reports_missing_file(tmp_path, monkeypatch) -> N
     assert payload['message'] == 'No USB loot file found.'
 
 
-class FakeUsbAgentDrive(UsbAgentDrive):
+class FakeUSBService(USBService):
     def __init__(self) -> None:
         self.mounted = False
 
     def state(self) -> dict[str, object]:
         return {
+            'active': self.mounted,
             'available': True,
             'can_mount': not self.mounted,
-            'filename': 'pico-agent',
+            'can_unmount': self.mounted,
+            'filename': 'payload.bin',
+            'has_binary': self.mounted,
             'mounted': self.mounted,
-            'state': 'mounted' if self.mounted else 'inactive',
-            'volume_label': 'PICOBIT',
-            'message': (
-                'USB agent drive is armed.' if self.mounted else 'USB agent drive is inactive.'
-            ),
+            'state': 'active' if self.mounted else 'inactive',
+            'volume_label': '',
+            'volume_note': 'Host volume names come from the filesystem and may appear as No Name.',
+            'message': ('USB injector is active.' if self.mounted else 'USB injector is inactive.'),
         }
 
-    def set_mounted(self, mounted: bool, *, agent_path: str) -> dict[str, object]:
+    def set_mounted(self, mounted: bool, *, agent_path: str = '') -> dict[str, object]:
+        del agent_path
         self.mounted = mounted
         return self.state()
 
@@ -307,8 +316,8 @@ def test_usb_agent_route_mounts_fake_drive(monkeypatch) -> None:
     server = SetupServer()
     server._is_authorized = lambda request: True  # type: ignore[method-assign]
     server._has_binary = lambda: True  # type: ignore[method-assign]
-    fake_drive = FakeUsbAgentDrive()
-    server._usb_agent_drive = fake_drive
+    fake_drive = FakeUSBService()
+    server._usb = fake_drive
 
     async def fake_show(stage: str) -> None:
         shown.append(stage)
@@ -335,9 +344,9 @@ def test_inject_binary_uses_usb_drive_delivery(monkeypatch) -> None:
     server = SetupServer()
     server._is_authorized = lambda request: True  # type: ignore[method-assign]
     server._has_binary = lambda: True  # type: ignore[method-assign]
-    fake_drive = FakeUsbAgentDrive()
+    fake_drive = FakeUSBService()
     fake_drive.mounted = True
-    server._usb_agent_drive = fake_drive
+    server._usb = fake_drive
 
     async def fake_show(stage: str) -> None:
         shown.append(stage)
@@ -349,68 +358,74 @@ def test_inject_binary_uses_usb_drive_delivery(monkeypatch) -> None:
 
     monkeypatch.setattr(routes_payload.STATUS_LED, 'show', fake_show)
     server._run_payload = fake_run_payload  # type: ignore[method-assign]
+    server._binary_matches_target = lambda target_os: True  # type: ignore[method-assign]
 
     writer = FakeWriter()
-    request = _request('/api/inject_binary', body={'os': 'linux', 'delivery': 'usb_drive'})
+    request = _request('/api/inject_binary', body={'os': 'linux'})
 
     asyncio.run(server._handle_api(request, writer))
     status, payload = _json_response(writer)
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['notice'] == 'success'
-    assert captured['source'] == 'binary:usb_drive'
-    assert 'PICOBIT' in str(captured['script'])
+    assert captured['source'] == 'binary:usb'
+    assert 'payload.bin' in str(captured['script'])
     assert shown == ['binary_injecting']
 
 
 def test_usb_drive_windows_stager_copies_extensionless_agent_to_exe() -> None:
     server = SetupServer()
-    server._ap_ip = '192.168.4.1'
+    script = server._stager_script('windows')
 
-    script = server._stager_script('windows', delivery='usb_drive')
-
-    assert ':/pico-agent' in script
+    assert 'payload.exe' in script
     assert '--loot-out' in script
     assert 'loot-usb.json' in script
     assert 'pico_agent.exe' in script
-    assert 'pico-agent.exe' not in script
     assert 'Remove-Item' in script
 
 
 def test_usb_drive_linux_stager_writes_usb_loot_and_removes_temp_agent() -> None:
     server = SetupServer()
-    server._ap_ip = '192.168.4.1'
+    script = server._stager_script('linux')
 
-    script = server._stager_script('linux', delivery='usb_drive')
-
+    assert 'payload.bin' in script
     assert '--loot-out "$d/loot-usb.json"' in script
     assert 'rm -f /tmp/pico_agent' in script
 
 
-def test_network_stager_runs_ephemerally() -> None:
-    server = SetupServer()
-    server._ap_ip = '192.168.4.1'
-
-    windows = server._stager_script('windows', delivery='network')
-    linux = server._stager_script('linux', delivery='network')
-
-    assert 'Remove-Item $p' in windows
-    assert 'rm -f /tmp/pico_agent' in linux
-
-
-def test_inject_binary_rejects_usb_delivery_when_unmounted() -> None:
+def test_inject_binary_rejects_mismatched_binary_for_target() -> None:
     server = SetupServer()
     server._is_authorized = lambda request: True  # type: ignore[method-assign]
     server._has_binary = lambda: True  # type: ignore[method-assign]
-    fake_drive = FakeUsbAgentDrive()
-    server._usb_agent_drive = fake_drive
+    fake_drive = FakeUSBService()
+    fake_drive.mounted = True
+    server._usb = fake_drive
+    server._binary_matches_target = lambda target_os: target_os == 'linux'  # type: ignore[method-assign]
 
     writer = FakeWriter()
-    request = _request('/api/inject_binary', body={'os': 'linux', 'delivery': 'usb_drive'})
+    request = _request('/api/inject_binary', body={'os': 'windows'})
 
     asyncio.run(server._handle_api(request, writer))
     status, payload = _json_response(writer)
 
     assert status == 'HTTP/1.1 400 Bad Request'
     assert payload['notice'] == 'error'
-    assert 'Mount the USB agent drive' in str(payload['message'])
+    assert 'Windows PE binary' in str(payload['message'])
+
+
+def test_inject_binary_rejects_usb_delivery_when_unmounted() -> None:
+    server = SetupServer()
+    server._is_authorized = lambda request: True  # type: ignore[method-assign]
+    server._has_binary = lambda: True  # type: ignore[method-assign]
+    fake_drive = FakeUSBService()
+    server._usb = fake_drive
+
+    writer = FakeWriter()
+    request = _request('/api/inject_binary', body={'os': 'linux'})
+
+    asyncio.run(server._handle_api(request, writer))
+    status, payload = _json_response(writer)
+
+    assert status == 'HTTP/1.1 400 Bad Request'
+    assert payload['notice'] == 'error'
+    assert 'Activate the USB injector' in str(payload['message'])

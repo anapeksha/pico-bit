@@ -12,8 +12,6 @@ _LOGIN_LOCKOUT_MS = 60_000
 _AP_CHECK_INTERVAL_MS = 6_000
 _WDT_TIMEOUT_MS = 8_000
 _LOOT_FILE = 'loot.json'
-_STATIC_DIR = 'static'
-_PAYLOAD_BIN = 'pico-agent'
 _MAX_BINARY_SIZE = 2 * 1024 * 1024
 _FILE_CHUNK_SIZE = 4096
 _JSON_HEADERS = {'Content-Type': 'application/json; charset=utf-8'}
