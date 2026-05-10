@@ -2,7 +2,7 @@
 DuckyScript parsing.
 """
 
-from hid import MOD_ALIASES, resolve_key_token
+from keyboard import MOD_ALIASES, resolve_key_token
 
 from .constants import BLOCK_TERMINATORS, LED_ON_COMMANDS, RANDOM_CHAR_SETS, SIMPLE_COMMANDS
 from .errors import DuckyParseError

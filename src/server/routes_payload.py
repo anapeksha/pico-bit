@@ -10,7 +10,7 @@ from ducky import (
     find_payload,
 )
 from ducky.analysis import AnalysisResult
-from keyboard_layouts import (
+from keyboard import (
     DEFAULT_LAYOUT_CODE,
     compose_layout_code,
     default_layout_code,
@@ -42,7 +42,9 @@ class _PayloadMixin:
     def _is_authorized(self, request) -> bool: ...
     def _keyboard_ready(self) -> bool: ...
     def _has_binary(self) -> bool: ...
-    def _stager_script(self, target_os: str, delivery: str = 'network') -> str: ...
+    def _binary_matches_target(self, target_os: str) -> bool: ...
+    def _binary_target_notice(self, target_os: str) -> str: ...
+    def _stager_script(self, target_os: str) -> str: ...
     def _usb_agent_state(self) -> dict[str, object]: ...
     async def _handle_loot_get(self, request, writer) -> None: ...
     async def _handle_loot_download(self, request, writer) -> None: ...
@@ -369,30 +371,33 @@ class _PayloadMixin:
             except ValueError:
                 data = {}
             target_os = str(data.get('os', 'windows')).lower()
-            delivery = str(data.get('delivery', 'network')).lower()
-            if delivery not in {'network', 'usb_drive'}:
-                await self._send_json(
-                    writer,
-                    request,
-                    '400 Bad Request',
-                    {'message': 'Unsupported delivery mode.', 'notice': 'error'},
-                )
-                return
-            if delivery == 'usb_drive' and not self._usb_agent_state().get('mounted'):
+            if not self._usb_agent_state().get('mounted'):
                 await self._send_json(
                     writer,
                     request,
                     '400 Bad Request',
                     {
-                        'message': 'Mount the USB agent drive before injecting the USB stager.',
+                        'message': 'Activate the USB injector before typing the stager.',
+                        'notice': 'error',
+                        'usb_agent': self._usb_agent_state(),
+                    },
+                )
+                return
+            if not self._binary_matches_target(target_os):
+                await self._send_json(
+                    writer,
+                    request,
+                    '400 Bad Request',
+                    {
+                        'message': self._binary_target_notice(target_os),
                         'notice': 'error',
                         'usb_agent': self._usb_agent_state(),
                     },
                 )
                 return
             await STATUS_LED.show('binary_injecting')
-            script = self._stager_script(target_os, delivery=delivery)
-            message, notice = await self._run_payload(script, source='binary:' + delivery)
+            script = self._stager_script(target_os)
+            message, notice = await self._run_payload(script, source='binary:usb')
             if notice != 'success':
                 await STATUS_LED.show('binary_inject_failed')
             status = '200 OK' if notice == 'success' else '400 Bad Request'

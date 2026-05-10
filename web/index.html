@@ -384,18 +384,6 @@
                     <option value="macos">macOS</option>
                   </select>
                 </div>
-                <div class="field">
-                  <label class="field__label" for="delivery-mode">
-                    Delivery
-                  </label>
-                  <select
-                    id="delivery-mode"
-                    class="field__input field__input--select"
-                  >
-                    <option value="usb_drive">USB drive</option>
-                    <option value="network">Network stager</option>
-                  </select>
-                </div>
                 <div class="armory__actions">
                   <button
                     class="btn btn--ghost"
@@ -419,7 +407,7 @@
               <!-- USB drive state -->
               <div class="armory__usb">
                 <div class="armory__usb-copy">
-                  <span class="armory__usb-label">USB agent drive</span>
+                  <span class="armory__usb-label">USB injector</span>
                   <span class="armory__usb-state" id="usb-agent-state">
                     Inactive
                   </span>
@@ -437,7 +425,7 @@
               <!-- Stager snippet preview -->
               <div class="armory__snippet" id="armory-snippet" hidden>
                 <p class="armory__snippet-label">
-                  Stager command that will be typed:
+                  USB command that will be typed:
                 </p>
                 <pre
                   class="armory__snippet-code"

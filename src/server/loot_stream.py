@@ -9,14 +9,14 @@ Each publish swaps the internal event object so listeners can wait for the
 next revision without clearing shared state for other clients.
 """
 
-import asyncio
+from asyncio import Event
 
 
 class LootStreamState:
     def __init__(self) -> None:
         self._revision = 0
         self._payload = ''
-        self._event = asyncio.Event()
+        self._event = Event()
 
     def snapshot(self) -> tuple[int, str]:
         """Return the latest revision number and serialized payload."""
@@ -31,6 +31,6 @@ class LootStreamState:
         self._payload = payload
         self._revision += 1
         current_event = self._event
-        self._event = asyncio.Event()
+        self._event = Event()
         current_event.set()
         return self._revision

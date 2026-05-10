@@ -1,14 +1,12 @@
 import json
 
 from status_led import STATUS_LED
-from usb_agent_drive import UsbAgentDrive
-
-from ._http import _PAYLOAD_BIN
+from usb import USBService
 
 
 class _UsbAgentMixin:
     # Attributes provided by SetupServer.__init__
-    _usb_agent_drive: UsbAgentDrive
+    _usb: USBService
 
     # Methods provided by SetupServer / other mixins
     def _is_authorized(self, request) -> bool: ...
@@ -16,11 +14,8 @@ class _UsbAgentMixin:
     async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None: ...
 
     def _usb_agent_state(self) -> dict[str, object]:
-        state = self._usb_agent_drive.state()
+        state = self._usb.state()
         state['has_binary'] = self._has_binary()
-        if state.get('available') and not state.get('mounted') and not state['has_binary']:
-            state['can_mount'] = False
-            state['message'] = 'Upload an agent binary before mounting the USB drive.'
         return state
 
     async def _handle_usb_agent(self, request, writer) -> None:
@@ -51,9 +46,9 @@ class _UsbAgentMixin:
         except ValueError:
             data = {}
 
-        mounted = bool(data.get('mounted'))
-        before = self._usb_agent_drive.state()
-        self._usb_agent_drive.set_mounted(mounted, agent_path=_PAYLOAD_BIN)
+        mounted = bool(data.get('active', data.get('mounted')))
+        before = self._usb.state()
+        self._usb.set_mounted(mounted)
         state = self._usb_agent_state()
         status = '200 OK'
         notice = 'success'

