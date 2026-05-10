@@ -13,7 +13,7 @@ _AP_CHECK_INTERVAL_MS = 6_000
 _WDT_TIMEOUT_MS = 8_000
 _LOOT_FILE = 'loot.json'
 _STATIC_DIR = 'static'
-_PAYLOAD_BIN = 'static/payload.bin'
+_PAYLOAD_BIN = 'pico-agent'
 _MAX_BINARY_SIZE = 2 * 1024 * 1024
 _FILE_CHUNK_SIZE = 4096
 

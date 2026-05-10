@@ -384,6 +384,18 @@
                     <option value="macos">macOS</option>
                   </select>
                 </div>
+                <div class="field">
+                  <label class="field__label" for="delivery-mode">
+                    Delivery
+                  </label>
+                  <select
+                    id="delivery-mode"
+                    class="field__input field__input--select"
+                  >
+                    <option value="usb_drive">USB drive</option>
+                    <option value="network">Network stager</option>
+                  </select>
+                </div>
                 <div class="armory__actions">
                   <button
                     class="btn btn--ghost"
@@ -402,6 +414,24 @@
                     Inject
                   </button>
                 </div>
+              </div>
+
+              <!-- USB drive state -->
+              <div class="armory__usb">
+                <div class="armory__usb-copy">
+                  <span class="armory__usb-label">USB agent drive</span>
+                  <span class="armory__usb-state" id="usb-agent-state">
+                    Inactive
+                  </span>
+                </div>
+                <button
+                  class="btn btn--ghost btn--sm"
+                  id="usb-agent-toggle"
+                  type="button"
+                  disabled
+                >
+                  Mount
+                </button>
               </div>
 
               <!-- Stager snippet preview -->
@@ -453,11 +483,19 @@
             <div id="loot-body">
               <p class="history__empty">No loot collected yet.</p>
             </div>
-            <div class="loot__actions" id="loot-actions" hidden>
+            <div class="loot__actions" id="loot-actions">
+              <button
+                class="btn btn--ghost btn--wide"
+                id="loot-import-usb"
+                type="button"
+              >
+                Import USB loot
+              </button>
               <button
                 class="btn btn--ghost btn--wide"
                 id="loot-download"
                 type="button"
+                hidden
               >
                 Download loot.json
               </button>

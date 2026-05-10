@@ -170,6 +170,82 @@ _CONFIG_DESC = bytes(
 _STRING_DESCS = [None, 'Microsoft', 'Wired Keyboard 600', '000000000001']
 
 
+def _u16le(value):
+    return value & 0xFF, (value >> 8) & 0xFF
+
+
+def _hid_config_desc(interface, endpoint_in, string_index):
+    total_cfg = 9 + 9 + 7
+    total_lo, total_hi = _u16le(total_cfg)
+    return bytes(
+        [
+            0x09,
+            0x02,
+            total_lo,
+            total_hi,
+            0x01,
+            0x01,
+            0x00,
+            0xA0,
+            0x32,
+            0x09,
+            0x04,
+            interface,
+            0x00,
+            0x01,
+            0x03,
+            0x01,
+            0x01,
+            string_index,
+            0x09,
+            0x21,
+            0x11,
+            0x01,
+            0x00,
+            0x01,
+            0x22,
+            _RD_LEN_LO,
+            _RD_LEN_HI,
+            0x07,
+            0x05,
+            endpoint_in,
+            0x03,
+            0x08,
+            0x00,
+            0x0A,
+        ]
+    )
+
+
+def _builtin_msc_driver(dev):
+    for name in ('BUILTIN_MSC', 'BUILTIN_CDC_MSC'):
+        driver = getattr(dev, name, None)
+        if driver is not None:
+            return driver
+    return None
+
+
+def _usb_config(dev):
+    builtin = _builtin_msc_driver(dev)
+    if builtin is None:
+        return dev.BUILTIN_NONE, _DEVICE_DESC, _CONFIG_DESC, _STRING_DESCS, 0, 0x81
+
+    interface = int(builtin.itf_max)
+    endpoint_num = max(int(builtin.ep_max), 1)
+    string_index = int(builtin.str_max)
+    endpoint_in = 0x80 | endpoint_num
+
+    hid_cfg = _hid_config_desc(interface, endpoint_in, string_index)[9:]
+    cfg = bytearray(builtin.desc_cfg)
+    total_len = len(cfg) + len(hid_cfg)
+    cfg[2], cfg[3] = _u16le(total_len)
+    cfg[4] = interface + 1
+    cfg.extend(hid_cfg)
+
+    desc_strs = {0: None, string_index: 'Wired Keyboard 600'}
+    return builtin, builtin.desc_dev, bytes(cfg), desc_strs, interface, endpoint_in
+
+
 def _letter_keycode(ch):
     return 0x04 + ord(ch) - ord('a')
 
@@ -379,24 +455,32 @@ class HIDKeyboard:
         self._held_modifiers = 0
         self._held_keys = []
         self._dev = machine.USBDevice()
+        self._builtin_driver, desc_dev, desc_cfg, desc_strs, self._itf, self._ep_in = _usb_config(
+            self._dev
+        )
 
         def _control_cb(stage, request):
             bm = request[0]
             req = request[1]
             wv = request[2] | (request[3] << 8)
+            wi = request[4] | (request[5] << 8)
             if stage == 1:
-                if bm == 0x81 and req == 0x06 and (wv >> 8) == 0x22:
+                if bm == 0x81 and req == 0x06 and (wv >> 8) == 0x22 and wi == self._itf:
                     # Host requested the HID report descriptor — enumeration is
                     # actively in progress; mark ready here because SET_INTERFACE
                     # (which triggers open_itf_cb) is optional and macOS skips it.
                     self._ready = True
                     return _REPORT_DESC
-                if bm & 0x60 == 0x20:
+                if (bm & 0x60) == 0x20 and wi == self._itf:
                     return True
             return True
 
-        def _open_itf_cb(*_args):
-            self._ready = True
+        def _open_itf_cb(desc=None):
+            if desc is None or len(desc) < 6:
+                self._ready = True
+                return
+            if desc[1] == 0x04 and desc[2] == self._itf:
+                self._ready = True
 
         def _reset_cb(*_args):
             self._ready = False
@@ -420,11 +504,11 @@ class HIDKeyboard:
         except OSError:
             pass
         sleep_ms_blocking(150)
-        self._dev.builtin_driver = self._dev.BUILTIN_NONE
+        self._dev.builtin_driver = self._builtin_driver
         self._dev.config(
-            _DEVICE_DESC,
-            _CONFIG_DESC,
-            desc_strs=_STRING_DESCS,
+            desc_dev,
+            desc_cfg,
+            desc_strs=desc_strs,
             control_xfer_cb=_control_cb,
             open_itf_cb=_open_itf_cb,
             reset_cb=_reset_cb,
@@ -505,7 +589,7 @@ class HIDKeyboard:
         for _ in range(10):
             try:
                 self._xfer_busy = True
-                self._dev.submit_xfer(0x81, self._report)
+                self._dev.submit_xfer(self._ep_in, self._report)
                 break
             except OSError:
                 self._xfer_busy = False

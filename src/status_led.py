@@ -19,8 +19,13 @@ class StatusLed:
         'payload_ready': (4, 350, 250, 600),
         'payload_running': (3, 120, 90, 180),
         'payload_complete': (2, 500, 300, 0),
+        'binary_injecting': (4, 90, 70, 160),
+        'binary_inject_failed': (5, 90, 70, 260),
         'safe_mode_changed': (2, 120, 120, 200),
         'keyboard_layout_changed': (3, 80, 80, 220),
+        'loot_imported': (3, 180, 80, 120),
+        'usb_agent_mounted': (2, 80, 80, 120),
+        'usb_agent_unmounted': (1, 260, 0, 120),
     }
 
     ERROR_PATTERNS = {

