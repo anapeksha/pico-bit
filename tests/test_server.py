@@ -154,6 +154,36 @@ def test_handle_binary_upload_stream_accepts_extensionless_elf_binary(
     upload_tmp = tmp_path / 'payload.upload'
     server = SetupServer()
     server._is_authorized = lambda request: True  # type: ignore[method-assign]
+
+    class UploadUSBService(USBService):
+        def __init__(self) -> None:
+            self.mounted = False
+            self.refreshed = False
+
+        def state(self) -> dict[str, object]:
+            return {
+                'active': self.mounted,
+                'available': True,
+                'can_mount': not self.mounted,
+                'can_unmount': self.mounted,
+                'filename': 'payload.bin',
+                'has_binary': self.mounted,
+                'mounted': self.mounted,
+                'state': 'active' if self.mounted else 'inactive',
+                'message': 'USB injector is active.',
+            }
+
+        def set_mounted(self, mounted: bool, *, agent_path: str = '') -> dict[str, object]:
+            del agent_path
+            self.mounted = mounted
+            return self.state()
+
+        def refresh(self) -> bool:
+            self.refreshed = True
+            return True
+
+    fake_usb = UploadUSBService()
+    server._usb = fake_usb
     monkeypatch.setattr(routes_binary, '_PAYLOAD_BIN', str(payload_bin))
     monkeypatch.setattr(routes_binary, '_PAYLOAD_EXE', str(payload_exe))
     monkeypatch.setattr(routes_binary, '_STAGED_UPLOAD_TEMP', str(upload_tmp))
@@ -170,6 +200,9 @@ def test_handle_binary_upload_stream_accepts_extensionless_elf_binary(
     assert payload['notice'] == 'success'
     assert payload['filename'] == 'payload.bin'
     assert payload['size'] == len(body)
+    assert isinstance(payload['usb_agent'], dict)
+    assert payload['usb_agent']['mounted'] is True
+    assert fake_usb.refreshed is True
     assert payload_bin.read_bytes() == body
     assert not payload_exe.exists()
 
@@ -218,6 +251,30 @@ def test_handle_loot_get_returns_saved_record(tmp_path, monkeypatch) -> None:
     assert isinstance(system, dict)
     assert system['hostname'] == 'pico'
     assert payload['timestamp'] == 123
+
+
+def test_handle_loot_download_returns_json_attachment(tmp_path, monkeypatch) -> None:
+    loot_file = tmp_path / 'loot.json'
+    loot_file.write_text(
+        json.dumps({'system': {'arch': 'aarch64'}, 'timestamp': 456}),
+        encoding='utf-8',
+    )
+    server = SetupServer()
+    monkeypatch.setattr(routes_loot, '_LOOT_FILE', str(loot_file))
+
+    writer = FakeWriter()
+    request = _request('/api/loot/download', method='GET')
+
+    asyncio.run(server._handle_loot_download(request, writer))
+
+    raw = bytes(writer.buffer)
+    head, body = raw.split(b'\r\n\r\n', 1)
+    header_text = head.decode('utf-8')
+    payload = json.loads(body.decode('utf-8'))
+
+    assert header_text.startswith('HTTP/1.1 200 OK')
+    assert 'Content-Disposition: attachment; filename="loot.json"' in header_text
+    assert payload['system']['arch'] == 'aarch64'
 
 
 def test_handle_usb_loot_import_promotes_usb_file_to_canonical_loot(tmp_path, monkeypatch) -> None:

@@ -82,6 +82,12 @@
             Waiting
           </div>
         </div>
+        <div class="stat" id="host-usb-stat">
+          <div class="stat__label">Host USB</div>
+          <div class="stat__value stat__value--state" id="host-usb-state" aria-live="polite">
+            Waiting
+          </div>
+        </div>
       </div>
 
       <div class="workspace">
@@ -99,8 +105,8 @@
               </li>
               <li>
                 <strong>Stage&nbsp;2&nbsp;·&nbsp;Inject</strong> — upload an
-                agent binary, then HID-inject the download stager; the agent
-                POSTs system audit data back as loot
+                agent binary, then HID-inject the USB execution stager; the
+                agent writes loot back to the Pico drive
               </li>
               <li>Loot panel live-updates as data arrives</li>
             </ul>
@@ -404,24 +410,6 @@
                 </div>
               </div>
 
-              <!-- USB drive state -->
-              <div class="armory__usb">
-                <div class="armory__usb-copy">
-                  <span class="armory__usb-label">USB injector</span>
-                  <span class="armory__usb-state" id="usb-agent-state">
-                    Inactive
-                  </span>
-                </div>
-                <button
-                  class="btn btn--ghost btn--sm"
-                  id="usb-agent-toggle"
-                  type="button"
-                  disabled
-                >
-                  Mount
-                </button>
-              </div>
-
               <!-- Stager snippet preview -->
               <div class="armory__snippet" id="armory-snippet" hidden>
                 <p class="armory__snippet-label">
@@ -480,12 +468,27 @@
                 Import USB loot
               </button>
               <button
-                class="btn btn--ghost btn--wide"
+                class="btn btn--ghost btn--icon"
                 id="loot-download"
                 type="button"
+                aria-label="Download loot.json"
+                title="Download loot.json"
                 hidden
               >
-                Download loot.json
+                <svg
+                  class="btn__icon btn__icon--only"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
               </button>
             </div>
           </div>

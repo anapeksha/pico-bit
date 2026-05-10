@@ -9,10 +9,46 @@ import os
 
 import machine
 
+from helpers import sleep_ms_blocking
+
 USB_AGENT_WINDOWS_NAME = 'payload.exe'
 USB_AGENT_UNIX_NAME = 'payload.bin'
 _USB_AGENT_FILES = (USB_AGENT_WINDOWS_NAME, USB_AGENT_UNIX_NAME)
 _USB_UNAVAILABLE_REASON = 'Firmware was built without runtime USB MSC support.'
+
+
+def _descriptor_has_msc_interface(desc_cfg) -> bool:
+    try:
+        desc = bytes(desc_cfg)
+    except Exception:
+        return False
+
+    index = 0
+    end = len(desc)
+    while index + 1 < end:
+        length = desc[index]
+        descriptor_type = desc[index + 1]
+        if length <= 0:
+            break
+        if descriptor_type == 0x04 and index + 5 < end and desc[index + 5] == 0x08:
+            return True
+        index += length
+    return False
+
+
+def _is_builtin_usb_driver(driver) -> bool:
+    return (
+        driver is not None
+        and hasattr(driver, 'desc_dev')
+        and hasattr(driver, 'desc_cfg')
+        and hasattr(driver, 'itf_max')
+        and hasattr(driver, 'ep_max')
+        and hasattr(driver, 'str_max')
+    )
+
+
+def _is_builtin_msc_driver(driver) -> bool:
+    return _is_builtin_usb_driver(driver) and _descriptor_has_msc_interface(driver.desc_cfg)
 
 
 class USBService:
@@ -23,6 +59,7 @@ class USBService:
         self._available: bool | None = None
         self._unavailable_reason: str = ''
         self._initialized: bool = False
+        self._active_requested: bool = False
 
     def device(self):
         if self._device is None:
@@ -34,8 +71,11 @@ class USBService:
             dev = self.device()
         for name in ('BUILTIN_MSC', 'BUILTIN_CDC_MSC'):
             driver = getattr(dev, name, None)
-            if driver is not None:
+            if _is_builtin_usb_driver(driver):
                 return driver
+        default_driver = getattr(dev, 'BUILTIN_DEFAULT', None)
+        if _is_builtin_msc_driver(default_driver):
+            return default_driver
         return None
 
     def _detect_capability(self) -> tuple[bool, str]:
@@ -43,9 +83,13 @@ class USBService:
             return bool(self._available), self._unavailable_reason
         try:
             if self.builtin_msc_driver() is not None:
+                self._available = True
+                self._unavailable_reason = ''
                 return True, ''
         except Exception:
             pass
+        self._available = False
+        self._unavailable_reason = _USB_UNAVAILABLE_REASON
         return False, _USB_UNAVAILABLE_REASON
 
     def initialize(self):
@@ -55,6 +99,7 @@ class USBService:
 
     def bind_runtime(self, runtime) -> None:
         self._runtime = runtime
+        self._active_requested = True
 
     def initialized(self) -> bool:
         return self._initialized
@@ -65,9 +110,16 @@ class USBService:
 
     def runtime_active(self) -> bool:
         try:
-            return bool(self.device().active())
+            if self.device().active():
+                return True
         except TypeError:
-            return False
+            pass
+        except Exception:
+            pass
+        if self._active_requested and self._runtime is not None:
+            return True
+        try:
+            return bool(self._runtime is not None and self._runtime.is_open())
         except Exception:
             return False
 
@@ -77,9 +129,21 @@ class USBService:
                 self._runtime.set_active(active)
             else:
                 self.device().active(active)
+            self._active_requested = active
         except Exception:
             return False
         return self.runtime_active() if active else not self.runtime_active()
+
+    def refresh(self) -> bool:
+        available, _reason = self._detect_capability()
+        if not available:
+            return False
+        try:
+            self.set_runtime_active(False)
+            sleep_ms_blocking(120)
+            return self.set_runtime_active(True)
+        except Exception:
+            return False
 
     def agent_filename(self, target_os: str) -> str:
         return USB_AGENT_WINDOWS_NAME if target_os == 'windows' else USB_AGENT_UNIX_NAME
@@ -163,6 +227,7 @@ class USBService:
         self._available = None
         self._unavailable_reason = ''
         self._initialized = False
+        self._active_requested = False
         try:
             machine.USBDevice().active(False)
         except Exception:

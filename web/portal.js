@@ -5,8 +5,7 @@ const runButton = document.getElementById('run');
 const refreshButton = document.getElementById('refresh');
 const keyboardOsSelect = document.getElementById('keyboard-os');
 const keyboardLayoutSelect = document.getElementById('keyboard-layout');
-const usbAgentState = document.getElementById('usb-agent-state');
-const usbAgentToggle = document.getElementById('usb-agent-toggle');
+const usbAgentState = document.getElementById('host-usb-state');
 const runHistory = document.getElementById('run-history');
 const editorGutter = document.getElementById('editor-gutter');
 const editorHighlight = document.getElementById('editor-highlight');
@@ -30,7 +29,6 @@ const uiState = {
   keyboardLayouts: [],
   hasBinary: false,
   usbAgent: null,
-  changingUsbAgent: false,
   running: false,
   saving: false,
   validating: false,
@@ -244,13 +242,6 @@ function updateControls() {
   if (keyboardOsSelect) keyboardOsSelect.disabled = uiState.changingTarget;
   if (keyboardLayoutSelect)
     keyboardLayoutSelect.disabled = uiState.changingTarget;
-  if (usbAgentToggle) {
-    const agent = uiState.usbAgent || {};
-    usbAgentToggle.disabled =
-      uiState.changingUsbAgent ||
-      !agent.available ||
-      (!agent.mounted && !agent.can_mount);
-  }
   const injectBtn = document.getElementById('inject-binary-btn');
   if (injectBtn) {
     const mounted = (uiState.usbAgent || {}).mounted;
@@ -380,12 +371,20 @@ function renderKeyboardLayouts(state) {
 function renderUsbAgent(state) {
   const agent = state?.usb_agent || state || {};
   uiState.usbAgent = agent;
+  const status = agent.state || (agent.mounted ? 'active' : 'inactive');
   if (usbAgentState) {
-    const label = agent.message || agent.state || 'Inactive';
-    usbAgentState.textContent = label;
+    usbAgentState.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+    usbAgentState.title = agent.message || '';
   }
-  if (usbAgentToggle) {
-    usbAgentToggle.textContent = agent.mounted ? 'Deactivate' : 'Activate';
+  const usbCard = usbAgentState?.closest('.stat');
+  if (usbCard) {
+    usbCard.classList.remove(
+      'stat--state-active',
+      'stat--state-inactive',
+      'stat--state-unavailable',
+      'stat--state-error',
+    );
+    usbCard.classList.add(`stat--state-${status}`);
   }
   updateControls();
 }
@@ -911,6 +910,75 @@ function renderLootEmpty() {
   if (importer) importer.hidden = false;
 }
 
+function _asArray(value) {
+  return Array.isArray(value) ? value : [];
+}
+
+function _present(value) {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function _titleCase(value) {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function _formatUptime(seconds) {
+  const value = Number(seconds || 0);
+  if (!value) return '';
+  const days = Math.floor(value / 86400);
+  const hours = Math.floor((value % 86400) / 3600);
+  if (days) return `${days}d ${hours}h`;
+  return `${hours || Math.floor(value / 60)}${hours ? 'h' : 'm'}`;
+}
+
+function _formatMemory(system) {
+  if (!_present(system.total_mem_mb)) return '';
+  const used = Number(system.used_mem_mb || 0);
+  const total = Number(system.total_mem_mb || 0);
+  if (!total) return '';
+  return used ? `${used} / ${total} MB` : `${total} MB`;
+}
+
+function _formatLootTime(value) {
+  if (!_present(value)) return '';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return String(value);
+  if (n > 1_000_000_000_000) return new Date(n).toLocaleString();
+  if (n > 1_000_000_000) return new Date(n * 1000).toLocaleString();
+  return `${n} ms`;
+}
+
+function _lootRow(label, value, mono = false) {
+  if (!_present(value)) return '';
+  return (
+    `<div class="meta__row"><span class="meta__label">${escHtml(label)}</span>` +
+    `<span class="meta__value${mono ? ' meta__value--mono' : ''}">${escHtml(String(value))}</span></div>`
+  );
+}
+
+function _lootItem(value) {
+  if (!_present(value)) return '';
+  return `<div class="meta__row"><span class="meta__label">${escHtml(String(value))}</span></div>`;
+}
+
+function _lootSection(title, rows) {
+  const body = rows.filter(Boolean).join('');
+  if (!body) return '';
+  return `<p class="meta__section-label">${escHtml(title)}</p><dl class="meta">${body}</dl>`;
+}
+
+function _lootListSection(title, values, limit = 6) {
+  const items = _asArray(values)
+    .slice(0, limit)
+    .map((value) => _lootItem(value));
+  if (!items.length) return '';
+  const extra = _asArray(values).length - items.length;
+  if (extra > 0) items.push(_lootItem(`+${extra} more`));
+  return _lootSection(title, items);
+}
+
 function renderLoot(data) {
   const el = document.getElementById('loot-body');
   if (!el) return;
@@ -919,93 +987,103 @@ function renderLoot(data) {
   const s = data.system || {};
   const u = data.user || {};
   const osLabel = [s.os_name, s.os_version].filter(Boolean).join(' ');
+  const wifi = _asArray(data.wifi);
+  const interfaces = _asArray(data.interfaces);
+  const software = _asArray(data.software);
+  const processes = _asArray(data.processes);
+  const secrets = _asArray(data.env_secrets);
+  const sshKeys = _asArray(data.ssh_keys);
+  const browserPaths = _asArray(data.browser_paths);
+  const shellHistory = _asArray(data.shell_history);
 
   let html = '';
 
-  // ── System + user header (shown for recon and any payload that has it) ──
-  if (s.hostname || u.username) {
-    const rows = [
-      s.hostname ? ['Host', escHtml(s.hostname)] : null,
-      osLabel ? ['OS', escHtml(osLabel)] : null,
-      s.arch ? ['Arch', escHtml(s.arch)] : null,
-      u.username
-        ? [
-            'User',
-            escHtml(u.username) +
-              (u.is_elevated
-                ? ' <span class="badge badge--warn" style="margin-left:4px">admin</span>'
-                : ''),
-          ]
-        : null,
-      data.processes?.length
-        ? ['Processes', String(data.processes.length)]
-        : null,
-      data.interfaces?.length
-        ? ['Interfaces', String(data.interfaces.length)]
-        : null,
-      data.software?.length ? ['Software', String(data.software.length)] : null,
-    ].filter(Boolean);
-    html +=
-      '<dl class="meta">' +
-      rows
-        .map(
-          ([label, value]) =>
-            `<div class="meta__row"><span class="meta__label">${label}</span>` +
-            `<span class="meta__value">${value}</span></div>`,
-        )
-        .join('') +
-      '</dl>';
-  }
+  html += _lootSection('Collection', [
+    _lootRow('Type', _titleCase(type)),
+    _lootRow('Source', _titleCase(data.source || 'usb_drive')),
+    _lootRow('Seen', _formatLootTime(data.timestamp)),
+  ]);
 
-  // ── WiFi profiles (with passwords if present) ──
-  const wifi = data.wifi || [];
+  html += _lootSection('Host', [
+    _lootRow('Host', s.hostname),
+    _lootRow('OS', osLabel),
+    _lootRow('Kernel', s.kernel),
+    _lootRow('Arch', s.arch),
+    _lootRow('Memory', _formatMemory(s)),
+    _lootRow('Uptime', _formatUptime(s.uptime_secs)),
+  ]);
+
+  html += _lootSection('User', [
+    _lootRow('Name', u.username),
+    _lootRow('Home', u.home_dir, true),
+    _lootRow('Elevated', _present(u.is_elevated) ? (u.is_elevated ? 'Yes' : 'No') : ''),
+  ]);
+
+  html += _lootSection('Inventory', [
+    _lootRow('Processes', processes.length),
+    _lootRow('Interfaces', interfaces.length),
+    _lootRow('WiFi profiles', wifi.length),
+    _lootRow('Software', software.length),
+    _lootRow('Env secrets', secrets.length),
+    _lootRow('SSH keys', sshKeys.length),
+    _lootRow('Browser DBs', browserPaths.length),
+    _lootRow('Shell history', shellHistory.length ? `${shellHistory.length} lines` : ''),
+  ]);
+
+  html += _lootSection('Result', [
+    _lootRow('Persistence', _present(data.installed) ? (data.installed ? 'Installed' : 'Failed') : ''),
+    _lootRow('Items wiped', data.items_wiped),
+  ]);
+
   if (wifi.length) {
-    html += '<p class="meta__section-label">WiFi Profiles</p><dl class="meta">';
-    wifi.forEach((w) => {
-      html +=
-        `<div class="meta__row"><span class="meta__label">${escHtml(w.ssid || '?')}</span>` +
-        `<span class="meta__value meta__value--mono">${escHtml(w.password || '–')}</span></div>`;
-    });
-    html += '</dl>';
+    html += _lootSection(
+      `WiFi Profiles (${wifi.length})`,
+      wifi.slice(0, 8).map((w) => _lootRow(w.ssid || '?', w.password || '–', true)),
+    );
   }
 
-  // ── Exfil-type fields ──
-  const secrets = data.env_secrets || [];
+  if (interfaces.length) {
+    html += _lootListSection(
+      `Interfaces (${interfaces.length})`,
+      interfaces.map((item) => item.name || item),
+    );
+  }
+
+  if (software.length) {
+    html += _lootSection(
+      `Software (${software.length})`,
+      software.slice(0, 6).map((item) => {
+        const name = item.name || String(item);
+        const version = item.version ? ` ${item.version}` : '';
+        return version ? _lootRow(name, version.trim()) : _lootItem(name);
+      }),
+    );
+  }
+
   if (secrets.length) {
-    html += `<p class="meta__section-label">Env Secrets (${secrets.length})</p><dl class="meta">`;
-    secrets.slice(0, 8).forEach((kv) => {
-      html +=
-        `<div class="meta__row"><span class="meta__label">${escHtml(kv.key || '')}</span>` +
-        `<span class="meta__value meta__value--mono">${escHtml(String(kv.value || ''))}</span></div>`;
-    });
-    if (secrets.length > 8)
-      html += `<div class="meta__row"><span class="meta__label" style="opacity:.5">+${secrets.length - 8} more</span></div>`;
-    html += '</dl>';
+    html += _lootSection(
+      `Env Secrets (${secrets.length})`,
+      secrets.slice(0, 8).map((kv) => _lootRow(kv.key || '', kv.value || '', true)),
+    );
   }
 
-  const sshKeys = data.ssh_keys || [];
   if (sshKeys.length) {
-    html += `<p class="meta__section-label">SSH Keys (${sshKeys.length})</p><dl class="meta">`;
-    sshKeys.forEach((k) => {
-      html +=
-        `<div class="meta__row"><span class="meta__label">${escHtml(k.file || '')}</span>` +
-        `<span class="meta__value">${k.content ? 'Present' : 'Empty'}</span></div>`;
-    });
-    html += '</dl>';
+    html += _lootSection(
+      `SSH Keys (${sshKeys.length})`,
+      sshKeys.map((key) => _lootRow(key.file || '', key.content ? 'Present' : 'Empty')),
+    );
   }
 
-  const browserPaths = data.browser_paths || [];
   if (browserPaths.length) {
-    html += `<p class="meta__section-label">Browser DBs (${browserPaths.length})</p><dl class="meta">`;
-    browserPaths.forEach((p) => {
-      const short = String(p).split(/[/\\]/).slice(-2).join('/');
-      html += `<div class="meta__row"><span class="meta__label" style="font-size:.75rem">${escHtml(short)}</span></div>`;
-    });
-    html += '</dl>';
+    html += _lootListSection(
+      `Browser DBs (${browserPaths.length})`,
+      browserPaths.map((path) => String(path).split(/[/\\]/).slice(-2).join('/')),
+      8,
+    );
   }
 
-  if (data.shell_history?.length) {
-    html += `<p class="meta__section-label">Shell History (${data.shell_history.length} lines)</p>`;
+  if (shellHistory.length) {
+    html += `<p class="meta__section-label">Shell History (${shellHistory.length} lines)</p>`;
   }
 
   if (!html) {
@@ -1282,30 +1360,6 @@ document
   .getElementById('inject-os')
   ?.addEventListener('change', _updateArmorySnippet);
 
-usbAgentToggle?.addEventListener('click', async () => {
-  const mounted = !(uiState.usbAgent || {}).mounted;
-  uiState.changingUsbAgent = true;
-  updateControls();
-  _setArmoryNotice(
-    mounted ? 'Activating USB injector…' : 'Deactivating USB injector…',
-    'quiet',
-  );
-  try {
-    const result = await requestJson('/api/usb-agent', {
-      method: 'POST',
-      body: JSON.stringify({ active: mounted }),
-    });
-    renderUsbAgent(result);
-    _setArmoryNotice(result.message || 'USB agent drive updated.', result.notice || 'success');
-  } catch (err) {
-    if (err.data) renderUsbAgent(err.data);
-    _setArmoryNotice(err.message || 'USB agent drive update failed.', 'error');
-  } finally {
-    uiState.changingUsbAgent = false;
-    updateControls();
-  }
-});
-
 function _updateArmorySnippet() {
   const os = document.getElementById('inject-os')?.value || 'windows';
   let cmd = '';
@@ -1377,6 +1431,7 @@ document
         } catch (_) {}
         if (xhr.status === 200) {
           _setArmoryNotice(data.message || 'Upload complete.', 'success');
+          if (data.usb_agent) renderUsbAgent(data);
           setArmoryBinaryReady(data.filename || _selectedFile.name);
         } else {
           _setArmoryNotice(data.message || 'Upload failed.', 'error');
