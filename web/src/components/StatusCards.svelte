@@ -1,4 +1,6 @@
 <script lang="ts">
+  import Eye from '@lucide/svelte/icons/eye';
+  import EyeClosed from '@lucide/svelte/icons/eye-closed';
   import {
     apPassword,
     apSsid,
@@ -13,7 +15,8 @@
   const statClass =
     'min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 md:basis-[calc(50%-0.25rem)] lg:basis-[calc(33.333%-0.333rem)] xl:basis-[calc(20%-0.4rem)]';
   const labelClass = 'mb-1 text-[11px] font-medium text-picobit-text-3';
-  const valueClass = 'break-all text-[13px] font-medium leading-snug text-picobit-text';
+  const valueClass =
+    'break-all text-[13px] font-medium leading-snug text-picobit-text';
 </script>
 
 <div class="flex flex-wrap justify-around gap-2">
@@ -39,18 +42,9 @@
           onclick={() => (revealPassword = !revealPassword)}
         >
           {#if revealPassword}
-            <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path
-                d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"
-                stroke-width="2"
-              />
-              <line x1="1" y1="1" x2="23" y2="23" stroke-width="2" />
-            </svg>
+            <Eye size={16} />
           {:else}
-            <svg class="size-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-              <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" stroke-width="2" />
-              <circle cx="12" cy="12" r="3" stroke-width="2" />
-            </svg>
+            <EyeClosed size={16} />
           {/if}
         </button>
       {/if}

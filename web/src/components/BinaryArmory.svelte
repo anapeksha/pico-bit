@@ -1,14 +1,22 @@
 <script lang="ts">
+  import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import ChevronUp from '@lucide/svelte/icons/chevron-up';
+  import CloudUpload from '@lucide/svelte/icons/cloud-upload';
+  import FileTerminal from '@lucide/svelte/icons/file-terminal';
   import { fileDrop } from '../actions/fileDrop';
-  import { formatBytes, stagerPreview, validateArmoryFile } from '../lib/binary';
+  import {
+    formatBytes,
+    stagerPreview,
+    validateArmoryFile,
+  } from '../lib/binary';
   import type { TargetOs } from '../lib/types';
   import {
     activeAccordion,
     armoryNotice,
     binaryTargetOs,
     hasBinary,
-    injectingBinary,
     injectBinary,
+    injectingBinary,
     stagedBinaryName,
     uploadBinary,
     uploadingBinary,
@@ -48,33 +56,32 @@
   }
 </script>
 
-<section class:flex-1={$activeAccordion === 'armory'} class="flex min-h-0 shrink-0 flex-col">
+<section
+  class:flex-1={$activeAccordion === 'armory'}
+  class="flex min-h-0 shrink-0 flex-col"
+>
   <button
     class="flex w-full cursor-pointer items-center gap-2 border-0 border-b border-picobit-border bg-picobit-surface-2 px-3.5 py-2.5 text-left text-xs font-medium text-picobit-text hover:bg-picobit-surface-3"
     type="button"
     aria-expanded={$activeAccordion === 'armory'}
     onclick={() => activeAccordion.set('armory')}
   >
-    <span class="flex-1 font-mono text-xs text-picobit-text-3">Binary Armory</span>
+    <span class="flex-1 font-mono text-xs text-picobit-text-3"
+      >Binary Armory</span
+    >
     {#if $stagedBinaryName}
-      <span class="inline-flex items-center rounded-md border border-picobit-text bg-picobit-text px-2 py-0.5 text-[11px] font-medium text-white">
+      <span
+        class="inline-flex items-center rounded-md border border-picobit-text bg-picobit-text px-2 py-0.5 text-[11px] font-medium text-white"
+      >
         {$stagedBinaryName}
       </span>
     {/if}
-    <svg
-      class={`size-3.5 shrink-0 text-picobit-text-4 transition-transform ${
-        $activeAccordion === 'armory' ? 'rotate-180' : ''
-      }`}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
-    >
-      <polyline points="6 9 12 15 18 9"></polyline>
-    </svg>
+
+    {#if $activeAccordion === 'armory'}
+      <ChevronUp size={16} className="text-picobit-text-4" />
+    {:else}
+      <ChevronDown size={16} className="text-picobit-text-4" />
+    {/if}
   </button>
 
   {#if $activeAccordion === 'armory'}
@@ -100,45 +107,23 @@
 
         {#if selectedFile}
           <div class="pointer-events-none flex items-center gap-2">
-            <svg
-              class="size-6 shrink-0 text-picobit-text-3"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
-              <polyline points="13 2 13 9 20 9"></polyline>
-            </svg>
+            <FileTerminal />
             <span class="font-mono text-xs font-medium text-picobit-text">
               {selectedFile.name}
             </span>
-            <span class="text-[11px] text-picobit-text-3">{formatBytes(selectedFile.size)}</span>
+            <span class="text-[11px] text-picobit-text-3"
+              >{formatBytes(selectedFile.size)}</span
+            >
           </div>
         {:else}
           <div class="pointer-events-none flex flex-col items-center gap-1.5">
-            <svg
-              class="size-7 text-picobit-text-3"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.8"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              aria-hidden="true"
-            >
-              <polyline points="16 16 12 12 8 16"></polyline>
-              <line x1="12" y1="12" x2="12" y2="21"></line>
-              <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"></path>
-            </svg>
+            <CloudUpload size={32} />
             <p class="m-0 text-xs font-medium text-picobit-text-2">
               Drag &amp; drop or click to upload
             </p>
             <p class="m-0 text-[11px] text-picobit-text-4">
-              EXE, ELF, or Mach-O binaries only. Unix binaries may be extensionless.
+              EXE, ELF, or Mach-O binaries only. Unix binaries may be
+              extensionless.
             </p>
           </div>
         {/if}
@@ -159,10 +144,10 @@
             fileError
               ? 'border-picobit-danger-border bg-picobit-danger-bg text-picobit-danger'
               : $armoryNotice.tone === 'success'
-              ? 'border-picobit-success-border bg-picobit-success-bg text-picobit-success'
-              : $armoryNotice.tone === 'error'
-                ? 'border-picobit-danger-border bg-picobit-danger-bg text-picobit-danger'
-                : 'border-picobit-border-strong bg-picobit-surface text-picobit-text-3'
+                ? 'border-picobit-success-border bg-picobit-success-bg text-picobit-success'
+                : $armoryNotice.tone === 'error'
+                  ? 'border-picobit-danger-border bg-picobit-danger-bg text-picobit-danger'
+                  : 'border-picobit-border-strong bg-picobit-surface text-picobit-text-3'
           }`}
           role="status"
           aria-live="polite"
@@ -173,7 +158,10 @@
 
       <div class="flex flex-wrap items-end gap-3">
         <div class="grid min-w-32 flex-1 gap-1">
-          <label class="text-[11px] font-medium text-picobit-text-3" for="inject-os">
+          <label
+            class="text-[11px] font-medium text-picobit-text-3"
+            for="inject-os"
+          >
             Target OS
           </label>
           <select
@@ -206,11 +194,16 @@
         </div>
       </div>
 
-      <div class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3">
+      <div
+        class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3"
+      >
         <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">
           USB command that will be typed:
         </p>
-        <pre class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">{stagerPreview($binaryTargetOs as TargetOs)}</pre>
+        <pre
+          class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">{stagerPreview(
+            $binaryTargetOs as TargetOs,
+          )}</pre>
       </div>
     </div>
   {/if}

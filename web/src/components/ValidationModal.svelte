@@ -1,4 +1,5 @@
 <script lang="ts">
+  import X from '@lucide/svelte/icons/x';
   import { validation, validationModalOpen } from '../stores/portal';
 
   function close() {
@@ -27,13 +28,23 @@
       aria-labelledby="modal-title"
       aria-describedby="modal-subtitle"
     >
-      <div class="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] px-5 pt-4 pb-3">
+      <div
+        class="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] px-5 pt-4 pb-3"
+      >
         <div class="grid min-w-0 gap-0.5">
-          <h3 class="m-0 text-sm font-semibold tracking-[-0.01em] text-[var(--text)]" id="modal-title">
+          <h3
+            class="m-0 text-sm font-semibold tracking-[-0.01em] text-[var(--text)]"
+            id="modal-title"
+          >
             Validation issues
           </h3>
-          <p class="m-0 text-xs leading-snug text-[var(--text-3)]" id="modal-subtitle">
-            {$validation?.blocking ? 'Errors found in the payload' : 'Payload warnings'}
+          <p
+            class="m-0 text-xs leading-snug text-[var(--text-3)]"
+            id="modal-subtitle"
+          >
+            {$validation?.blocking
+              ? 'Errors found in the payload'
+              : 'Payload warnings'}
           </p>
         </div>
         <button
@@ -42,18 +53,7 @@
           aria-label="Close"
           onclick={close}
         >
-          <svg
-            viewBox="0 0 24 24"
-            width="16"
-            height="16"
-            fill="none"
-            stroke="currentcolor"
-            stroke-width="2.2"
-            stroke-linecap="round"
-          >
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-          </svg>
+          <X size={16} />
         </button>
       </div>
       <div class="grid gap-2 overflow-y-auto px-5 py-4">
@@ -75,16 +75,22 @@
               >
                 Line {item.line}, column {item.column}
               </p>
-              <p class="m-0 text-[13px] font-medium leading-snug text-[var(--text)]">
+              <p
+                class="m-0 text-[13px] font-medium leading-snug text-[var(--text)]"
+              >
                 {item.message}
               </p>
               {#if item.hint}
-                <p class="m-0 text-xs leading-relaxed text-[var(--text-3)]">{item.hint}</p>
+                <p class="m-0 text-xs leading-relaxed text-[var(--text-3)]">
+                  {item.hint}
+                </p>
               {/if}
             </div>
           {/each}
         {:else}
-          <p class="m-0 py-6 text-center text-xs leading-relaxed text-[var(--text-3)]">
+          <p
+            class="m-0 py-6 text-center text-xs leading-relaxed text-[var(--text-3)]"
+          >
             No issues detected.
           </p>
         {/if}
