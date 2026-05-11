@@ -23,11 +23,6 @@
     username = '',
   }: Props = $props();
 
-  const fieldClass =
-    'w-full rounded-lg border border-picobit-border-strong bg-picobit-surface px-3 py-2 text-[13px] leading-none text-picobit-text outline-none focus:border-picobit-text';
-  const buttonClass =
-    'inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-picobit-text bg-picobit-text px-4 py-2 text-[13px] font-medium text-white hover:bg-[#2d2d2f]';
-
   onMount(() => {
     if (authState !== 'portal') return;
     let cleanup = () => {};
@@ -84,7 +79,7 @@
             Username
           </label>
           <input
-            class={fieldClass}
+            class="w-full rounded-lg border border-picobit-border-strong bg-picobit-surface px-3 py-2 text-[13px] leading-none text-picobit-text outline-none focus:border-picobit-text"
             id="username"
             name="username"
             autocomplete="username"
@@ -100,7 +95,7 @@
             Password
           </label>
           <input
-            class={fieldClass}
+            class="w-full rounded-lg border border-picobit-border-strong bg-picobit-surface px-3 py-2 text-[13px] leading-none text-picobit-text outline-none focus:border-picobit-text"
             id="password"
             name="password"
             type="password"
@@ -108,7 +103,10 @@
             required
           />
         </div>
-        <button class={buttonClass} type="submit">
+        <button
+          class="inline-flex w-full gap-1 cursor-pointer items-center justify-center rounded-lg border border-picobit-text bg-picobit-text px-4 py-2 text-[13px] font-medium text-white hover:bg-[#2d2d2f]"
+          type="submit"
+        >
           <Key size={16} />
           Unlock
         </button>
