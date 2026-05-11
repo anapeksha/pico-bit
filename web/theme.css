@@ -1,0 +1,10 @@
+@theme {
+  --color-picobit-bg: #ffffff;
+  --color-picobit-surface: #ffffff;
+  --color-picobit-muted: #6e6e73;
+  --color-picobit-ink: #1d1d1f;
+  --color-picobit-danger: #c4302b;
+  --color-picobit-success: #248a3d;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'SF Mono', ui-monospace, 'Cascadia Mono', 'Menlo', monospace;
+}

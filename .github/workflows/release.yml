@@ -58,6 +58,13 @@ jobs:
         with:
           python-version: '3.14'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -66,9 +73,14 @@ jobs:
       - name: Install Python dependencies
         run: uv sync
 
+      - name: Install frontend dependencies
+        run: npm ci --prefix web
+
       - name: Verify source tree
         run: |
           if [ -d scripts ]; then
+            npm --prefix web run build
+            npm --prefix web run check
             uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
             uv run ruff check build.py release.py scripts src tests
           else

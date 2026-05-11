@@ -8,9 +8,60 @@
       content="Edit, validate, and run payloads from the Pico Bit portal."
     />
     <title>Pico Bit Injector</title>
-    <link rel="stylesheet" href="/assets/portal.css" />
+    <link rel="stylesheet" href="/src/index.css" />
   </head>
-  <body>
+  <body data-auth-state="{{auth_state}}">
+    <section class="login-screen" id="login-screen" hidden>
+      <div class="login-card">
+        <div class="login-header">
+          <h1 class="login-title">Pico Bit</h1>
+          <p class="login-hint">Sign in to unlock injector.</p>
+        </div>
+
+        <form action="/login" method="post" class="login-form">
+          <div class="notice {{message_class}}" role="alert">{{message}}</div>
+
+          <div class="field">
+            <label class="field__label" for="username">Username</label>
+            <input
+              class="field__input"
+              id="username"
+              name="username"
+              autocomplete="username"
+              value="{{username}}"
+              required
+            />
+          </div>
+          <div class="field">
+            <label class="field__label" for="password">Password</label>
+            <input
+              class="field__input"
+              id="password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              required
+            />
+          </div>
+          <button class="btn btn--primary btn--wide" type="submit">
+            <svg
+              class="btn__icon"
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 640 640"
+              stroke="currentColor"
+              fill="#fff"
+            >
+              <path
+                d="M256 160C256 124.7 284.7 96 320 96C351.7 96 378 119 383.1 149.3C386 166.7 402.5 178.5 420 175.6C437.5 172.7 449.2 156.2 446.3 138.7C436.1 78.1 383.5 32 320 32C249.3 32 192 89.3 192 160L192 224C156.7 224 128 252.7 128 288L128 512C128 547.3 156.7 576 192 576L448 576C483.3 576 512 547.3 512 512L512 288C512 252.7 483.3 224 448 224L256 224L256 160z"
+              />
+            </svg>
+            Unlock
+          </button>
+        </form>
+      </div>
+    </section>
+
+    <div id="portal-screen" class="app-screen" hidden>
     <nav class="topbar">
       <div class="topbar__brand">Pico Bit</div>
       <div class="topbar__fill"></div>
@@ -550,6 +601,8 @@
       </div>
     </div>
 
-    <script src="/assets/portal.js" defer></script>
+    </div>
+
+    <script type="module" src="/src/index.ts"></script>
   </body>
 </html>

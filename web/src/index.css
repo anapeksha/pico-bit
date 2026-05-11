@@ -1,3 +1,9 @@
+@reference 'tailwindcss';
+@import '../theme.css';
+
+@source './**/*.{svelte,ts}';
+@source '../index.html';
+
 :root {
   color-scheme: light;
 
@@ -914,6 +920,17 @@ a {
 }
 
 /* ─── Login page ─────────────────────────────── */
+body.auth-login {
+  padding-top: 0;
+  background: var(--surface-3);
+}
+
+.login-screen[hidden],
+.app-screen[hidden] {
+  display: none !important;
+}
+
+.login-screen,
 .login-body {
   min-height: 100vh;
   display: grid;

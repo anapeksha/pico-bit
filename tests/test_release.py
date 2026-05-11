@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-BUILD_SUPPORT = importlib.import_module('scripts.build_support')
+BUILD_PIPELINE = importlib.import_module('scripts.build_pipeline')
 RELEASE = importlib.import_module('scripts.release')
 
 
@@ -33,7 +33,7 @@ def _args(**overrides) -> Namespace:
 
 
 def test_build_config_overrides_supports_release_flags() -> None:
-    overrides = BUILD_SUPPORT.build_config_overrides(
+    overrides = BUILD_PIPELINE.build_config_overrides(
         _args(
             ap_password='keyboard42',
             ap_ssid='Studio Pico',
@@ -57,7 +57,7 @@ def test_build_config_overrides_supports_release_flags() -> None:
 
 
 def test_build_config_overrides_omits_default_boolean_requests() -> None:
-    overrides = BUILD_SUPPORT.build_config_overrides(
+    overrides = BUILD_PIPELINE.build_config_overrides(
         _args(
             portal_auth_enabled='default',
             cors_allow_credentials='default',
@@ -193,7 +193,7 @@ def test_build_firmware_enables_usb_msc_and_records_metadata(tmp_path, monkeypat
 def test_render_device_config_keeps_portal_password_independent() -> None:
     source = (ROOT / 'src' / 'device_config.py').read_text(encoding='utf-8')
 
-    rendered = BUILD_SUPPORT.render_device_config(source, {'AP_PASSWORD': 'keyboard42'})
+    rendered = BUILD_PIPELINE.render_device_config(source, {'AP_PASSWORD': 'keyboard42'})
 
     assert "AP_PASSWORD: str = 'keyboard42'" in rendered
     assert "PORTAL_PASSWORD: str = 'PicoBit24Admin'" in rendered
@@ -202,7 +202,7 @@ def test_render_device_config_keeps_portal_password_independent() -> None:
 def test_render_device_config_can_override_portal_login_values() -> None:
     source = (ROOT / 'src' / 'device_config.py').read_text(encoding='utf-8')
 
-    rendered = BUILD_SUPPORT.render_device_config(
+    rendered = BUILD_PIPELINE.render_device_config(
         source,
         {
             'PORTAL_AUTH_ENABLED': False,
@@ -219,7 +219,7 @@ def test_render_device_config_can_override_portal_login_values() -> None:
 def test_build_module_overrides_uses_repo_payload_seed(tmp_path) -> None:
     (tmp_path / 'payload.dd').write_text('STRING seeded from file\n', encoding='utf-8')
 
-    overrides = BUILD_SUPPORT.build_module_overrides(
+    overrides = BUILD_PIPELINE.build_module_overrides(
         tmp_path,
         device_config_overrides={'AP_SSID': 'Studio Pico'},
     )
@@ -239,9 +239,9 @@ def test_prepare_source_tree_applies_module_overrides(tmp_path, monkeypatch) -> 
         "DEFAULT_PAYLOAD = 'REM default\\n'\n",
         encoding='utf-8',
     )
-    monkeypatch.setattr(BUILD_SUPPORT, 'sync_web_assets', lambda: None)
+    monkeypatch.setattr(BUILD_PIPELINE, 'sync_web_assets', lambda: None)
 
-    configured = BUILD_SUPPORT.prepare_source_tree(
+    configured = BUILD_PIPELINE.prepare_source_tree(
         build_dir=tmp_path / 'build',
         root_src_dir=src_dir,
         overrides_by_module={
@@ -280,9 +280,9 @@ def test_build_mpy_tree_embeds_relative_source_names(tmp_path, monkeypatch) -> N
         output.parent.mkdir(parents=True, exist_ok=True)
         output.write_bytes(b'mpy')
 
-    monkeypatch.setattr(BUILD_SUPPORT.subprocess, 'run', fake_run)
+    monkeypatch.setattr(BUILD_PIPELINE.subprocess, 'run', fake_run)
 
-    compiled = BUILD_SUPPORT.build_mpy_tree(
+    compiled = BUILD_PIPELINE.build_mpy_tree(
         compiler_cmd=['mpy-cross'],
         output_dir=output_dir,
         source_dir=source_dir,

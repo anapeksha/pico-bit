@@ -1,24 +1,49 @@
-const notice = document.getElementById('notice');
-const payloadField = document.getElementById('payload');
-const saveButton = document.getElementById('save');
-const runButton = document.getElementById('run');
-const refreshButton = document.getElementById('refresh');
-const keyboardOsSelect = document.getElementById('keyboard-os');
-const keyboardLayoutSelect = document.getElementById('keyboard-layout');
-const usbAgentState = document.getElementById('host-usb-state');
-const runHistory = document.getElementById('run-history');
-const editorGutter = document.getElementById('editor-gutter');
-const editorHighlight = document.getElementById('editor-highlight');
-const editorMarkers = document.getElementById('editor-markers');
-const infoIcon = document.getElementById('info-icon');
-const validationModal = document.getElementById('validation-modal');
-const modalBackdrop = document.getElementById('modal-backdrop');
-const modalBody = document.getElementById('modal-body');
-const modalSubtitle = document.getElementById('modal-subtitle');
-const modalClose = document.getElementById('modal-close');
+import './dev/mock';
+
+type JsonObject = Record<string, any>;
+type RequestFailure = Error & { data?: JsonObject; status?: number };
+
+function byId<T extends HTMLElement = HTMLElement>(id: string) {
+  return document.getElementById(id) as T | null;
+}
+
+function showAuthView(view: 'login' | 'portal') {
+  const loginScreen = byId('login-screen');
+  const portalScreen = byId('portal-screen');
+  const isLogin = view === 'login';
+  document.body.classList.toggle('auth-login', isLogin);
+  if (loginScreen) loginScreen.hidden = !isLogin;
+  if (portalScreen) portalScreen.hidden = isLogin;
+}
+
+export function initPortal() {
+const initialAuthState = document.body.dataset.authState === 'login' ? 'login' : 'portal';
+showAuthView(initialAuthState);
+if (initialAuthState === 'login') {
+  return;
+}
+
+const notice = document.getElementById('notice') as HTMLDivElement | null;
+const payloadField = document.getElementById('payload') as HTMLTextAreaElement | null;
+const saveButton = document.getElementById('save') as HTMLButtonElement | null;
+const runButton = document.getElementById('run') as HTMLButtonElement | null;
+const refreshButton = document.getElementById('refresh') as HTMLButtonElement | null;
+const keyboardOsSelect = document.getElementById('keyboard-os') as HTMLSelectElement | null;
+const keyboardLayoutSelect = document.getElementById('keyboard-layout') as HTMLSelectElement | null;
+const usbAgentState = document.getElementById('host-usb-state') as HTMLElement | null;
+const runHistory = document.getElementById('run-history') as HTMLDivElement | null;
+const editorGutter = document.getElementById('editor-gutter') as HTMLDivElement | null;
+const editorHighlight = document.getElementById('editor-highlight') as HTMLDivElement | null;
+const editorMarkers = document.getElementById('editor-markers') as HTMLDivElement | null;
+const infoIcon = document.getElementById('info-icon') as HTMLButtonElement | null;
+const validationModal = document.getElementById('validation-modal') as HTMLDivElement | null;
+const modalBackdrop = document.getElementById('modal-backdrop') as HTMLDivElement | null;
+const modalBody = document.getElementById('modal-body') as HTMLDivElement | null;
+const modalSubtitle = document.getElementById('modal-subtitle') as HTMLParagraphElement | null;
+const modalClose = document.getElementById('modal-close') as HTMLButtonElement | null;
 const validationBadge = document.querySelector(
   '[data-bind="validation_badge"]',
-);
+ ) as HTMLSpanElement | null;
 const uiState = {
   charWidth: 8,
   lineHeight: 22,
@@ -183,7 +208,7 @@ function setNotice(message, tone = 'quiet') {
   if (!notice) {
     return;
   }
-  clearTimeout(_noticeTimer);
+  window.clearTimeout(_noticeTimer);
   if (!message) {
     notice.className = 'notice notice--hidden';
     notice.textContent = '';
@@ -191,7 +216,7 @@ function setNotice(message, tone = 'quiet') {
   }
   notice.className = `notice notice--${tone}`;
   notice.textContent = message;
-  _noticeTimer = setTimeout(() => {
+  _noticeTimer = window.setTimeout(() => {
     notice.className = 'notice notice--hidden';
     notice.textContent = '';
   }, 2000);
@@ -199,18 +224,19 @@ function setNotice(message, tone = 'quiet') {
 
 function setBoundText(name, value) {
   document.querySelectorAll(`[data-bind="${name}"]`).forEach((node) => {
-    if ('password' in node.dataset) {
-      const toggle = document.getElementById('ap-password-toggle');
+    const element = node as HTMLElement;
+    if ('password' in element.dataset) {
+      const toggle = byId<HTMLButtonElement>('ap-password-toggle');
       const isOpen = value === 'Open network';
-      node.dataset.plain = value;
-      node.textContent = isOpen ? value : '•'.repeat(value.length);
+      element.dataset.plain = value;
+      element.textContent = isOpen ? value : '•'.repeat(value.length);
       if (toggle) {
         toggle.hidden = isOpen;
         toggle.setAttribute('aria-pressed', 'false');
         toggle.setAttribute('aria-label', 'Show AP password');
       }
     } else {
-      node.textContent = value;
+      element.textContent = value;
     }
   });
 }
@@ -242,7 +268,7 @@ function updateControls() {
   if (keyboardOsSelect) keyboardOsSelect.disabled = uiState.changingTarget;
   if (keyboardLayoutSelect)
     keyboardLayoutSelect.disabled = uiState.changingTarget;
-  const injectBtn = document.getElementById('inject-binary-btn');
+  const injectBtn = byId<HTMLButtonElement>('inject-binary-btn');
   if (injectBtn) {
     const mounted = (uiState.usbAgent || {}).mounted;
     injectBtn.disabled = uiState.running || !uiState.hasBinary || !mounted;
@@ -300,12 +326,12 @@ function renderRunHistory(entries = []) {
   });
 }
 
-async function requestJson(path, options = {}) {
+async function requestJson(path: string, options: RequestInit = {}) {
   const response = await fetch(path, {
     credentials: 'same-origin',
     headers: {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(options.headers as Record<string, string> | undefined),
     },
     ...options,
   });
@@ -314,12 +340,12 @@ async function requestJson(path, options = {}) {
   if (!response.ok) {
     const error = new Error(
       data.message || `Request failed with ${response.status}`,
-    );
+    ) as RequestFailure;
     error.data = data;
     error.status = response.status;
     throw error;
   }
-  return data;
+  return data as JsonObject;
 }
 
 function renderKeyboardLayouts(state) {
@@ -434,7 +460,9 @@ function syncEditorDecorations() {
   if (!payloadField) {
     return;
   }
-  const gutterLines = editorGutter?.querySelector('.editor__gutter-lines');
+  const gutterLines = editorGutter?.querySelector(
+    '.editor__gutter-lines',
+  ) as HTMLElement | null;
   if (gutterLines) {
     gutterLines.style.transform = `translateY(${-payloadField.scrollTop}px)`;
   }
@@ -1126,7 +1154,7 @@ function renderLoot(data) {
 }
 
 async function importUsbLoot() {
-  const btn = document.getElementById('loot-import-usb');
+  const btn = byId<HTMLButtonElement>('loot-import-usb');
   if (btn) btn.disabled = true;
   try {
     const result = await requestJson('/api/loot/import-usb', {
@@ -1261,8 +1289,8 @@ document
 
 let _selectedFile = null;
 
-const _uploadZone = document.getElementById('upload-zone');
-const _binaryFileInput = document.getElementById('binary-file-input');
+const _uploadZone = byId('upload-zone');
+const _binaryFileInput = byId<HTMLInputElement>('binary-file-input');
 
 function _formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -1340,7 +1368,7 @@ async function _setSelectedFile(file) {
   _selectedFile = file;
   _renderSelectedFile(file);
   _setArmoryNotice('', 'quiet');
-  const uploadBtn = document.getElementById('upload-binary-btn');
+  const uploadBtn = byId<HTMLButtonElement>('upload-binary-btn');
   if (uploadBtn) uploadBtn.disabled = false;
   document.getElementById('inject-binary-btn')?.setAttribute('disabled', '');
   _updateArmorySnippet();
@@ -1415,7 +1443,7 @@ function _usbStagerPreview(os) {
 }
 
 function _updateArmorySnippet() {
-  const os = document.getElementById('inject-os')?.value || 'windows';
+  const os = byId<HTMLSelectElement>('inject-os')?.value || 'windows';
   const snippetEl = document.getElementById('armory-snippet');
   const codeEl = document.getElementById('armory-snippet-code');
   if (codeEl) codeEl.textContent = _usbStagerPreview(os);
@@ -1450,14 +1478,14 @@ document
       return;
     }
     const progressEl = document.getElementById('upload-progress');
-    const progressBar = document.getElementById('upload-progress-bar');
-    const uploadBtn = document.getElementById('upload-binary-btn');
+    const progressBar = byId<HTMLDivElement>('upload-progress-bar');
+    const uploadBtn = byId<HTMLButtonElement>('upload-binary-btn');
     if (progressEl) progressEl.hidden = false;
     if (progressBar) progressBar.style.width = '0%';
     _setArmoryNotice('Uploading…', 'quiet');
     if (uploadBtn) uploadBtn.disabled = true;
 
-    await new Promise((resolve) => {
+    await new Promise<void>((resolve) => {
       const xhr = new XMLHttpRequest();
       xhr.open('POST', '/api/upload_binary', true);
       xhr.setRequestHeader('Content-Type', 'application/octet-stream');
@@ -1471,7 +1499,7 @@ document
 
       xhr.addEventListener('load', () => {
         if (progressEl) progressEl.hidden = true;
-        let data = {};
+        let data: JsonObject = {};
         try {
           data = JSON.parse(xhr.responseText);
         } catch (_) {}
@@ -1500,8 +1528,8 @@ document
 document
   .getElementById('inject-binary-btn')
   ?.addEventListener('click', async () => {
-    const os = document.getElementById('inject-os')?.value || 'windows';
-    const btn = document.getElementById('inject-binary-btn');
+    const os = byId<HTMLSelectElement>('inject-os')?.value || 'windows';
+    const btn = byId<HTMLButtonElement>('inject-binary-btn');
     if (btn) btn.disabled = true;
     _setArmoryNotice('Injecting stager…', 'quiet');
     try {
@@ -1524,3 +1552,6 @@ document
       updateControls();
     }
   });
+}
+
+initPortal();

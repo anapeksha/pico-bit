@@ -12,10 +12,24 @@ Thanks for helping improve `pico-bit`.
 ## Development Setup
 
 1. Install `uv`.
-2. Install the project dependencies:
+2. Install Node.js 22 or newer.
+3. Install the project dependencies:
 
 ```bash
 uv sync
+npm ci --prefix web
+```
+
+For portal UI work, run the Vite dev server with local mock Pico APIs:
+
+```bash
+npm --prefix web run dev
+```
+
+To proxy API calls to hardware, use:
+
+```bash
+PICOBIT_PROXY=http://192.168.4.1 npm --prefix web run dev
 ```
 
 ## Before You Open a Change
@@ -23,6 +37,8 @@ uv sync
 Run the local checks:
 
 ```bash
+npm --prefix web run build
+npm --prefix web run check
 uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
 uv run pytest
 uv run pyright
@@ -41,7 +57,9 @@ uv run ruff format .
 
 - Put DuckyScript parsing work in `src/ducky/lexer.py` and `src/ducky/parser.py`.
 - Put runtime execution behavior in `src/ducky/runtime.py`.
-- Keep hardware-facing code in `src/hid.py`, `src/main.py`, and `src/server/`.
+- Keep hardware-facing code in `src/keyboard.py`, `src/usb.py`, `src/main.py`, and `src/server/`.
+- Keep portal UI source under `web/`; the single SPA shell lives in `web/index.html`, TypeScript lives in `web/src/index.ts`, CSS lives in `web/src/index.css`, and theme tokens live in `web/theme.css`.
+- Vite compiles the SPA into `.build/web/`, then `scripts.asset_pipeline` embeds the compiled bytes into `src/web_assets.py`.
 - Keep Rust agent binaries and collectors in `agent/src/`.
 - Keep host-side tests in the top-level `tests/` directory.
 
