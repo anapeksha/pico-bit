@@ -1,0 +1,22 @@
+{
+  "name": "pico-bit-web",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "check": "tsc --noEmit -p tsconfig.json && svelte-check --tsconfig ./tsconfig.json"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.1.2",
+    "@tailwindcss/vite": "^4.1.17",
+    "@types/node": "^24.10.2",
+    "html-minifier-terser": "^7.2.0",
+    "svelte": "^5.43.14",
+    "svelte-check": "^4.3.4",
+    "tailwindcss": "^4.1.17",
+    "terser": "^5.44.1",
+    "typescript": "^5.9.3",
+    "vite": "^8.0.12"
+  }
+}

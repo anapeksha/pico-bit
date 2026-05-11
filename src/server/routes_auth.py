@@ -2,7 +2,7 @@ import binascii
 import os
 
 from device_config import PORTAL_AUTH_ENABLED, PORTAL_PASSWORD, PORTAL_USERNAME
-from web_assets import LOGIN_HTML
+from web_assets import INDEX_HTML
 
 from ._http import (
     _LOGIN_LOCKOUT_MS,
@@ -33,15 +33,22 @@ class _AuthMixin:
     def _auth_enabled(self) -> bool:
         return PORTAL_AUTH_ENABLED and bool(PORTAL_PASSWORD)
 
-    def _render_login(self, message: str = '', username: str = '') -> str:
+    def _render_app(self, auth_state: str = 'portal', message: str = '', username: str = '') -> str:
         message_class = 'notice--hidden'
         if message:
             message_class = 'notice--error'
-        page = LOGIN_HTML.decode()
+        page = INDEX_HTML.decode()
+        page = page.replace('{{auth_state}}', auth_state)
         page = page.replace('{{message_class}}', message_class)
         page = page.replace('{{message}}', _esc(message))
         page = page.replace('{{username}}', _esc(username))
         return page
+
+    def _render_login(self, message: str = '', username: str = '') -> str:
+        return self._render_app('login', message, username)
+
+    def _render_portal(self) -> str:
+        return self._render_app('portal')
 
     def _is_authorized(self, request) -> bool:
         if not self._auth_enabled():

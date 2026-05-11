@@ -60,6 +60,60 @@ def _json_response(writer: FakeWriter) -> tuple[str, dict[str, object]]:
     return status, json.loads(body.decode('utf-8'))
 
 
+def _raw_response(writer: FakeWriter) -> tuple[str, str]:
+    raw = bytes(writer.buffer)
+    head, body = raw.split(b'\r\n\r\n', 1)
+    status = head.decode('utf-8').splitlines()[0]
+    return status, body.decode('utf-8')
+
+
+def test_render_app_switches_single_spa_between_login_and_portal() -> None:
+    server = SetupServer()
+
+    login = server._render_login('Invalid <user>', '<admin>')
+    portal = server._render_portal()
+
+    assert 'data-auth-state="login"' in login
+    assert 'id="login-screen"' in login
+    assert 'id="portal-screen"' in login
+    assert 'Invalid &lt;user&gt;' in login
+    assert 'value="&lt;admin&gt;"' in login
+    assert 'data-auth-state="portal"' in portal
+    assert '{{auth_state}}' not in portal
+
+
+def test_root_serves_login_state_for_unauthorized_spa_request() -> None:
+    server = SetupServer()
+    server._is_authorized = lambda request: False  # type: ignore[method-assign]
+    writer = FakeWriter()
+    request = _request('/', method='GET')
+
+    asyncio.run(server._dispatch(request, writer))
+    status, body = _raw_response(writer)
+
+    assert status == 'HTTP/1.1 200 OK'
+    assert 'data-auth-state="login"' in body
+    assert 'id="login-screen"' in body
+
+
+def test_static_index_assets_are_served_by_index_names() -> None:
+    server = SetupServer()
+    for path, content_type in (
+        ('/assets/index.css', 'text/css; charset=utf-8'),
+        ('/assets/index.js', 'application/javascript; charset=utf-8'),
+    ):
+        writer = FakeWriter()
+        request = _request(path, method='GET')
+
+        asyncio.run(server._dispatch(request, writer))
+        raw = bytes(writer.buffer)
+        head, body = raw.split(b'\r\n\r\n', 1)
+
+        assert head.decode('utf-8').splitlines()[0] == 'HTTP/1.1 200 OK'
+        assert f'Content-Type: {content_type}' in head.decode('utf-8')
+        assert body
+
+
 def test_bootstrap_state_exposes_keyboard_target_metadata() -> None:
     server = SetupServer()
     server._ap_ip = '192.168.4.1'

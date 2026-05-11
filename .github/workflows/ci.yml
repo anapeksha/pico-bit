@@ -19,8 +19,24 @@ jobs:
         with:
           python-version: '3.14'
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
       - name: Install dependencies
         run: uv sync
+
+      - name: Install frontend dependencies
+        run: npm ci --prefix web
+
+      - name: Build frontend assets
+        run: npm --prefix web run build
+
+      - name: Check frontend
+        run: npm --prefix web run check
 
       - name: Verify embedded web assets
         run: uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"

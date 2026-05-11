@@ -14,7 +14,7 @@ from helpers import maybe_wait_closed, sleep_ms
 from keyboard import DEFAULT_LAYOUT_CODE, get_keyboard, keyboard_ready
 from status_led import STATUS_LED
 from usb import USB
-from web_assets import INDEX_HTML, PORTAL_CSS, PORTAL_JS
+from web_assets import INDEX_CSS, INDEX_JS
 
 from ._http import (
     _AP_CHECK_INTERVAL_MS,
@@ -260,22 +260,22 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             await self._send(writer, request, '204 No Content', '', headers=_NO_STORE)
             return
 
-        if request['path'] in ('/portal.css', '/assets/portal.css'):
+        if request['path'] in ('/index.css', '/assets/index.css'):
             await self._send(
                 writer,
                 request,
                 '200 OK',
-                PORTAL_CSS,
+                INDEX_CSS,
                 headers=_merge_headers({'Content-Type': 'text/css; charset=utf-8'}, _NO_STORE),
             )
             return
 
-        if request['path'] in ('/portal.js', '/assets/portal.js'):
+        if request['path'] in ('/index.js', '/assets/index.js'):
             await self._send(
                 writer,
                 request,
                 '200 OK',
-                PORTAL_JS,
+                INDEX_JS,
                 headers=_merge_headers(
                     {'Content-Type': 'application/javascript; charset=utf-8'},
                     _NO_STORE,
@@ -292,7 +292,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             await self._redirect(
                 writer,
                 request,
-                '/login',
+                '/',
                 headers=_merge_headers(
                     {'Set-Cookie': self._expired_session_cookie()},
                     _NO_STORE,
@@ -308,16 +308,13 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             await self._handle_api(request, writer)
             return
 
-        if not self._is_authorized(request):
-            await self._redirect(writer, request, '/login')
-            return
-
         if request['path'] == '/':
+            auth_state = 'portal' if self._is_authorized(request) else 'login'
             await self._send(
                 writer,
                 request,
                 '200 OK',
-                INDEX_HTML,
+                self._render_app(auth_state),
                 headers=_merge_headers({'Content-Type': 'text/html; charset=utf-8'}, _NO_STORE),
             )
             return
