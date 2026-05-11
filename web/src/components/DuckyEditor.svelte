@@ -1,6 +1,8 @@
 <script lang="ts">
+  import ChevronDown from '@lucide/svelte/icons/chevron-down';
+  import ChevronUp from '@lucide/svelte/icons/chevron-up';
+  import Info from '@lucide/svelte/icons/info';
   import { onMount } from 'svelte';
-
   import {
     DEFAULT_EDITOR_METRICS,
     editorMarkers,
@@ -18,9 +20,9 @@
     savePayload,
     showNotice,
     validatePayloadDraft,
+    validating,
     validation,
     validationModalOpen,
-    validating,
   } from '../stores/portal';
 
   let textarea = $state<HTMLTextAreaElement | null>(null);
@@ -55,11 +57,16 @@
     sample.style.visibility = 'hidden';
     document.body.appendChild(sample);
     metrics = {
-      charWidth: sample.getBoundingClientRect().width / 10 || DEFAULT_EDITOR_METRICS.charWidth,
+      charWidth:
+        sample.getBoundingClientRect().width / 10 ||
+        DEFAULT_EDITOR_METRICS.charWidth,
       lineHeight:
-        Number.parseFloat(style.lineHeight) || DEFAULT_EDITOR_METRICS.lineHeight,
-      padLeft: Number.parseFloat(style.paddingLeft) || DEFAULT_EDITOR_METRICS.padLeft,
-      padTop: Number.parseFloat(style.paddingTop) || DEFAULT_EDITOR_METRICS.padTop,
+        Number.parseFloat(style.lineHeight) ||
+        DEFAULT_EDITOR_METRICS.lineHeight,
+      padLeft:
+        Number.parseFloat(style.paddingLeft) || DEFAULT_EDITOR_METRICS.padLeft,
+      padTop:
+        Number.parseFloat(style.paddingTop) || DEFAULT_EDITOR_METRICS.padTop,
     };
     sample.remove();
   }
@@ -73,7 +80,9 @@
   function queueValidation() {
     window.clearTimeout(validationTimer);
     validationTimer = window.setTimeout(() => {
-      validatePayloadDraft().catch((error) => showNotice(error.message, 'error'));
+      validatePayloadDraft().catch((error) =>
+        showNotice(error.message, 'error'),
+      );
     }, 260);
   }
 
@@ -92,39 +101,43 @@
   });
 </script>
 
-<section class:flex-1={$activeAccordion === 'ducky'} class="flex min-h-0 shrink-0 flex-col">
+<section
+  class:flex-1={$activeAccordion === 'ducky'}
+  class="flex min-h-0 shrink-0 flex-col"
+>
   <button
     class="flex w-full cursor-pointer items-center gap-2 border-0 border-b border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2.5 text-left text-xs font-medium text-[var(--text)] hover:bg-[var(--surface-3)]"
     type="button"
     aria-expanded={$activeAccordion === 'ducky'}
     onclick={() => activeAccordion.set('ducky')}
   >
-    <span class="flex-1 font-mono text-xs text-[var(--text-3)]">Ducky Editor</span>
-    <span class={badgeClass($validation?.badge_tone)}>{$validation?.badge_label || $payloadState}</span>
-    <svg
-      class={`size-3.5 shrink-0 text-[var(--text-4)] transition-transform ${
-        $activeAccordion === 'ducky' ? 'rotate-180' : ''
-      }`}
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      stroke-width="2.2"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-      aria-hidden="true"
+    <span class="flex-1 font-mono text-xs text-[var(--text-3)]"
+      >Ducky Editor</span
     >
-      <polyline points="6 9 12 15 18 9"></polyline>
-    </svg>
+    <span class={badgeClass($validation?.badge_tone)}
+      >{$validation?.badge_label || $payloadState}</span
+    >
+    {#if $activeAccordion === 'ducky'}
+      <ChevronUp size={16} className="text-picobit-text-4" />
+    {:else}
+      <ChevronDown size={16} className="text-picobit-text-4" />
+    {/if}
   </button>
 
   {#if $activeAccordion === 'ducky'}
     <div class="flex min-h-0 flex-1 flex-col">
-      <div class="flex items-center gap-2.5 border-b border-[var(--border)] bg-[var(--surface-3)] px-3.5 py-2.5">
-        <div class="flex-1 font-mono text-xs text-[var(--text-3)]">payload.dd</div>
+      <div
+        class="flex items-center gap-2.5 border-b border-[var(--border)] bg-[var(--surface-3)] px-3.5 py-2.5"
+      >
+        <div class="flex-1 font-mono text-xs text-[var(--text-3)]">
+          payload.dd
+        </div>
       </div>
 
       <div class="grid min-h-[28rem] grid-cols-[3rem_minmax(0,1fr)]">
-        <div class="relative overflow-hidden border-r border-[var(--border)] bg-[var(--surface-2)] select-none">
+        <div
+          class="relative overflow-hidden border-r border-[var(--border)] bg-[var(--surface-2)] select-none"
+        >
           <div
             class="relative py-[0.85rem] font-mono text-[13px] leading-[1.7]"
             style={`transform: translateY(${-scrollTop}px);`}
@@ -141,7 +154,8 @@
                 title={item.title || ''}
               >
                 {#if item.severity}
-                  <span class="size-1.5 shrink-0 rounded-full bg-current"></span>
+                  <span class="size-1.5 shrink-0 rounded-full bg-current"
+                  ></span>
                 {/if}
                 {item.line}
               </div>
@@ -188,9 +202,16 @@
         </div>
       </div>
 
-      <div class="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] bg-[var(--surface-3)] px-4 py-3 max-sm:flex-col max-sm:items-stretch">
-        <div class="flex min-w-0 flex-1 items-center gap-2.5" id="editor-status">
-          <span class={badgeClass($validating ? 'quiet' : $validation?.badge_tone)}>
+      <div
+        class="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] bg-[var(--surface-3)] px-4 py-3 max-sm:flex-col max-sm:items-stretch"
+      >
+        <div
+          class="flex min-w-0 flex-1 items-center gap-2.5"
+          id="editor-status"
+        >
+          <span
+            class={badgeClass($validating ? 'quiet' : $validation?.badge_tone)}
+          >
             {$validating ? 'Checking...' : $validation?.badge_label || 'Ready'}
           </span>
           <span class="min-w-0 flex-1 truncate text-xs text-[var(--text-3)]">
@@ -203,26 +224,17 @@
               aria-label="Show validation errors"
               onclick={() => validationModalOpen.set(true)}
             >
-              <svg
-                viewBox="0 0 24 24"
-                width="14"
-                height="14"
-                fill="none"
-                stroke="currentcolor"
-                stroke-width="2.4"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-              >
-                <circle cx="12" cy="12" r="10"></circle>
-                <line x1="12" y1="8" x2="12" y2="12"></line>
-                <line x1="12" y1="16" x2="12.01" y2="16"></line>
-              </svg>
+              <Info size={16} />
               <span>{$validation.diagnostics.length}</span>
             </button>
           {/if}
         </div>
         <div class="flex items-center gap-1.5 max-sm:w-full">
-          <button class={`${ghostButton} max-sm:flex-1`} type="button" onclick={() => location.reload()}>
+          <button
+            class={`${ghostButton} max-sm:flex-1`}
+            type="button"
+            onclick={() => location.reload()}
+          >
             Reload
           </button>
           <button
