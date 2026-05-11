@@ -14,7 +14,6 @@ from helpers import maybe_wait_closed, sleep_ms
 from keyboard import DEFAULT_LAYOUT_CODE, get_keyboard, keyboard_ready
 from status_led import STATUS_LED
 from usb import USB
-from web_assets import INDEX_CSS, INDEX_JS
 
 from ._http import (
     _AP_CHECK_INTERVAL_MS,
@@ -38,6 +37,7 @@ from .routes_binary import _BinaryMixin
 from .routes_loot import _LootMixin
 from .routes_payload import _PayloadMixin
 from .routes_usb_agent import _UsbAgentMixin
+from .static import StaticFileServer
 
 __all__ = [
     'SetupServer',
@@ -68,6 +68,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         self._run_sequence = 0
         self._server = None
         self._sessions: dict[str, str] = {}
+        self._static = StaticFileServer()
         self._session_timestamps: dict[str, int] = {}
         self._login_attempts: int = 0
         self._login_lockout_until: int = 0
@@ -260,27 +261,9 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             await self._send(writer, request, '204 No Content', '', headers=_NO_STORE)
             return
 
-        if request['path'] in ('/index.css', '/assets/index.css'):
-            await self._send(
-                writer,
-                request,
-                '200 OK',
-                INDEX_CSS,
-                headers=_merge_headers({'Content-Type': 'text/css; charset=utf-8'}, _NO_STORE),
-            )
-            return
-
-        if request['path'] in ('/index.js', '/assets/index.js'):
-            await self._send(
-                writer,
-                request,
-                '200 OK',
-                INDEX_JS,
-                headers=_merge_headers(
-                    {'Content-Type': 'application/javascript; charset=utf-8'},
-                    _NO_STORE,
-                ),
-            )
+        if request['path'] not in ('/', '/index.html') and await self._static.send(
+            self, writer, request
+        ):
             return
 
         if request['path'] == '/login':
@@ -308,7 +291,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             await self._handle_api(request, writer)
             return
 
-        if request['path'] == '/':
+        if request['path'] in ('/', '/index.html'):
             auth_state = 'portal' if self._is_authorized(request) else 'login'
             await self._send(
                 writer,

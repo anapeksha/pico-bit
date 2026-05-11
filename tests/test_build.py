@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 
-def test_build_cleans_dist_to_single_boot_file() -> None:
+def test_build_cleans_dist_to_expected_artifacts() -> None:
     root = Path(__file__).resolve().parents[1]
     dist = root / 'dist'
     stale = dist / 'stale.bin'
@@ -15,7 +15,10 @@ def test_build_cleans_dist_to_single_boot_file() -> None:
     subprocess.run([sys.executable, 'build.py'], cwd=root, check=True)
 
     assert not stale.exists()
-    assert sorted(path.name for path in dist.iterdir()) == ['boot.py', 'mpy']
+    assert sorted(path.name for path in dist.iterdir()) == ['boot.py', 'mpy', 'web']
+    assert (dist / 'web' / 'index.html').is_file()
+    assert (dist / 'web' / 'assets' / 'index.css').is_file()
+    assert (dist / 'web' / 'assets' / 'index.js').is_file()
 
 
 def test_build_injects_runtime_config_overrides() -> None:

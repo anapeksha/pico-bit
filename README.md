@@ -200,9 +200,9 @@ uv run python build.py
 
 ## Repository Notes
 
-- `web/` is a single Vite SPA shell with TypeScript and Tailwind; no CDN or runtime web build runs on the Pico
-- `src/web_assets.py` is generated from `.build/web/` and should not be edited by hand
-- firmware serves the compiled SPA shell with fixed `/assets/index.css` and `/assets/index.js` from flash-resident bytes
+- `web/` is a single Vite/Svelte SPA shell with TypeScript, Svelte stores/actions, and Tailwind utilities; no CDN or runtime web build runs on the Pico
+- `src/web_assets.py` is generated from `dist/web/` and should not be edited by hand
+- firmware serves a generated static route table from flash-resident bytes, including `/`, `/assets/index.css`, and `/assets/index.js`
 - `payload.dd` is writable on the Pico filesystem and is not frozen into firmware
 - the portal stages one executable at a time as `payload.exe` for Windows agents or `payload.bin` for Linux/macOS agents
 - `src/usb.py` is the source of truth for the shared `machine.USBDevice` singleton, MSC capability detection, runtime `active()` state, and staged binary filenames

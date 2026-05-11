@@ -74,10 +74,9 @@ def test_render_app_switches_single_spa_between_login_and_portal() -> None:
     portal = server._render_portal()
 
     assert 'data-auth-state="login"' in login
-    assert 'id="login-screen"' in login
-    assert 'id="portal-screen"' in login
-    assert 'Invalid &lt;user&gt;' in login
-    assert 'value="&lt;admin&gt;"' in login
+    assert 'id="app"' in login
+    assert 'data-message="Invalid &lt;user&gt;"' in login
+    assert 'data-username="&lt;admin&gt;"' in login
     assert 'data-auth-state="portal"' in portal
     assert '{{auth_state}}' not in portal
 
@@ -93,7 +92,7 @@ def test_root_serves_login_state_for_unauthorized_spa_request() -> None:
 
     assert status == 'HTTP/1.1 200 OK'
     assert 'data-auth-state="login"' in body
-    assert 'id="login-screen"' in body
+    assert 'id="app"' in body
 
 
 def test_static_index_assets_are_served_by_index_names() -> None:

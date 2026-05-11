@@ -37,7 +37,7 @@ export default defineConfig({
       : undefined,
   },
   build: {
-    outDir: '../.build/web',
+    outDir: '../dist/web',
     emptyOutDir: true,
     minify: 'terser',
     terserOptions: {

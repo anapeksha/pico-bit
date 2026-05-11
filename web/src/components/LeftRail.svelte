@@ -1,40 +1,53 @@
-<aside class="sidebar sidebar--left">
-  <div class="panel">
-    <p class="panel__title">About</p>
-    <p class="panel__text">
+<script lang="ts">
+  import { keyboard, seededThisBoot } from '../stores/portal';
+
+  const panelClass = 'rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4';
+  const titleClass = 'm-0 mb-2.5 text-[13px] font-semibold tracking-[-0.005em] text-[var(--text)]';
+</script>
+
+<aside class="flex flex-col gap-3.5 xl:w-60">
+  <div class={panelClass}>
+    <p class={titleClass}>About</p>
+    <p class="m-0 mb-2.5 text-xs leading-relaxed text-[var(--text-3)]">
       Two-stage drop-shell workflow for authorized security assessment.
     </p>
-    <ul class="panel__list">
+    <ul class="m-0 list-disc pl-4 text-xs leading-7 text-[var(--text-3)]">
       <li>
         <strong>Stage&nbsp;1&nbsp;&middot;&nbsp;Recon</strong> - write DuckyScript to type
         commands or exfiltrate data from the target
       </li>
       <li>
         <strong>Stage&nbsp;2&nbsp;&middot;&nbsp;Inject</strong> - upload an agent binary,
-        then HID-inject the USB execution stager; the agent writes loot back to the
-        Pico drive
+        then HID-inject the USB execution stager; the agent writes loot back to the Pico drive
       </li>
       <li>Loot panel live-updates as data arrives</li>
     </ul>
   </div>
 
-  <div class="panel">
-    <p class="panel__title">Status</p>
-    <dl class="meta">
-      <div class="meta__row">
-        <span class="meta__label">Seeded this boot</span>
-        <span class="meta__value" data-bind="seeded">No</span>
+  <div class={panelClass}>
+    <p class={titleClass}>Status</p>
+    <dl class="m-0 grid">
+      <div class="flex items-center justify-between gap-2 border-b border-[var(--border)] pb-2">
+        <span class="text-xs text-[var(--text-3)]">Seeded this boot</span>
+        <span class="text-right text-xs font-medium text-[var(--text)]">
+          {$seededThisBoot ? 'Yes' : 'No'}
+        </span>
       </div>
-      <div class="meta__row">
-        <span class="meta__label">Typing target</span>
-        <span class="meta__value" data-bind="keyboard_target_label">
-          Windows &middot; English (US)
+      <div class="flex items-center justify-between gap-2 py-2">
+        <span class="text-xs text-[var(--text-3)]">Typing target</span>
+        <span class="text-right text-xs font-medium text-[var(--text)]">
+          {$keyboard.targetLabel}
         </span>
       </div>
     </dl>
-    <div class="divider"></div>
+    <div class="my-3.5 h-px bg-[var(--border)]"></div>
     <form action="/logout" method="post">
-      <button class="btn btn--danger btn--wide" type="submit">Sign out</button>
+      <button
+        class="inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-4 py-2 text-[13px] font-medium text-[var(--danger)] hover:border-[var(--danger-border)] hover:bg-[var(--danger-bg)]"
+        type="submit"
+      >
+        Sign out
+      </button>
     </form>
   </div>
 </aside>
