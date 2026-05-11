@@ -58,8 +58,8 @@ uv run ruff format .
 - Put DuckyScript parsing work in `src/ducky/lexer.py` and `src/ducky/parser.py`.
 - Put runtime execution behavior in `src/ducky/runtime.py`.
 - Keep hardware-facing code in `src/keyboard.py`, `src/usb.py`, `src/main.py`, and `src/server/`.
-- Keep portal UI source under `web/`; the single SPA shell lives in `web/index.html`, TypeScript lives in `web/src/index.ts`, CSS lives in `web/src/index.css`, and theme tokens live in `web/theme.css`.
-- Vite compiles the SPA into `.build/web/`, then `scripts.asset_pipeline` embeds the compiled bytes into `src/web_assets.py`.
+- Keep portal UI source under `web/`; the single SPA shell lives in `web/index.html`, Svelte components live in `web/src/components/`, shared state lives in `web/src/stores/`, reusable actions live in `web/src/actions/`, CSS starts at `web/src/index.css`, and theme tokens live in `web/theme.css`.
+- Vite compiles the SPA into `dist/web/`, then `scripts.asset_pipeline` embeds the compiled bytes and generated route table into `src/web_assets.py`.
 - Keep Rust agent binaries and collectors in `agent/src/`.
 - Keep host-side tests in the top-level `tests/` directory.
 

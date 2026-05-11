@@ -2,7 +2,6 @@ import binascii
 import os
 
 from device_config import PORTAL_AUTH_ENABLED, PORTAL_PASSWORD, PORTAL_USERNAME
-from web_assets import INDEX_HTML
 
 from ._http import (
     _LOGIN_LOCKOUT_MS,
@@ -17,6 +16,7 @@ from ._http import (
     _ticks_diff,
     _ticks_ms,
 )
+from .static import StaticFileServer
 
 
 class _AuthMixin:
@@ -25,6 +25,7 @@ class _AuthMixin:
     _session_timestamps: dict[str, int]
     _login_attempts: int
     _login_lockout_until: int
+    _static: StaticFileServer
 
     # Methods provided by SetupServer
     async def _redirect(self, writer, request, location: str, headers=None) -> None: ...
@@ -37,12 +38,15 @@ class _AuthMixin:
         message_class = 'notice--hidden'
         if message:
             message_class = 'notice--error'
-        page = INDEX_HTML.decode()
-        page = page.replace('{{auth_state}}', auth_state)
-        page = page.replace('{{message_class}}', message_class)
-        page = page.replace('{{message}}', _esc(message))
-        page = page.replace('{{username}}', _esc(username))
-        return page
+        return self._static.render(
+            '/',
+            {
+                'auth_state': auth_state,
+                'message_class': message_class,
+                'message': _esc(message),
+                'username': _esc(username),
+            },
+        )
 
     def _render_login(self, message: str = '', username: str = '') -> str:
         return self._render_app('login', message, username)

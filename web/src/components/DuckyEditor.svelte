@@ -1,15 +1,110 @@
-<section class="accordion__section accordion__section--open" id="accordion-ducky">
+<script lang="ts">
+  import { onMount } from 'svelte';
+
+  import {
+    DEFAULT_EDITOR_METRICS,
+    editorMarkers,
+    gutterLines,
+    highlightPayload,
+    type EditorMetrics,
+  } from '../lib/editor';
+  import {
+    activeAccordion,
+    canRun,
+    canSave,
+    payload,
+    payloadState,
+    runPayload,
+    savePayload,
+    showNotice,
+    validatePayloadDraft,
+    validation,
+    validationModalOpen,
+    validating,
+  } from '../stores/portal';
+
+  let textarea = $state<HTMLTextAreaElement | null>(null);
+  let metrics = $state<EditorMetrics>(DEFAULT_EDITOR_METRICS);
+  let scrollLeft = $state(0);
+  let scrollTop = $state(0);
+  let validationTimer = 0;
+
+  const badgeClass = (tone?: string) =>
+    `inline-flex items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium ${
+      tone === 'success'
+        ? 'border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]'
+        : tone === 'error'
+          ? 'border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger)]'
+          : tone === 'warning' || tone === 'warn'
+            ? 'border-[var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning)]'
+            : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-3)]'
+    }`;
+
+  const buttonClass =
+    'inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 py-2 text-[13px] font-medium leading-tight disabled:cursor-not-allowed disabled:opacity-40';
+  const ghostButton = `${buttonClass} border-[var(--border-strong)] bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--surface-2)]`;
+  const primaryButton = `${buttonClass} border-[var(--text)] bg-[var(--text)] text-white hover:bg-[#2d2d2f]`;
+
+  function measure() {
+    if (!textarea) return;
+    const style = window.getComputedStyle(textarea);
+    const sample = document.createElement('span');
+    sample.textContent = 'MMMMMMMMMM';
+    sample.style.font = style.font;
+    sample.style.position = 'absolute';
+    sample.style.visibility = 'hidden';
+    document.body.appendChild(sample);
+    metrics = {
+      charWidth: sample.getBoundingClientRect().width / 10 || DEFAULT_EDITOR_METRICS.charWidth,
+      lineHeight:
+        Number.parseFloat(style.lineHeight) || DEFAULT_EDITOR_METRICS.lineHeight,
+      padLeft: Number.parseFloat(style.paddingLeft) || DEFAULT_EDITOR_METRICS.padLeft,
+      padTop: Number.parseFloat(style.paddingTop) || DEFAULT_EDITOR_METRICS.padTop,
+    };
+    sample.remove();
+  }
+
+  function syncScroll() {
+    if (!textarea) return;
+    scrollLeft = textarea.scrollLeft;
+    scrollTop = textarea.scrollTop;
+  }
+
+  function queueValidation() {
+    window.clearTimeout(validationTimer);
+    validationTimer = window.setTimeout(() => {
+      validatePayloadDraft().catch((error) => showNotice(error.message, 'error'));
+    }, 260);
+  }
+
+  function handleInput() {
+    payloadState.set('Unsaved draft');
+    queueValidation();
+  }
+
+  onMount(() => {
+    measure();
+    window.addEventListener('resize', measure);
+    return () => {
+      window.clearTimeout(validationTimer);
+      window.removeEventListener('resize', measure);
+    };
+  });
+</script>
+
+<section class:flex-1={$activeAccordion === 'ducky'} class="flex min-h-0 shrink-0 flex-col">
   <button
-    class="accordion__header"
-    id="accordion-ducky-btn"
+    class="flex w-full cursor-pointer items-center gap-2 border-0 border-b border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2.5 text-left text-xs font-medium text-[var(--text)] hover:bg-[var(--surface-3)]"
     type="button"
-    aria-expanded="true"
-    aria-controls="accordion-ducky-body"
+    aria-expanded={$activeAccordion === 'ducky'}
+    onclick={() => activeAccordion.set('ducky')}
   >
-    <span class="accordion__title">Ducky Editor</span>
-    <span class="badge" data-bind="payload_state">Saved on device</span>
+    <span class="flex-1 font-mono text-xs text-[var(--text-3)]">Ducky Editor</span>
+    <span class={badgeClass($validation?.badge_tone)}>{$validation?.badge_label || $payloadState}</span>
     <svg
-      class="accordion__chevron"
+      class={`size-3.5 shrink-0 text-[var(--text-4)] transition-transform ${
+        $activeAccordion === 'ducky' ? 'rotate-180' : ''
+      }`}
       viewBox="0 0 24 24"
       fill="none"
       stroke="currentColor"
@@ -22,80 +117,132 @@
     </svg>
   </button>
 
-  <div class="accordion__body" id="accordion-ducky-body">
-    <div class="editor__bar">
-      <div class="editor__file">payload.dd</div>
-    </div>
-
-    <div
-      class="notice notice--hidden"
-      id="notice"
-      role="status"
-      aria-live="polite"
-      aria-atomic="true"
-    ></div>
-
-    <div class="editor__stage">
-      <div class="editor__gutter" id="editor-gutter" aria-hidden="true"></div>
-      <div class="editor__surface">
-        <div class="editor__markers" id="editor-markers" aria-hidden="true"></div>
-        <div class="editor__highlight" id="editor-highlight" aria-hidden="true"></div>
-        <label for="payload" class="sr-only">Payload script</label>
-        <textarea
-          id="payload"
-          class="editor__input"
-          spellcheck="false"
-          autocapitalize="off"
-          autocomplete="off"
-          placeholder="REM Write your payload here"
-          wrap="off"
-          aria-describedby="editor-status"
-        ></textarea>
+  {#if $activeAccordion === 'ducky'}
+    <div class="flex min-h-0 flex-1 flex-col">
+      <div class="flex items-center gap-2.5 border-b border-[var(--border)] bg-[var(--surface-3)] px-3.5 py-2.5">
+        <div class="flex-1 font-mono text-xs text-[var(--text-3)]">payload.dd</div>
       </div>
-    </div>
 
-    <div class="editor__footer">
-      <div class="editor__status" id="editor-status">
-        <span
-          class="badge"
-          data-bind="validation_badge"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          Checking...
-        </span>
-        <span class="editor__status-text" data-bind="validation_summary">
-          Dry run runs before save and execution.
-        </span>
-        <button
-          class="editor__info-icon"
-          id="info-icon"
-          type="button"
-          aria-label="Show validation errors"
-          style="display: none"
-        >
-          <svg
-            viewBox="0 0 24 24"
-            width="14"
-            height="14"
-            fill="none"
-            stroke="currentcolor"
-            stroke-width="2.4"
-            stroke-linecap="round"
-            stroke-linejoin="round"
+      <div class="grid min-h-[28rem] grid-cols-[3rem_minmax(0,1fr)]">
+        <div class="relative overflow-hidden border-r border-[var(--border)] bg-[var(--surface-2)] select-none">
+          <div
+            class="relative py-[0.85rem] font-mono text-[13px] leading-[1.7]"
+            style={`transform: translateY(${-scrollTop}px);`}
           >
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-          <span data-bind="info_count">View issues</span>
-        </button>
+            {#each gutterLines($payload, $validation) as item}
+              <div
+                class={`flex h-[22.1px] items-center justify-end gap-1.5 px-2 text-[11px] ${
+                  item.severity === 'error'
+                    ? 'font-semibold text-[var(--danger)]'
+                    : item.severity === 'warning'
+                      ? 'font-semibold text-[var(--warning)]'
+                      : 'text-[var(--text-4)]'
+                }`}
+                title={item.title || ''}
+              >
+                {#if item.severity}
+                  <span class="size-1.5 shrink-0 rounded-full bg-current"></span>
+                {/if}
+                {item.line}
+              </div>
+            {/each}
+          </div>
+        </div>
+
+        <div class="relative overflow-hidden bg-[var(--surface)]">
+          <div class="pointer-events-none absolute inset-0">
+            {#each editorMarkers($validation, metrics, scrollLeft, scrollTop) as marker}
+              <div
+                class={`absolute h-0.5 rounded-full opacity-90 ${
+                  marker.severity === 'error'
+                    ? 'bg-[var(--danger)]'
+                    : 'bg-[var(--warning)]'
+                }`}
+                style={marker.style}
+                title={marker.title}
+              ></div>
+            {/each}
+          </div>
+          <div
+            class="editor-highlight pointer-events-none absolute inset-0 overflow-hidden whitespace-pre break-all p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-[var(--text)]"
+            aria-hidden="true"
+            style={`transform: translate(${-scrollLeft}px, ${-scrollTop}px);`}
+          >
+            {@html highlightPayload($payload)}
+          </div>
+          <label for="payload" class="sr-only">Payload script</label>
+          <textarea
+            bind:this={textarea}
+            bind:value={$payload}
+            id="payload"
+            class="relative z-10 block h-full min-h-[28rem] w-full resize-none overflow-auto whitespace-pre border-0 bg-transparent p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-transparent caret-[var(--text)] outline-none [tab-size:4]"
+            spellcheck="false"
+            autocapitalize="off"
+            autocomplete="off"
+            placeholder="REM Write your payload here"
+            wrap="off"
+            aria-describedby="editor-status"
+            oninput={handleInput}
+            onscroll={syncScroll}
+          ></textarea>
+        </div>
       </div>
-      <div class="editor__actions">
-        <button class="btn btn--ghost" id="refresh" type="button">Reload</button>
-        <button class="btn btn--ghost" id="save" type="button">Save</button>
-        <button class="btn btn--primary" id="run" type="button">Save &amp; run</button>
+
+      <div class="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] bg-[var(--surface-3)] px-4 py-3 max-sm:flex-col max-sm:items-stretch">
+        <div class="flex min-w-0 flex-1 items-center gap-2.5" id="editor-status">
+          <span class={badgeClass($validating ? 'quiet' : $validation?.badge_tone)}>
+            {$validating ? 'Checking...' : $validation?.badge_label || 'Ready'}
+          </span>
+          <span class="min-w-0 flex-1 truncate text-xs text-[var(--text-3)]">
+            {$validation?.summary || 'Dry run runs before save and execution.'}
+          </span>
+          {#if $validation?.diagnostics?.length}
+            <button
+              class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-[var(--danger-border)] bg-[var(--danger-bg)] px-2 py-1 text-[11px] font-medium text-[var(--danger)] hover:border-[var(--danger)]"
+              type="button"
+              aria-label="Show validation errors"
+              onclick={() => validationModalOpen.set(true)}
+            >
+              <svg
+                viewBox="0 0 24 24"
+                width="14"
+                height="14"
+                fill="none"
+                stroke="currentcolor"
+                stroke-width="2.4"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+              >
+                <circle cx="12" cy="12" r="10"></circle>
+                <line x1="12" y1="8" x2="12" y2="12"></line>
+                <line x1="12" y1="16" x2="12.01" y2="16"></line>
+              </svg>
+              <span>{$validation.diagnostics.length}</span>
+            </button>
+          {/if}
+        </div>
+        <div class="flex items-center gap-1.5 max-sm:w-full">
+          <button class={`${ghostButton} max-sm:flex-1`} type="button" onclick={() => location.reload()}>
+            Reload
+          </button>
+          <button
+            class={`${ghostButton} max-sm:flex-1`}
+            type="button"
+            disabled={!$canSave}
+            onclick={() => savePayload()}
+          >
+            Save
+          </button>
+          <button
+            class={`${primaryButton} max-sm:flex-1`}
+            type="button"
+            disabled={!$canRun}
+            onclick={() => runPayload()}
+          >
+            Save &amp; run
+          </button>
+        </div>
       </div>
     </div>
-  </div>
+  {/if}
 </section>
