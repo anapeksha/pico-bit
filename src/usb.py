@@ -3,6 +3,14 @@
 This module is the single source of truth for runtime USB state. It owns the
 USBDevice handle, USB MSC capability checks, active/inactive control, and the
 staged USB agent filename helpers used by the portal and binary injector.
+
+MicroPython's official micropython-lib provides higher-level `usb.device.*`
+helpers for HID, keyboard, CDC, MIDI, and mouse interfaces. Pico Bit keeps this
+module as the USB source of truth because the project also needs built-in MSC
+state, and micropython-lib does not currently provide an MSC package. Directly
+importing `usb.device` would also collide with this module's top-level `usb`
+name unless we vendored and rewrote the package namespace, which would add more
+flash than it saves.
 """
 
 import os
@@ -15,6 +23,11 @@ USB_AGENT_WINDOWS_NAME = 'payload.exe'
 USB_AGENT_UNIX_NAME = 'payload.bin'
 _USB_AGENT_FILES = (USB_AGENT_WINDOWS_NAME, USB_AGENT_UNIX_NAME)
 _USB_UNAVAILABLE_REASON = 'Firmware was built without runtime USB MSC support.'
+_USB_BACKEND = 'machine.USBDevice + built-in MSC'
+_USB_BACKEND_NOTE = (
+    'micropython-lib usb.device helpers are not used because this firmware needs '
+    'built-in MSC and this module owns the top-level usb namespace.'
+)
 
 
 def _descriptor_has_msc_interface(desc_cfg) -> bool:
@@ -190,6 +203,8 @@ class USBService:
         return {
             'active': active,
             'available': available,
+            'backend': _USB_BACKEND,
+            'backend_note': _USB_BACKEND_NOTE,
             'can_mount': available and not active,
             'can_unmount': available and active,
             'filename': filename,

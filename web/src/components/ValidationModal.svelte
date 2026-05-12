@@ -9,20 +9,20 @@
 
 {#if $validationModalOpen}
   <div
-    class="fixed inset-0 z-[1000] flex items-center justify-center p-6 max-sm:items-end max-sm:p-0"
+    class="fixed inset-0 z-[1000] flex items-end justify-center p-0 sm:items-center sm:p-6"
     role="presentation"
     onkeydown={(event) => {
       if (event.key === 'Escape') close();
     }}
   >
     <button
-      class="absolute inset-0 cursor-default border-0 bg-black/30 backdrop-blur-[2px]"
+      class="absolute inset-0 cursor-default border-0 bg-black/30 backdrop-blur-sm dark:bg-black/60"
       aria-label="Close validation modal"
       type="button"
       onclick={close}
     ></button>
     <div
-      class="relative flex max-h-[min(32rem,80vh)] w-full max-w-md flex-col overflow-hidden rounded-[14px] border border-[var(--border)] bg-[var(--surface)] shadow-2xl max-sm:max-h-[70vh] max-sm:max-w-full max-sm:rounded-b-none"
+      class="relative flex max-h-[70vh] w-full max-w-full flex-col overflow-hidden rounded-t-[14px] rounded-b-none border border-[var(--border)] bg-[var(--surface)] shadow-2xl sm:max-h-[80vh] sm:max-w-md sm:rounded-[14px] md:max-h-[32rem]"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"

@@ -41,13 +41,20 @@ export default defineConfig({
     emptyOutDir: true,
     minify: 'terser',
     terserOptions: {
+      module: true,
       compress: {
-        passes: 2,
+        drop_console: true,
+        passes: 3,
+        pure_getters: true,
+        toplevel: true,
       },
       format: {
         comments: false,
       },
-      mangle: true,
+      mangle: {
+        module: true,
+        toplevel: true,
+      },
     },
     rollupOptions: {
       input: {

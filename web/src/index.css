@@ -1,4 +1,7 @@
-@import 'tailwindcss';
+@custom-variant dark (&:where(.dark, .dark *));
+
+@import 'tailwindcss/theme';
+@import 'tailwindcss/utilities';
 @import '../theme.css';
 
 @source './**/*.{svelte,ts}';
@@ -25,8 +28,50 @@
   --danger: #c4302b;
   --danger-bg: #fdedeb;
   --danger-border: #f5c8c4;
+  --color-picobit-bg: var(--bg);
+  --color-picobit-surface: var(--surface);
+  --color-picobit-surface-2: var(--surface-2);
+  --color-picobit-surface-3: var(--surface-3);
+  --color-picobit-border: var(--border);
+  --color-picobit-border-strong: var(--border-strong);
+  --color-picobit-text: var(--text);
+  --color-picobit-text-2: var(--text-2);
+  --color-picobit-text-3: var(--text-3);
+  --color-picobit-text-4: var(--text-4);
+  --color-picobit-danger: var(--danger);
+  --color-picobit-danger-bg: var(--danger-bg);
+  --color-picobit-danger-border: var(--danger-border);
+  --color-picobit-success: var(--success);
+  --color-picobit-success-bg: var(--success-bg);
+  --color-picobit-success-border: var(--success-border);
+  --color-picobit-warning: var(--warning);
+  --color-picobit-warning-bg: var(--warning-bg);
+  --color-picobit-warning-border: var(--warning-border);
   --sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --mono: 'SF Mono', ui-monospace, 'Cascadia Mono', 'Menlo', monospace;
+}
+
+:root.dark {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #050505;
+  --surface-2: #0f0f10;
+  --surface-3: #1c1c1e;
+  --border: #2c2c2e;
+  --border-strong: #3a3a3c;
+  --text: #ffffff;
+  --text-2: #f5f5f7;
+  --text-3: #a1a1a6;
+  --text-4: #6e6e73;
+  --success: #32d74b;
+  --success-bg: #08260f;
+  --success-border: #1f6f32;
+  --warning: #ffd60a;
+  --warning-bg: #2f2300;
+  --warning-border: #6f5200;
+  --danger: #ff453a;
+  --danger-bg: #330b08;
+  --danger-border: #7f1d17;
 }
 
 *,

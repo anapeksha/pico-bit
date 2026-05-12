@@ -1,4 +1,4 @@
-from server.routes_binary import (
+from server.api.binary import (
     _is_supported_upload_name,
     _looks_like_executable_binary,
     _sanitize_upload_filename,

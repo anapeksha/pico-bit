@@ -31,13 +31,13 @@ from ._http import (
     _ticks_add,
     _ticks_ms,
 )
+from .api.auth import _AuthMixin
+from .api.binary import _BinaryMixin
+from .api.loot import _LootMixin
+from .api.payload import _PayloadMixin
+from .api.usb_agent import _UsbAgentMixin
+from .app import AppRenderer
 from .loot_stream import LootStreamState
-from .routes_auth import _AuthMixin
-from .routes_binary import _BinaryMixin
-from .routes_loot import _LootMixin
-from .routes_payload import _PayloadMixin
-from .routes_usb_agent import _UsbAgentMixin
-from .static import StaticFileServer
 
 __all__ = [
     'SetupServer',
@@ -68,7 +68,8 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         self._run_sequence = 0
         self._server = None
         self._sessions: dict[str, str] = {}
-        self._static = StaticFileServer()
+        self._app = AppRenderer()
+        self._static = self._app
         self._session_timestamps: dict[str, int] = {}
         self._login_attempts: int = 0
         self._login_lockout_until: int = 0
@@ -261,7 +262,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             await self._send(writer, request, '204 No Content', '', headers=_NO_STORE)
             return
 
-        if request['path'] not in ('/', '/index.html') and await self._static.send(
+        if request['path'] not in ('/', '/index.html') and await self._app.send_static(
             self, writer, request
         ):
             return
@@ -293,12 +294,11 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
 
         if request['path'] in ('/', '/index.html'):
             auth_state = 'portal' if self._is_authorized(request) else 'login'
-            await self._send(
+            await self._app.send_shell(
+                self,
                 writer,
                 request,
-                '200 OK',
-                self._render_app(auth_state),
-                headers=_merge_headers({'Content-Type': 'text/html; charset=utf-8'}, _NO_STORE),
+                auth_state=auth_state,
             )
             return
 
