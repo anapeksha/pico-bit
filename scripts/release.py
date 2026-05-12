@@ -138,12 +138,49 @@ def refresh_release_metadata(release_json: Path = RELEASE_JSON) -> dict[str, obj
     return metadata
 
 
+def write_usb_config_header() -> Path:
+    header = ROOT / '.build' / 'pico_bit_usb_config.h'
+    header.parent.mkdir(parents=True, exist_ok=True)
+
+    header.write_text(
+        """
+#pragma once
+
+#undef MICROPY_HW_FLASH_FS_LABEL
+#define MICROPY_HW_FLASH_FS_LABEL "PICO-BIT"
+
+#undef MICROPY_HW_USB_MANUFACTURER_STRING
+#define MICROPY_HW_USB_MANUFACTURER_STRING "Pico Bit"
+
+#undef MICROPY_HW_USB_PRODUCT_FS_STRING
+#define MICROPY_HW_USB_PRODUCT_FS_STRING "Pico Bit"
+
+#undef MICROPY_HW_USB_MSC_INTERFACE_STRING
+#define MICROPY_HW_USB_MSC_INTERFACE_STRING "Pico Bit MSC"
+
+#undef MICROPY_HW_USB_MSC_INQUIRY_VENDOR_STRING
+#define MICROPY_HW_USB_MSC_INQUIRY_VENDOR_STRING "PICOBIT"
+
+#undef MICROPY_HW_USB_MSC_INQUIRY_PRODUCT_STRING
+#define MICROPY_HW_USB_MSC_INQUIRY_PRODUCT_STRING "PICO-BIT"
+
+#undef MICROPY_HW_USB_MSC_INQUIRY_REVISION_STRING
+#define MICROPY_HW_USB_MSC_INQUIRY_REVISION_STRING "1.0"
+""".lstrip(),
+        encoding='utf-8',
+    )
+
+    return header
+
+
 def build_firmware(
     board: str,
     ref: str,
     overrides: dict[str, OverrideValue],
     artifact_version: str | None,
 ) -> Path:
+    usb_config_header = write_usb_config_header()
+
     _run(
         [
             'make',
@@ -157,13 +194,7 @@ def build_firmware(
                 'CFLAGS_EXTRA='
                 '-DMICROPY_HW_USB_CDC=0 '
                 '-DMICROPY_HW_USB_MSC=1 '
-                '-DMICROPY_HW_FLASH_FS_LABEL=\\"PICO-BIT\\" '
-                '-DMICROPY_HW_USB_MANUFACTURER_STRING=\\"Pico\\ Bit\\" '
-                '-DMICROPY_HW_USB_PRODUCT_FS_STRING=\\"Pico\\ Bit\\" '
-                '-DMICROPY_HW_USB_MSC_INTERFACE_STRING=\\"Pico\\ Bit\\ MSC\\" '
-                '-DMICROPY_HW_USB_MSC_INQUIRY_VENDOR_STRING=\\"PICOBIT\\" '
-                '-DMICROPY_HW_USB_MSC_INQUIRY_PRODUCT_STRING=\\"PICO-BIT\\" '
-                '-DMICROPY_HW_USB_MSC_INQUIRY_REVISION_STRING=\\"1.0\\"'
+                f'-include {usb_config_header}'
             ),
         ],
         cwd=MICROPYTHON_DIR,
