@@ -3,6 +3,7 @@
   import ChevronUp from '@lucide/svelte/icons/chevron-up';
   import Info from '@lucide/svelte/icons/info';
   import { onMount } from 'svelte';
+
   import {
     DEFAULT_EDITOR_METRICS,
     editorMarkers,
@@ -45,7 +46,7 @@
   const buttonClass =
     'inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 py-2 text-[13px] font-medium leading-tight disabled:cursor-not-allowed disabled:opacity-40';
   const ghostButton = `${buttonClass} border-[var(--border-strong)] bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--surface-2)]`;
-  const primaryButton = `${buttonClass} border-[var(--text)] bg-[var(--text)] text-white hover:bg-[#2d2d2f]`;
+  const primaryButton = `${buttonClass} border-[var(--text)] bg-[var(--text)] text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]`;
 
   function measure() {
     if (!textarea) return;
@@ -203,7 +204,7 @@
       </div>
 
       <div
-        class="flex flex-wrap items-center justify-between gap-4 border-t border-[var(--border)] bg-[var(--surface-3)] px-4 py-3 max-sm:flex-col max-sm:items-stretch"
+        class="flex flex-col items-stretch justify-between gap-4 border-t border-[var(--border)] bg-[var(--surface-3)] px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center"
       >
         <div
           class="flex min-w-0 flex-1 items-center gap-2.5"
@@ -229,16 +230,16 @@
             </button>
           {/if}
         </div>
-        <div class="flex items-center gap-1.5 max-sm:w-full">
+        <div class="flex w-full items-center gap-1.5 sm:w-auto">
           <button
-            class={`${ghostButton} max-sm:flex-1`}
+            class={`${ghostButton} flex-1 sm:flex-none`}
             type="button"
             onclick={() => location.reload()}
           >
             Reload
           </button>
           <button
-            class={`${ghostButton} max-sm:flex-1`}
+            class={`${ghostButton} flex-1 sm:flex-none`}
             type="button"
             disabled={!$canSave}
             onclick={() => savePayload()}
@@ -246,7 +247,7 @@
             Save
           </button>
           <button
-            class={`${primaryButton} max-sm:flex-1`}
+            class={`${primaryButton} flex-1 sm:flex-none`}
             type="button"
             disabled={!$canRun}
             onclick={() => runPayload()}

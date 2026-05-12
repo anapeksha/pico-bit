@@ -1,10 +1,10 @@
 import asyncio
 import json
 
-import server.routes_binary as routes_binary
-import server.routes_loot as routes_loot
-import server.routes_payload as routes_payload
-import server.routes_usb_agent as routes_usb_agent
+import server.api.binary as routes_binary
+import server.api.loot as routes_loot
+import server.api.payload as routes_payload
+import server.api.usb_agent as routes_usb_agent
 from server import SetupServer
 from usb import USBService
 
@@ -521,7 +521,9 @@ def test_inject_binary_ignores_client_supplied_stager_command(monkeypatch) -> No
     assert payload['notice'] == 'success'
     assert captured['source'] == 'binary:usb'
     assert 'client-controlled' not in str(captured['script'])
-    assert 'STRING for d in /Volumes/*; do\nENTER' in str(captured['script'])
+    assert '/Volumes/*' in str(captured['script'])
+    assert '/tmp/pico_bit_usb.sh' in str(captured['script'])
+    assert 'cat > "$tmp"' in str(captured['script'])
 
 
 def test_inject_binary_rejects_unknown_target_os() -> None:
@@ -548,13 +550,16 @@ def test_usb_drive_windows_stager_copies_extensionless_agent_to_exe() -> None:
     script = server._stager_script('windows')
 
     assert 'powershell -NoProfile -ExecutionPolicy Bypass' in script
-    assert 'DEFAULTCHARDELAY 8' in script
+    assert 'DEFAULTCHARDELAY 10' in script
+    assert 'pico_bit_usb.ps1' in script
+    assert 'Set-Content -LiteralPath $p -Encoding ASCII' in script
     assert 'payload.exe' in script
     assert '--loot-out' in script
     assert 'loot-usb.json' in script
     assert 'pico_agent.exe' in script
     assert 'Remove-Item' in script
-    assert 'STRING $r = ""\nENTER' in script
+    assert script.count('STRING ') == 2
+    assert script.count('\nENTER\n') == 2
 
 
 def test_usb_drive_linux_stager_writes_usb_loot_and_removes_temp_agent() -> None:
@@ -562,13 +567,16 @@ def test_usb_drive_linux_stager_writes_usb_loot_and_removes_temp_agent() -> None
     script = server._stager_script('linux')
 
     assert 'CTRL-ALT t' in script
-    assert 'DEFAULTCHARDELAY 8' in script
-    assert 'STRING for d in /media/$USER/* /run/media/$USER/* /mnt/*; do\nENTER' in script
-    assert 'STRING if [ -f "$d/payload.bin" ]; then\nENTER' in script
+    assert 'DEFAULTCHARDELAY 10' in script
+    assert '/media/$USER/* /run/media/$USER/* /mnt/*' in script
+    assert 'tmp=/tmp/pico_bit_usb.sh' in script
+    assert "printf '%s\\n'" in script
+    assert 'cat > "$tmp"' in script
     assert 'payload.bin' in script
     assert '--loot-out "$d/loot-usb.json"' in script
     assert 'rm -f /tmp/pico_agent' in script
-    assert script.count('\nENTER\n') >= 8
+    assert script.count('STRING ') == 1
+    assert script.count('\nENTER\n') == 1
 
 
 def test_usb_drive_macos_stager_waits_for_terminal_and_types_multiline_script() -> None:
@@ -577,13 +585,16 @@ def test_usb_drive_macos_stager_waits_for_terminal_and_types_multiline_script() 
 
     assert 'GUI SPACE' in script
     assert 'STRING Terminal\nENTER' in script
-    assert 'DELAY 2200' in script
-    assert 'DEFAULTCHARDELAY 8' in script
-    assert 'STRING for d in /Volumes/*; do\nENTER' in script
-    assert 'STRING if [ -f "$d/payload.bin" ]; then\nENTER' in script
+    assert 'DELAY 2600' in script
+    assert 'DEFAULTCHARDELAY 10' in script
+    assert '/Volumes/*' in script
+    assert 'tmp=/tmp/pico_bit_usb.sh' in script
+    assert "printf '%s\\n'" in script
+    assert 'cat > "$tmp"' in script
     assert '--loot-out "$d/loot-usb.json"' in script
     assert 'rm -f /tmp/pico_agent' in script
-    assert script.count('\nENTER\n') >= 8
+    assert script.count('STRING ') == 2
+    assert script.count('\nENTER\n') == 2
 
 
 def test_inject_binary_rejects_mismatched_binary_for_target() -> None:

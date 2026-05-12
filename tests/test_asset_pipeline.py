@@ -9,7 +9,7 @@ if str(ROOT) not in sys.path:
 
 ASSET_PIPELINE = importlib.import_module('scripts.asset_pipeline')
 
-WEB_ASSET_SIZE_BUDGET = 150_000
+WEB_ASSET_SIZE_BUDGET = 115_000
 WEB_ASSET_EXPORTS = (
     'INDEX_HTML',
     'INDEX_CSS',

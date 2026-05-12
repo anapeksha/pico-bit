@@ -4,12 +4,7 @@
   import CloudUpload from '@lucide/svelte/icons/cloud-upload';
   import FileTerminal from '@lucide/svelte/icons/file-terminal';
   import { fileDrop } from '../actions/fileDrop';
-  import {
-    formatBytes,
-    stagerPreview,
-    validateArmoryFile,
-  } from '../lib/binary';
-  import type { TargetOs } from '../lib/types';
+  import { formatBytes, validateArmoryFile } from '../lib/binary';
   import {
     activeAccordion,
     armoryNotice,
@@ -30,7 +25,7 @@
   const buttonClass =
     'inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 py-2 text-[13px] font-medium leading-tight disabled:cursor-not-allowed disabled:opacity-40';
   const ghostButton = `${buttonClass} border-picobit-border-strong bg-picobit-surface text-picobit-text hover:bg-picobit-surface-2`;
-  const primaryButton = `${buttonClass} border-picobit-text bg-picobit-text text-white hover:bg-[#2d2d2f]`;
+  const primaryButton = `${buttonClass} border-picobit-text bg-picobit-text text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]`;
 
   async function selectFile(file: File) {
     const error = await validateArmoryFile(file);
@@ -71,7 +66,7 @@
     >
     {#if $stagedBinaryName}
       <span
-        class="inline-flex items-center rounded-md border border-picobit-text bg-picobit-text px-2 py-0.5 text-[11px] font-medium text-white"
+        class="inline-flex items-center rounded-md border border-picobit-text bg-picobit-text px-2 py-0.5 text-[11px] font-medium text-white dark:text-black"
       >
         {$stagedBinaryName}
       </span>
@@ -197,13 +192,12 @@
       <div
         class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3"
       >
-        <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">
-          USB command that will be typed:
-        </p>
+        <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">USB stager:</p>
         <pre
-          class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">{stagerPreview(
-            $binaryTargetOs as TargetOs,
-          )}</pre>
+          class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">Backend-generated at injection time for {$binaryTargetOs}. It opens the host shell, writes a temporary runner script, executes payload.{$binaryTargetOs ===
+          'windows'
+            ? 'exe'
+            : 'bin'}, stores loot-usb.json on the Pico drive, then cleans up.</pre>
       </div>
     </div>
   {/if}
