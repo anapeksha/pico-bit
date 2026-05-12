@@ -219,7 +219,7 @@ def build_mpy_tree(
         output = output_dir / relative
         output.parent.mkdir(parents=True, exist_ok=True)
         subprocess.run(
-            [*compiler_cmd, '-O2', '-s', source_name, '-o', str(output), str(source)],
+            [*compiler_cmd, '-O3', '-s', source_name, '-o', str(output), str(source)],
             cwd=cwd,
             check=True,
         )
