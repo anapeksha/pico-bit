@@ -2,6 +2,15 @@ from web_assets import STATIC_ASSETS
 
 from ._http import _NO_STORE, _merge_headers
 
+_GZIP_HEADERS = {
+    'Content-Encoding': 'gzip',
+    'Vary': 'Accept-Encoding',
+}
+
+_STATIC_CACHE = {
+    'Cache-Control': 'public, max-age=3600',
+}
+
 
 class AppRenderer:
     """Serve compiled SPA assets and render the initial auth-aware shell."""
@@ -50,12 +59,18 @@ class AppRenderer:
         if not asset:
             return False
         body, mime_type = asset
+        headers = {'Content-Type': mime_type}
+        if mime_type.startswith('text/html'):
+            headers = _merge_headers(headers, _NO_STORE)
+        else:
+            headers = _merge_headers(headers, _GZIP_HEADERS, _STATIC_CACHE)
+
         await owner._send(
             writer,
             request,
             '200 OK',
             body,
-            headers=_merge_headers({'Content-Type': mime_type}, _NO_STORE),
+            headers=headers,
         )
         return True
 
