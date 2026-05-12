@@ -3,7 +3,7 @@ from web_assets import STATIC_ASSETS
 from ._http import _NO_STORE, _merge_headers
 
 _GZIP_HEADERS = {
-    'Content-Encoding': 'gzip',
+    'Content-Encoding': 'br',
     'Vary': 'Accept-Encoding',
 }
 

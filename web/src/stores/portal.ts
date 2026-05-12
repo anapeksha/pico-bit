@@ -46,7 +46,11 @@ export const validating = writable(false);
 export const saving = writable(false);
 export const running = writable(false);
 export const runHistory = writable<RunHistoryItem[]>([]);
-export const notice = writable<{ message: string; tone: NoticeTone; visible: boolean }>({
+export const notice = writable<{
+  message: string;
+  tone: NoticeTone;
+  visible: boolean;
+}>({
   message: '',
   tone: 'quiet',
   visible: false,
@@ -59,7 +63,11 @@ export const stagedBinaryName = writable('');
 export const uploadProgress = writable(0);
 export const uploadingBinary = writable(false);
 export const injectingBinary = writable(false);
-export const armoryNotice = writable<{ message: string; tone: NoticeTone; visible: boolean }>({
+export const armoryNotice = writable<{
+  message: string;
+  tone: NoticeTone;
+  visible: boolean;
+}>({
   message: '',
   tone: 'quiet',
   visible: false,
@@ -77,8 +85,9 @@ export const canRun = derived(
   ([$validation, $validating, $running]) =>
     !$validating && !$running && Boolean($validation?.can_run),
 );
-export const hidState = derived(keyboardReady, ($ready) => ($ready ? 'Ready' : 'Waiting'));
-export const authLabel = derived(authEnabled, ($enabled) => ($enabled ? 'Enabled' : 'Disabled'));
+export const hidState = derived(keyboardReady, ($ready) =>
+  $ready ? 'Ready' : 'Waiting',
+);
 export const usbStateLabel = derived(hostUsb, ($usb) => {
   if (!$usb.available) return 'Unavailable';
   if ($usb.mounted || $usb.active || $usb.state === 'active') return 'Active';
@@ -146,10 +155,13 @@ export async function validatePayloadDraft(script = get(payload)) {
   const requestId = ++validationRequest;
   validating.set(true);
   try {
-    const data = await requestJson<{ validation: ValidationState }>('/api/validate', {
-      method: 'POST',
-      body: JSON.stringify({ payload: script }),
-    });
+    const data = await requestJson<{ validation: ValidationState }>(
+      '/api/validate',
+      {
+        method: 'POST',
+        body: JSON.stringify({ payload: script }),
+      },
+    );
     if (requestId === validationRequest) {
       validation.set(data.validation);
     }
@@ -197,14 +209,23 @@ export async function runPayload() {
   }
 }
 
-export async function changeKeyboardTarget(next: { layout?: string; os?: string }) {
+export async function changeKeyboardTarget(next: {
+  layout?: string;
+  os?: string;
+}) {
   try {
-    const data = await requestJson<Record<string, any>>('/api/keyboard-layout', {
-      method: 'POST',
-      body: JSON.stringify(next),
-    });
+    const data = await requestJson<Record<string, any>>(
+      '/api/keyboard-layout',
+      {
+        method: 'POST',
+        body: JSON.stringify(next),
+      },
+    );
     applyKeyboardState(data);
-    showNotice(data.message || 'Typing target updated.', data.notice || 'success');
+    showNotice(
+      data.message || 'Typing target updated.',
+      data.notice || 'success',
+    );
   } catch (error: any) {
     if (error.data) applyKeyboardState(error.data);
     showNotice(error.message, 'error');
@@ -223,10 +244,13 @@ export async function loadLootSnapshot() {
 export async function importUsbLoot() {
   importingLoot.set(true);
   try {
-    const data = await requestJson<Record<string, any>>('/api/loot/import-usb', {
-      method: 'POST',
-      body: '{}',
-    });
+    const data = await requestJson<Record<string, any>>(
+      '/api/loot/import-usb',
+      {
+        method: 'POST',
+        body: '{}',
+      },
+    );
     if (data.loot) loot.set(data.loot);
     showNotice(data.message || 'USB loot imported.', data.notice || 'success');
   } catch (error: any) {
@@ -241,11 +265,16 @@ export async function uploadBinary(file: File) {
   uploadProgress.set(0);
   setArmoryNotice('Uploading...', 'quiet');
   try {
-    const data = await uploadBinaryFile(file, (percent) => uploadProgress.set(percent));
+    const data = await uploadBinaryFile(file, (percent) =>
+      uploadProgress.set(percent),
+    );
     hasBinary.set(true);
     stagedBinaryName.set(data.filename || file.name);
     applyUsbAgent(data.usb_agent);
-    setArmoryNotice(data.message || 'Upload complete.', data.notice || 'success');
+    setArmoryNotice(
+      data.message || 'Upload complete.',
+      data.notice || 'success',
+    );
   } catch (error: any) {
     setArmoryNotice(error.message || 'Upload failed.', 'error');
   } finally {
