@@ -1,4 +1,5 @@
 <script lang="ts">
+  import LockOpen from '@lucide/svelte/icons/lock-open';
   import { onMount } from 'svelte';
   import BinaryArmory from './components/BinaryArmory.svelte';
   import DuckyEditor from './components/DuckyEditor.svelte';
@@ -45,7 +46,9 @@
 <svelte:body class:auth-login={authState === 'login'} />
 
 {#if authState === 'login'}
-  <section class="grid min-h-screen place-items-center bg-picobit-surface-3 p-6">
+  <section
+    class="grid min-h-screen place-items-center bg-picobit-surface-3 p-6"
+  >
     <div
       class="w-full max-w-sm rounded-[14px] border border-picobit-border bg-picobit-surface p-8"
     >
@@ -110,6 +113,7 @@
           class="inline-flex w-full gap-1 cursor-pointer items-center justify-center rounded-lg border border-picobit-text bg-picobit-text px-4 py-2 text-[13px] font-medium text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]"
           type="submit"
         >
+          <LockOpen size={16} />
           Unlock
         </button>
       </form>
