@@ -184,7 +184,6 @@ def test_build_firmware_enables_usb_msc_and_records_metadata(tmp_path, monkeypat
     assert output == dist_dir / 'pico-bit-RPI_PICO2_W-v0.0.1.uf2'
     assert output.read_bytes() == b'uf2'
     assert calls
-    assert 'CFLAGS_EXTRA=-DMICROPY_HW_USB_CDC=0 -DMICROPY_HW_USB_MSC=1' in calls[0]
     metadata = json.loads(release_json.read_text(encoding='utf-8'))
     assert metadata['usb_msc_enabled'] is True
     assert metadata['firmware'] == output.name

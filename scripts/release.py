@@ -151,14 +151,20 @@ def build_firmware(
             'ports/rp2',
             f'BOARD={board}',
             f'FROZEN_MANIFEST={MANIFEST}',
-            # Disable Bluetooth — the CYW43 chip handles both WiFi and BT, but
-            # this firmware only uses WiFi. Stripping NimBLE and the bluetooth
-            # Python module saves ~50–80 KB of flash and reduces init overhead.
             'MICROPY_PY_BLUETOOTH=0',
             'MICROPY_BLUETOOTH_NIMBLE=0',
-            # Primary offline delivery uses built-in USB MSC, then appends the
-            # runtime HID keyboard interface from src/keyboard.py.
-            'CFLAGS_EXTRA=-DMICROPY_HW_USB_CDC=0 -DMICROPY_HW_USB_MSC=1',
+            (
+                'CFLAGS_EXTRA='
+                '-DMICROPY_HW_USB_CDC=0 '
+                '-DMICROPY_HW_USB_MSC=1 '
+                '-DMICROPY_HW_FLASH_FS_LABEL=\'"PICO-BIT"\' '
+                '-DMICROPY_HW_USB_MANUFACTURER_STRING=\'"Pico Bit"\' '
+                '-DMICROPY_HW_USB_PRODUCT_FS_STRING=\'"Pico Bit"\' '
+                '-DMICROPY_HW_USB_MSC_INTERFACE_STRING=\'"Pico Bit MSC"\' '
+                '-DMICROPY_HW_USB_MSC_INQUIRY_VENDOR_STRING=\'"PICOBIT"\' '
+                '-DMICROPY_HW_USB_MSC_INQUIRY_PRODUCT_STRING=\'"PICO-BIT"\' '
+                '-DMICROPY_HW_USB_MSC_INQUIRY_REVISION_STRING=\'"1.0"\''
+            ),
         ],
         cwd=MICROPYTHON_DIR,
     )
