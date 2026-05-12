@@ -1,15 +1,12 @@
+import { gzipAsync } from '@gfx/zopfli';
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
 import { minify } from 'html-minifier-terser';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { promisify } from 'node:util';
 import { defineConfig, type PluginOption } from 'vite';
-import { brotliCompress, constants } from 'zlib';
 
 const proxyTarget = process.env.PICOBIT_PROXY;
-
-const brotliCompressAsync = promisify(brotliCompress);
 
 /**
  * Minify index.html
@@ -31,16 +28,16 @@ function minifyHtml(): PluginOption {
 }
 
 /**
- * Brotli-compress the final emitted assets in-place.
+ * Gzip the final emitted assets in-place.
  *
- * The generated files keep their normal names, but their contents are Brotli
- * encoded. The MicroPython server must serve them with `Content-Encoding: br`.
+ * The generated files keep their normal names, but their contents are gzip
+ * encoded. The MicroPython server must serve them with `Content-Encoding: gzip`.
  */
-function brotliBuildAssets(): PluginOption {
+function gzipBuildAssets(): PluginOption {
   let outDir = 'dist';
 
   return {
-    name: 'picobit-brotli-assets',
+    name: 'picobit-gzip-only-assets',
     apply: 'build',
 
     configResolved(config) {
@@ -55,17 +52,15 @@ function brotliBuildAssets(): PluginOption {
       for (const fileName of files) {
         const filePath = join(outputRoot, fileName);
         const source = readFileSync(filePath);
-        const compressed = await brotliCompressAsync(source, {
-          params: {
-            [constants.BROTLI_PARAM_MODE]: constants.BROTLI_MODE_TEXT,
-            [constants.BROTLI_PARAM_QUALITY]: constants.BROTLI_MAX_QUALITY,
-            [constants.BROTLI_PARAM_SIZE_HINT]: source.length,
-          },
+        const gzipped = await gzipAsync(source, {
+          blocksplitting: true,
+          blocksplittingmax: 15,
+          numiterations: 100,
         });
 
-        writeFileSync(filePath, compressed);
+        writeFileSync(filePath, Buffer.from(gzipped));
         console.info(
-          `[picobit] ${fileName}: ${source.length} -> ${compressed.length} bytes`,
+          `[picobit] ${fileName}: ${source.length} -> ${gzipped.length} bytes`,
         );
       }
     },
@@ -77,7 +72,7 @@ export default defineConfig({
   define: {
     __PICOBIT_PROXY__: JSON.stringify(Boolean(proxyTarget)),
   },
-  plugins: [svelte(), tailwindcss(), minifyHtml(), brotliBuildAssets()],
+  plugins: [svelte(), tailwindcss(), minifyHtml(), gzipBuildAssets()],
   server: {
     proxy: proxyTarget
       ? {

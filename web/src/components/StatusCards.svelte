@@ -4,6 +4,7 @@
   import {
     apPassword,
     apSsid,
+    authLabel,
     hidState,
     hostUsb,
     usbStateLabel,
@@ -12,7 +13,7 @@
   let revealPassword = $state(false);
 
   const statClass =
-    'min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 sm:basis-[calc(50%-0.25rem)] xl:basis-[calc(25%-0.375rem)]';
+    'min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 md:basis-[calc(50%-0.25rem)] lg:basis-[calc(33.333%-0.333rem)] xl:basis-[calc(20%-0.4rem)]';
   const labelClass = 'mb-1 text-[11px] font-medium text-picobit-text-3';
   const valueClass =
     'break-all text-[13px] font-medium leading-snug text-picobit-text';
@@ -48,6 +49,11 @@
         </button>
       {/if}
     </div>
+  </div>
+
+  <div class={statClass}>
+    <div class={labelClass}>Portal auth</div>
+    <div class={valueClass}>{$authLabel}</div>
   </div>
 
   <div class={statClass}>
