@@ -78,8 +78,14 @@ def test_sleep_until_idle_accepts_zero_without_sleeping() -> None:
 
 def test_attackmode_exfil_hide_payload_are_no_ops() -> None:
     interpreter = DuckyInterpreter(FakeKeyboard())
-    for command in ('ATTACKMODE', 'EXFIL', 'HIDE_PAYLOAD', 'RESTORE_ATTACKMODE',
-                    'RESTORE_PAYLOAD', 'SAVE_ATTACKMODE'):
+    for command in (
+        'ATTACKMODE',
+        'EXFIL',
+        'HIDE_PAYLOAD',
+        'RESTORE_ATTACKMODE',
+        'RESTORE_PAYLOAD',
+        'SAVE_ATTACKMODE',
+    ):
         stmt = {'kind': 'command', 'command': command, 'argument': '', 'line_no': 1}
         asyncio.run(interpreter._execute_command(stmt))  # must not raise
 
