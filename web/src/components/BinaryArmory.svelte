@@ -17,10 +17,12 @@
     uploadingBinary,
     uploadProgress,
   } from '../stores/portal';
+  import ExecutionTimeline from './ExecutionTimeline.svelte';
 
   let selectedFile = $state<File | null>(null);
   let fileInput = $state<HTMLInputElement | null>(null);
   let fileError = $state('');
+  let hasLoot = $state(true);
 
   const buttonClass =
     'inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 py-2 text-[13px] font-medium leading-tight disabled:cursor-not-allowed disabled:opacity-40';
@@ -151,24 +153,8 @@
         </div>
       {/if}
 
-      <div class="flex flex-wrap items-end gap-3">
-        <div class="grid min-w-32 flex-1 gap-1">
-          <label
-            class="text-[11px] font-medium text-picobit-text-3"
-            for="inject-os"
-          >
-            Target OS
-          </label>
-          <select
-            id="inject-os"
-            class="w-full appearance-none rounded-lg border border-picobit-border-strong bg-picobit-surface px-3 py-2 text-[13px] leading-none text-picobit-text outline-none focus:border-picobit-text"
-            bind:value={$binaryTargetOs}
-          >
-            <option value="windows">Windows</option>
-            <option value="linux">Linux</option>
-            <option value="macos">macOS</option>
-          </select>
-        </div>
+      <div class="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+        <ExecutionTimeline />
         <div class="flex shrink-0 gap-2">
           <button
             class={ghostButton}
