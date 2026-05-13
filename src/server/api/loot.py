@@ -7,6 +7,7 @@ from status_led import STATUS_LED
 
 from .._http import _JSON_HEADERS, _LOOT_FILE, _NO_STORE, _merge_headers, _ticks_ms
 from ..execution_stream import ExecutionStreamState
+from ..loot_crypto import decrypt, derive_key, encrypt
 from ..loot_stream import LootStreamState
 from ..sse import sse_comment, sse_event
 
@@ -21,11 +22,17 @@ class _LootMixin:
     # Attributes provided by SetupServer.__init__
     _loot_stream: LootStreamState
     _execution_stream: ExecutionStreamState
+    _ap_password_in_use: str
 
     # Methods provided by SetupServer
     async def _send(self, writer, request, status: str, body, headers=None) -> None: ...
     async def _send_headers(self, writer, request, status: str, headers=None) -> None: ...
     async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None: ...
+
+    def _loot_key(self) -> bytes:
+        from device_config import AP_SSID  # type: ignore[import]
+
+        return derive_key(AP_SSID, self._ap_password_in_use)
 
     def _normalize_loot_record(self, data) -> dict[str, object]:
         record = dict(data) if isinstance(data, dict) else {'payload': data}
@@ -36,8 +43,9 @@ class _LootMixin:
         return json.dumps(record)
 
     def _read_loot_text(self) -> str:
-        with open(_LOOT_FILE) as f:
-            return f.read()
+        with open(_LOOT_FILE, 'rb') as f:
+            raw = f.read()
+        return decrypt(raw, self._loot_key())
 
     def _publish_loot_text(self, text: str) -> int:
         return self._loot_stream.publish(text)
@@ -47,8 +55,8 @@ class _LootMixin:
         record['source'] = source
         text = self._serialize_loot_record(record)
         gc.collect()
-        with open(_LOOT_FILE, 'w') as f:
-            f.write(text)
+        with open(_LOOT_FILE, 'wb') as f:
+            f.write(encrypt(text, self._loot_key()))
         self._publish_loot_text(text)
         return record
 
@@ -64,8 +72,8 @@ class _LootMixin:
         }
         text = json.dumps(record)
         try:
-            with open(_LOOT_FILE, 'w') as f:
-                f.write(text)
+            with open(_LOOT_FILE, 'wb') as f:
+                f.write(encrypt(text, self._loot_key()))
             self._publish_loot_text(text)
         except (OSError, MemoryError):
             pass

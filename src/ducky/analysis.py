@@ -197,6 +197,9 @@ def _command_entry(stmt: Statement, depth: int) -> dict:
     elif kind == 'led':
         label = str(stmt['color'])
         detail = 'on' if stmt['enabled'] else 'off'
+    elif kind == 'try':
+        label = 'TRY'
+        detail = ''
     else:
         label = str(kind).upper()
         detail = ''
@@ -229,7 +232,7 @@ def _collect_commands(
             )
             continue
 
-        for child_key in ('body',):
+        for child_key in ('body', 'try_body', 'catch_body'):
             child = stmt.get(child_key)
             if isinstance(child, list):
                 _collect_commands(child, commands=commands, depth=depth + 1)

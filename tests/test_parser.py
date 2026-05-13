@@ -31,3 +31,56 @@ def test_parse_script_accepts_valid_function_and_layout() -> None:
 def test_invalid_expression_is_rejected_during_parse() -> None:
     with pytest.raises(DuckyParseError):
         parse_script('IF ($x == ) THEN\nEND_IF\n')
+
+
+def test_parse_try_catch_end_try() -> None:
+    stmts = parse_script('TRY\n  STRING hello\nCATCH\n  DELAY 100\nEND_TRY\n')
+
+    assert len(stmts) == 1
+    stmt = stmts[0]
+    assert stmt['kind'] == 'try'
+    assert len(stmt['try_body']) == 1
+    assert stmt['try_body'][0]['kind'] == 'string'
+    assert len(stmt['catch_body']) == 1
+    assert stmt['catch_body'][0]['kind'] == 'command'
+
+
+def test_parse_try_without_catch() -> None:
+    stmts = parse_script('TRY\n  STRING hello\nEND_TRY\n')
+
+    assert stmts[0]['kind'] == 'try'
+    assert len(stmts[0]['try_body']) == 1
+    assert stmts[0]['catch_body'] == []
+
+
+def test_parse_try_missing_end_try_raises() -> None:
+    with pytest.raises(DuckyParseError, match='missing END_TRY'):
+        parse_script('TRY\n  STRING hello\n')
+
+
+def test_parse_type_rate_accepts_expression() -> None:
+    stmts = parse_script('TYPE_RATE 30\n')
+
+    assert stmts[0]['kind'] == 'command'
+    assert stmts[0]['command'] == 'TYPE_RATE'
+    assert stmts[0]['argument'] == '30'
+
+
+def test_parse_sleep_until_idle_accepts_expression() -> None:
+    stmts = parse_script('SLEEP_UNTIL_IDLE 5000\n')
+
+    assert stmts[0]['kind'] == 'command'
+    assert stmts[0]['command'] == 'SLEEP_UNTIL_IDLE'
+
+
+def test_parse_include_accepts_filename() -> None:
+    stmts = parse_script('INCLUDE lib.dd\n')
+
+    assert stmts[0]['kind'] == 'command'
+    assert stmts[0]['command'] == 'INCLUDE'
+    assert stmts[0]['argument'] == 'lib.dd'
+
+
+def test_catch_outside_try_raises() -> None:
+    with pytest.raises(DuckyParseError, match='unexpected CATCH'):
+        parse_script('CATCH\n')

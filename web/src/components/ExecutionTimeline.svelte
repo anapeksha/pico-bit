@@ -40,7 +40,10 @@
     {@const state = ($executionMap.get(step) ?? 'idle') as ExecutionState}
     {@const isLast = index === steps.length - 1}
 
-    <li class="relative w-full" aria-label={`${index + 1}. ${step}, ${stateLabel(state)}`}>
+    <li
+      class="relative w-full"
+      aria-label={`${index + 1}. ${step}, ${stateLabel(state)}`}
+    >
       <div class="flex items-center">
         <div
           class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-picobit-surface"
@@ -54,8 +57,12 @@
       </div>
 
       <div class="mt-2 sm:pe-8">
-        <p class="m-0 truncate text-[11px] font-medium text-picobit-text-3">{step}</p>
-        <p class="m-0 mt-0.5 text-[10px] capitalize text-picobit-text-4">{stateLabel(state)}</p>
+        <p class="m-0 truncate text-[11px] font-medium text-picobit-text-3">
+          {step}
+        </p>
+        <p class="m-0 mt-0.5 text-[10px] capitalize text-picobit-text-4">
+          {stateLabel(state)}
+        </p>
       </div>
     </li>
   {/each}

@@ -136,6 +136,9 @@ class DuckyInterpreter:
             self._set_led(stmt['enabled'])
             self._remember_action(stmt)
 
+        elif kind == 'try':
+            await self._execute_try(stmt)
+
         elif kind == 'command':
             await self._execute_command(stmt)
             await self._sleep_default_delay(stmt['command'])
@@ -162,6 +165,12 @@ class DuckyInterpreter:
             await self._execute_statement(statement)
 
         self.last_action = runner
+
+    async def _execute_try(self, stmt):
+        try:
+            await self._execute_statements(stmt['try_body'])
+        except DuckyRuntimeError:
+            await self._execute_statements(stmt['catch_body'])
 
     async def _execute_if(self, stmt):
         for branch in stmt['branches']:
@@ -237,6 +246,21 @@ class DuckyInterpreter:
             # is accepted for compatibility but does not override selection.
             return
 
+        if command == 'TYPE_RATE':
+            rate = await self._eval_int(argument, line_no)
+            self.default_char_delay_ms = 1000 // max(1, rate) if rate > 0 else 0
+            return
+
+        if command == 'SLEEP_UNTIL_IDLE':
+            timeout = await self._eval_int(argument, line_no)
+            if timeout > 0:
+                await sleep_ms(timeout)
+            return
+
+        if command == 'INCLUDE':
+            await self._execute_include(argument, line_no)
+            return
+
         if command == 'WAIT_FOR_BUTTON_PRESS':
             await self._wait_for_button_press()
             return
@@ -273,15 +297,15 @@ class DuckyInterpreter:
 
         if command in (
             'ATTACKMODE',
+            'EXFIL',
             'HIDE_PAYLOAD',
+            'RESTORE_ATTACKMODE',
             'RESTORE_PAYLOAD',
             'SAVE_ATTACKMODE',
-            'RESTORE_ATTACKMODE',
-            'EXFIL',
         ):
-            raise DuckyRuntimeError(
-                line_no, f'{command} is not implemented on this MicroPython target'
-            )
+            # Hardware-specific commands that don't apply to this target; silently accepted
+            # so scripts written for the Hak5 Rubber Ducky can run without modification.
+            return
 
         raise DuckyRuntimeError(line_no, f'unsupported command: {command}')
 
@@ -513,6 +537,15 @@ class DuckyInterpreter:
 
     def _set_internal(self, name, value):
         self._internal[name] = value
+
+    async def _execute_include(self, filename, line_no):
+        try:
+            with open(filename) as f:
+                script = f.read()
+        except OSError as exc:
+            raise DuckyRuntimeError(line_no, f'INCLUDE: file not found: {filename}') from exc
+        statements = parse_script(script)
+        await self._execute_statements(statements)
 
     async def _wait_for_button_press(self):
         if self._button is None:
