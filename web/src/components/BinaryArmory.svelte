@@ -2,11 +2,13 @@
   import ChevronDown from '@lucide/svelte/icons/chevron-down';
   import ChevronUp from '@lucide/svelte/icons/chevron-up';
   import CloudUpload from '@lucide/svelte/icons/cloud-upload';
+  import Download from '@lucide/svelte/icons/download';
   import FileTerminal from '@lucide/svelte/icons/file-terminal';
+  import Import from '@lucide/svelte/icons/import';
+
   import { fileDrop } from '../actions/fileDrop';
   import { formatBytes, validateArmoryFile } from '../lib/binary';
   import {
-    activeAccordion,
     armoryNotice,
     binaryTargetOs,
     hasBinary,
@@ -16,15 +18,36 @@
     uploadBinary,
     uploadingBinary,
     uploadProgress,
-  } from '../stores/portal';
+  } from '../stores/binary';
+  import { importingLoot, importUsbLoot, loot } from '../stores/loot';
+  import { activeAccordion } from '../stores/ui';
+  import ExecutionTimeline from './ExecutionTimeline.svelte';
+  import LootViewer from './LootViewer.svelte';
+
+  const TRACKING_KEYS = new Set([
+    'execution_failure_reason',
+    'execution_state',
+    'execution_step',
+    'source',
+    'target_os',
+    'timestamp',
+  ]);
+
+  function hasAgentData(record: Record<string, unknown> | null): boolean {
+    if (!record) return false;
+    return Object.keys(record).some((k) => !TRACKING_KEYS.has(k));
+  }
 
   let selectedFile = $state<File | null>(null);
   let fileInput = $state<HTMLInputElement | null>(null);
   let fileError = $state('');
 
   const buttonClass =
-    'inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 py-2 text-[13px] font-medium leading-tight disabled:cursor-not-allowed disabled:opacity-40';
+    'inline-flex h-9 cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 text-[13px] font-medium leading-none disabled:cursor-not-allowed disabled:opacity-40';
+  const lootButtonClass =
+    'inline-flex h-9 cursor-pointer items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-3 text-[13px] font-medium leading-none disabled:cursor-not-allowed disabled:opacity-40';
   const ghostButton = `${buttonClass} border-picobit-border-strong bg-picobit-surface text-picobit-text hover:bg-picobit-surface-2`;
+  const lootGhostButton = `${lootButtonClass} border-picobit-border-strong bg-picobit-surface text-picobit-text hover:bg-picobit-surface-2`;
   const primaryButton = `${buttonClass} border-picobit-text bg-picobit-text text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]`;
 
   async function selectFile(file: File) {
@@ -71,7 +94,6 @@
         {$stagedBinaryName}
       </span>
     {/if}
-
     {#if $activeAccordion === 'armory'}
       <ChevronUp size={16} className="text-picobit-text-4" />
     {:else}
@@ -103,9 +125,9 @@
         {#if selectedFile}
           <div class="pointer-events-none flex items-center gap-2">
             <FileTerminal />
-            <span class="font-mono text-xs font-medium text-picobit-text">
-              {selectedFile.name}
-            </span>
+            <span class="font-mono text-xs font-medium text-picobit-text"
+              >{selectedFile.name}</span
+            >
             <span class="text-[11px] text-picobit-text-3"
               >{formatBytes(selectedFile.size)}</span
             >
@@ -151,23 +173,9 @@
         </div>
       {/if}
 
-      <div class="flex flex-wrap items-end gap-3">
-        <div class="grid min-w-32 flex-1 gap-1">
-          <label
-            class="text-[11px] font-medium text-picobit-text-3"
-            for="inject-os"
-          >
-            Target OS
-          </label>
-          <select
-            id="inject-os"
-            class="w-full appearance-none rounded-lg border border-picobit-border-strong bg-picobit-surface px-3 py-2 text-[13px] leading-none text-picobit-text outline-none focus:border-picobit-text"
-            bind:value={$binaryTargetOs}
-          >
-            <option value="windows">Windows</option>
-            <option value="linux">Linux</option>
-            <option value="macos">macOS</option>
-          </select>
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div class="min-w-0 flex-1">
+          <ExecutionTimeline />
         </div>
         <div class="flex shrink-0 gap-2">
           <button
@@ -189,15 +197,51 @@
         </div>
       </div>
 
-      <div
-        class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3"
-      >
-        <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">USB stager:</p>
-        <pre
-          class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">Backend-generated at injection time for {$binaryTargetOs}. It opens the host shell, writes a temporary runner script, executes payload.{$binaryTargetOs ===
-          'windows'
-            ? 'exe'
-            : 'bin'}, stores loot-usb.json on the Pico drive, then cleans up.</pre>
+      {#if hasAgentData($loot)}
+        <LootViewer />
+      {:else}
+        <div
+          class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3"
+        >
+          <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">USB stager:</p>
+          <pre
+            class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">Backend-generated at injection time for {$binaryTargetOs}. It opens the host shell, writes a temporary runner script, executes payload.{$binaryTargetOs ===
+            'windows'
+              ? 'exe'
+              : 'bin'}, stores loot-usb.json on the Pico drive, then cleans up.</pre>
+        </div>
+      {/if}
+
+      <div class="flex justify-end gap-1.5">
+        <button
+          class={lootGhostButton}
+          type="button"
+          disabled={$importingLoot}
+          onclick={() => importUsbLoot()}
+          title="Import loot from USB drive"
+        >
+          <Import size={14} />
+          <span>Import USB</span>
+        </button>
+        {#if hasAgentData($loot)}
+          <a
+            class={lootGhostButton}
+            href="/api/loot/download"
+            download="loot.json"
+            title="Download loot.json"
+          >
+            <Download size={14} />
+          </a>
+        {:else}
+          <button
+            class={lootGhostButton}
+            type="button"
+            disabled
+            title="No loot to download"
+          >
+            <Download size={14} />
+          </button>
+        {/if}
       </div>
     </div>
   {/if}

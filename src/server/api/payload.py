@@ -26,6 +26,8 @@ from keyboard import (
 from status_led import STATUS_LED
 
 from .._http import _KEYBOARD_LAYOUT_FILE, _RUN_HISTORY_LIMIT, _ticks_ms
+from ..execution_stream import ExecutionStreamState
+from ..loot_stream import LootStreamState
 
 _BINARY_TARGET_OSES = {'windows', 'linux', 'macos'}
 
@@ -38,6 +40,8 @@ class _PayloadMixin:
     _payload_seeded: bool
     _run_history: list[dict[str, object]]
     _run_sequence: int
+    _loot_stream: LootStreamState
+    _execution_stream: ExecutionStreamState
 
     # Methods provided by SetupServer / other mixins
     def _auth_enabled(self) -> bool: ...
@@ -48,10 +52,12 @@ class _PayloadMixin:
     def _binary_target_notice(self, target_os: str) -> str: ...
     def _stager_script(self, target_os: str) -> str: ...
     def _usb_agent_state(self) -> dict[str, object]: ...
+    def _init_execution_loot(self, target_os: str) -> None: ...
     async def _handle_loot_get(self, request, writer) -> None: ...
     async def _handle_loot_download(self, request, writer) -> None: ...
     async def _handle_usb_loot_import(self, request, writer) -> None: ...
     async def _handle_loot_stream(self, request, writer) -> None: ...
+    async def _handle_execution_stream(self, request, writer) -> None: ...
     async def _handle_usb_agent(self, request, writer) -> None: ...
     async def _send(self, writer, request, status: str, body, headers=None) -> None: ...
     async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None: ...
@@ -385,7 +391,12 @@ class _PayloadMixin:
                     },
                 )
                 return
+
+            self._execution_stream.reset()
+            self._execution_stream.publish('Detect', 'loading')
+
             if not self._usb_agent_state().get('mounted'):
+                self._execution_stream.publish('Detect', 'error', reason='USB drive not mounted')
                 await self._send_json(
                     writer,
                     request,
@@ -398,6 +409,9 @@ class _PayloadMixin:
                 )
                 return
             if not self._binary_matches_target(target_os):
+                self._execution_stream.publish(
+                    'Detect', 'error', reason=self._binary_target_notice(target_os)
+                )
                 await self._send_json(
                     writer,
                     request,
@@ -409,11 +423,22 @@ class _PayloadMixin:
                     },
                 )
                 return
+
+            self._execution_stream.publish('Detect', 'success')
+            self._init_execution_loot(target_os)
+            self._execution_stream.publish('Copy', 'loading')
+
             await STATUS_LED.show('binary_injecting')
             script = self._stager_script(target_os)
             message, notice = await self._run_payload(script, source='binary:usb')
-            if notice != 'success':
+
+            if notice == 'success':
+                self._execution_stream.publish('Copy', 'success')
+                self._execution_stream.publish('Execute', 'loading')
+            else:
+                self._execution_stream.publish('Copy', 'error', reason=message)
                 await STATUS_LED.show('binary_inject_failed')
+
             status = '200 OK' if notice == 'success' else '400 Bad Request'
             await self._send_json(
                 writer,
@@ -426,6 +451,10 @@ class _PayloadMixin:
                     'usb_agent': self._usb_agent_state(),
                 },
             )
+            return
+
+        if path == '/api/execution/stream' and method == 'GET':
+            await self._handle_execution_stream(request, writer)
             return
 
         await self._send_json(writer, request, '404 Not Found', {'message': 'Not found.'})

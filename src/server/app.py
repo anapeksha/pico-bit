@@ -7,10 +7,6 @@ _GZIP_HEADERS = {
     'Vary': 'Accept-Encoding',
 }
 
-_STATIC_CACHE = {
-    'Cache-Control': 'public, max-age=3600',
-}
-
 
 class AppRenderer:
     """Serve compiled SPA assets and render the initial auth-aware shell."""
@@ -63,7 +59,7 @@ class AppRenderer:
         if mime_type.startswith('text/html'):
             headers = _merge_headers(headers, _NO_STORE)
         else:
-            headers = _merge_headers(headers, _GZIP_HEADERS, _STATIC_CACHE)
+            headers = _merge_headers(headers, _GZIP_HEADERS)
 
         await owner._send(
             writer,

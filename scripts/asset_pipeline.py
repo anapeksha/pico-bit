@@ -64,11 +64,19 @@ def _routes_for(path: Path) -> list[str]:
     routes = ['/' + relative]
     if relative == 'index.html':
         routes.insert(0, '/')
-    if relative == 'assets/index.css':
+    stem = path.stem.split('.')[0]
+    if stem == 'index' and path.suffix == '.css' and relative.startswith('assets/'):
         routes.append('/index.css')
-    if relative == 'assets/index.js':
+    if stem == 'index' and path.suffix == '.js' and relative.startswith('assets/'):
         routes.append('/index.js')
     return routes
+
+
+def _find_asset(stem: str, suffix: str) -> Path:
+    """Return the first compiled asset matching assets/<stem>*<suffix>, or the plain name."""
+    for candidate in sorted(WEB_DIST_DIR.glob(f'assets/{stem}*{suffix}')):
+        return candidate
+    return WEB_DIST_DIR / 'assets' / (stem + suffix)
 
 
 def render_web_assets() -> str:
@@ -100,8 +108,8 @@ def render_web_assets() -> str:
     lines.append(')\n\n')
 
     index_html = _constant_name(WEB_DIST_DIR / 'index.html')
-    index_css = _constant_name(WEB_DIST_DIR / 'assets' / 'index.css')
-    index_js = _constant_name(WEB_DIST_DIR / 'assets' / 'index.js')
+    index_css = _constant_name(_find_asset('index', '.css'))
+    index_js = _constant_name(_find_asset('index', '.js'))
     if index_html in asset_names:
         lines.append(f'INDEX_HTML: bytes = {index_html}\n')
         lines.append('LOGIN_HTML: bytes = INDEX_HTML\n')

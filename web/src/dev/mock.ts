@@ -188,6 +188,9 @@ if (shouldMock) {
 
     if (url === '/api/loot/import-usb' && method === 'POST') {
       loot = {
+        execution_step: 'Cleanup',
+        execution_state: 'success',
+        execution_failure_reason: null,
         source: 'usb_drive',
         system: { arch: 'arm64', hostname: 'mock-host', os_name: 'macOS' },
         timestamp: Date.now(),
@@ -204,6 +207,17 @@ if (shouldMock) {
     return originalFetch(input, options);
   };
 
+  // Execution step sequence emitted by the mock execution stream.
+  const MOCK_EXECUTION_STEPS = [
+    { step: 'Detect', state: 'loading' },
+    { step: 'Detect', state: 'success' },
+    { step: 'Copy', state: 'loading' },
+    { step: 'Copy', state: 'success' },
+    { step: 'Execute', state: 'loading' },
+    { step: 'Collect', state: 'success' },
+    { step: 'Cleanup', state: 'success' },
+  ] as const;
+
   window.EventSource = class MockEventSource extends EventTarget {
     static readonly CONNECTING = 0;
     static readonly OPEN = 1;
@@ -212,11 +226,41 @@ if (shouldMock) {
     readonly OPEN = 1;
     readonly CLOSED = 2;
     readonly readyState = 1;
-    readonly url = '/api/loot/stream';
     readonly withCredentials = false;
-    onerror = null;
-    onmessage = null;
-    onopen = null;
-    close() {}
-  } as typeof EventSource;
+    readonly url: string;
+    onerror: ((this: EventSource, ev: Event) => any) | null = null;
+    onmessage: ((this: EventSource, ev: MessageEvent) => any) | null = null;
+    onopen: ((this: EventSource, ev: Event) => any) | null = null;
+
+    private _timers: ReturnType<typeof setTimeout>[] = [];
+
+    constructor(url: string) {
+      super();
+      this.url = url;
+
+      if (url.includes('/api/execution/stream')) {
+        let delay = 400;
+        for (const step of MOCK_EXECUTION_STEPS) {
+          this._timers.push(
+            setTimeout(() => {
+              this.dispatchEvent(
+                new MessageEvent('execution', { data: JSON.stringify(step) }),
+              );
+            }, delay),
+          );
+          delay += 500;
+        }
+        this._timers.push(
+          setTimeout(() => {
+            this.dispatchEvent(new MessageEvent('done', { data: '{}' }));
+          }, delay),
+        );
+      }
+    }
+
+    close() {
+      for (const t of this._timers) clearTimeout(t);
+      this._timers = [];
+    }
+  } as unknown as typeof EventSource;
 }

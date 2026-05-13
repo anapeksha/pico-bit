@@ -16,6 +16,8 @@ _EXPRESSION_COMMANDS = {
     'DEFAULTCHARJITTER',
     'DELAY',
     'INJECT_VAR',
+    'SLEEP_UNTIL_IDLE',
+    'TYPE_RATE',
 }
 
 
@@ -101,6 +103,11 @@ class _Parser:
                 stmt, index = self._parse_named_block(
                     index, 'EXTENSION', 'END_EXTENSION', 'extension'
                 )
+                statements.append(stmt)
+                continue
+
+            if line.upper == 'TRY':
+                stmt, index = self._parse_try(index)
                 statements.append(stmt)
                 continue
 
@@ -204,6 +211,18 @@ class _Parser:
         if terminator != end_token:
             raise DuckyParseError(line.line_no, f'missing {end_token}')
         return _make_stmt(kind, line.line_no, name=name, body=body), index + 1
+
+    def _parse_try(self, index):
+        line = self.lines[index]
+        index += 1
+        try_body, index, terminator = self._parse_block(index, ('CATCH', 'END_TRY'))
+        catch_body = []
+        if terminator == 'CATCH':
+            index += 1
+            catch_body, index, terminator = self._parse_block(index, ('END_TRY',))
+        if terminator != 'END_TRY':
+            raise DuckyParseError(line.line_no, 'missing END_TRY')
+        return _make_stmt('try', line.line_no, try_body=try_body, catch_body=catch_body), index + 1
 
     def _parse_button(self, index):
         line = self.lines[index]

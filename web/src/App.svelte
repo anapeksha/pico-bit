@@ -1,14 +1,14 @@
 <script lang="ts">
   import LockOpen from '@lucide/svelte/icons/lock-open';
   import { onMount } from 'svelte';
-  import BinaryArmory from './components/BinaryArmory.svelte';
-  import DuckyEditor from './components/DuckyEditor.svelte';
-  import LeftRail from './components/LeftRail.svelte';
-  import RightRail from './components/RightRail.svelte';
-  import StatusCards from './components/StatusCards.svelte';
   import ThemeToggle from './components/ThemeToggle.svelte';
   import ValidationModal from './components/ValidationModal.svelte';
-  import { notice, showNotice, startPortal } from './stores/portal';
+  import LeftSection from './sections/LeftSection.svelte';
+  import MiddleSection from './sections/MiddleSection.svelte';
+  import RightSection from './sections/RightSection.svelte';
+  import TopSection from './sections/TopSection.svelte';
+  import { startPortal } from './stores/bootstrap';
+  import { notice, showNotice } from './stores/ui';
   import { initTheme } from './stores/theme';
 
   type Props = {
@@ -54,7 +54,7 @@
     >
       <div class="mb-5">
         <h1
-          class="m-0 mb-1.5 text-[22px] font-semibold tracking-[-0.025em] text-picobit-text"
+          class="m-0 mb-1.5 text-[22px] font-semibold tracking-tight text-picobit-text"
         >
           Pico Bit
         </h1>
@@ -110,7 +110,7 @@
           />
         </div>
         <button
-          class="inline-flex w-full gap-1 cursor-pointer items-center justify-center rounded-lg border border-picobit-text bg-picobit-text px-4 py-2 text-[13px] font-medium text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]"
+          class="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-picobit-text bg-picobit-text px-4 text-[13px] font-medium leading-none text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]"
           type="submit"
         >
           <LockOpen size={16} />
@@ -149,26 +149,15 @@
       <ThemeToggle />
     </nav>
 
-    <main class="mx-auto grid max-w-[1440px] gap-4 px-4 pt-6 pb-16 sm:px-6">
-      <StatusCards />
+    <main class="mx-auto grid max-w-360 gap-4 px-4 pt-6 pb-16 sm:px-6">
+      <TopSection />
 
       <div
         class="grid items-start gap-4 xl:grid-cols-[15rem_minmax(0,1fr)_17rem] lg:grid-cols-[minmax(0,1fr)_17rem]"
       >
-        <div
-          class="lg:order-3 lg:col-span-full lg:grid lg:grid-cols-2 lg:gap-4 xl:order-none xl:col-span-1 xl:block"
-        >
-          <LeftRail />
-        </div>
-        <div
-          class="flex min-h-0 flex-col overflow-hidden rounded-xl border border-picobit-border bg-picobit-surface lg:order-1 xl:order-none"
-        >
-          <DuckyEditor />
-          <BinaryArmory />
-        </div>
-        <div class="lg:order-2 xl:order-none">
-          <RightRail />
-        </div>
+        <LeftSection />
+        <MiddleSection />
+        <RightSection />
       </div>
     </main>
 

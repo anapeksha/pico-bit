@@ -12,19 +12,17 @@
     type EditorMetrics,
   } from '../lib/editor';
   import {
-    activeAccordion,
     canRun,
     canSave,
     payload,
     payloadState,
     runPayload,
     savePayload,
-    showNotice,
     validatePayloadDraft,
     validating,
     validation,
-    validationModalOpen,
-  } from '../stores/portal';
+  } from '../stores/editor';
+  import { activeAccordion, showNotice, validationModalOpen } from '../stores/ui';
 
   let textarea = $state<HTMLTextAreaElement | null>(null);
   let metrics = $state<EditorMetrics>(DEFAULT_EDITOR_METRICS);
@@ -44,9 +42,9 @@
     }`;
 
   const buttonClass =
-    'inline-flex cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 py-2 text-[13px] font-medium leading-tight disabled:cursor-not-allowed disabled:opacity-40';
-  const ghostButton = `${buttonClass} border-[var(--border-strong)] bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--surface-2)]`;
-  const primaryButton = `${buttonClass} border-[var(--text)] bg-[var(--text)] text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]`;
+    'inline-flex h-9 cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 text-[13px] font-medium leading-none disabled:cursor-not-allowed disabled:opacity-40';
+  const ghostButton = `${buttonClass} border-picobit-border-strong bg-picobit-surface text-picobit-text hover:bg-picobit-surface-2`;
+  const primaryButton = `${buttonClass} border-picobit-text bg-picobit-text text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]`;
 
   function measure() {
     if (!textarea) return;
