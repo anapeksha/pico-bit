@@ -1,6 +1,7 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x';
-  import { validation, validationModalOpen } from '../stores/portal';
+  import { validation } from '../stores/editor';
+  import { validationModalOpen } from '../stores/ui';
 
   function close() {
     validationModalOpen.set(false);

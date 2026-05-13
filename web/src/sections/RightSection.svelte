@@ -1,14 +1,6 @@
 <script lang="ts">
-  import Download from '@lucide/svelte/icons/download';
-  import { lootSections } from '../lib/loot';
-  import {
-    changeKeyboardTarget,
-    importUsbLoot,
-    importingLoot,
-    keyboard,
-    loot,
-    runHistory,
-  } from '../stores/portal';
+  import { changeKeyboardTarget, keyboard } from '../stores/keyboard';
+  import { runHistory } from '../stores/run';
 
   const panelClass =
     'rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4';
@@ -46,8 +38,7 @@
           </select>
         </div>
         <div class="grid gap-1">
-          <label class={labelClass} for="keyboard-layout">Keyboard layout</label
-          >
+          <label class={labelClass} for="keyboard-layout">Keyboard layout</label>
           <select
             id="keyboard-layout"
             class={selectClass}
@@ -70,82 +61,18 @@
     </div>
 
     <div class={panelClass}>
-      <p class={titleClass}>Loot</p>
-      {#if $loot}
-        {#each lootSections($loot) as section}
-          <p
-            class="m-0 mt-3 mb-1 text-[0.7rem] font-semibold tracking-[0.06em] text-[var(--text-4)] uppercase"
-          >
-            {section.title}
-          </p>
-          <dl class="m-0 grid">
-            {#each section.rows as row}
-              <div class={rowClass}>
-                <span class="text-xs text-[var(--text-3)]">{row.label}</span>
-                {#if row.value}
-                  <span
-                    class={`text-right text-xs font-medium text-[var(--text)] ${
-                      row.mono ? 'break-all font-mono' : ''
-                    }`}
-                  >
-                    {row.value}
-                  </span>
-                {/if}
-              </div>
-            {/each}
-          </dl>
-        {/each}
-      {:else}
-        <p class="m-0 text-xs leading-relaxed text-[var(--text-3)]">
-          No loot collected yet.
-        </p>
-      {/if}
-
-      <div class="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-        <button
-          class="inline-flex cursor-pointer items-center justify-center rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-4 py-2 text-[13px] font-medium text-[var(--text)] hover:bg-[var(--surface-2)] disabled:cursor-not-allowed disabled:opacity-40"
-          type="button"
-          disabled={$importingLoot}
-          onclick={() => importUsbLoot()}
-        >
-          Import USB loot
-        </button>
-        <button
-          class="inline-flex size-[2.35rem] cursor-pointer items-center justify-center rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] text-[var(--text)] hover:bg-[var(--surface-2)] disabled:cursor-not-allowed disabled:opacity-40"
-          type="button"
-          aria-label="Download loot.json"
-          title="Download loot.json"
-          disabled={!$loot}
-          onclick={() => {
-            window.location.href = '/api/loot/download';
-          }}
-        >
-          <Download size={16} />
-        </button>
-      </div>
-    </div>
-
-    <div class={panelClass}>
       <p class={titleClass}>Recent runs</p>
-      <div
-        class="flex max-h-56 flex-col gap-1 overflow-y-auto"
-        aria-live="polite"
-      >
+      <div class="flex max-h-56 flex-col gap-1 overflow-y-auto" aria-live="polite">
         {#if $runHistory.length}
           {#each $runHistory as item}
             <div
               class="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1.5"
             >
-              <span
-                class="shrink-0 font-mono text-[11px] font-semibold text-[var(--text-4)]"
-              >
+              <span class="shrink-0 font-mono text-[11px] font-semibold text-[var(--text-4)]">
                 #{item.sequence}
               </span>
-              <span
-                class="min-w-0 flex-1 truncate text-xs text-[var(--text-2)]"
-              >
-                {item.source ? `${item.source} · ` : ''}{item.preview ||
-                  item.message}
+              <span class="min-w-0 flex-1 truncate text-xs text-[var(--text-2)]">
+                {item.source ? `${item.source} · ` : ''}{item.preview || item.message}
               </span>
               <span
                 class={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.04em] uppercase ${

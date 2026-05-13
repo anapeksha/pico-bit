@@ -37,6 +37,7 @@ from .api.loot import _LootMixin
 from .api.payload import _PayloadMixin
 from .api.usb_agent import _UsbAgentMixin
 from .app import AppRenderer
+from .execution_stream import ExecutionStreamState
 from .loot_stream import LootStreamState
 
 __all__ = [
@@ -61,6 +62,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         self._ap_password_in_use = AP_PASSWORD
         self._keyboard_layout = DEFAULT_LAYOUT_CODE
         self._loot_stream = LootStreamState()
+        self._execution_stream = ExecutionStreamState()
         self._usb = USB
         self._payload_seeded = False
         self._run_lock = None

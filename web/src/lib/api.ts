@@ -52,7 +52,7 @@ export function uploadBinaryFile(
       } catch {
         data = {};
       }
-      if (xhr.status === 200) {
+      if (xhr.status >= 200 && xhr.status < 300) {
         resolve(data);
         return;
       }

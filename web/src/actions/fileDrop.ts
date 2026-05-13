@@ -1,9 +1,21 @@
 import type { Action } from 'svelte/action';
 
+/**
+ * Options accepted by the {@link fileDrop} action.
+ */
 type FileDropOptions = {
+  /** Called with the first file selected by click, keyboard activation, or drag-and-drop. */
   onFile: (file: File) => void;
 };
 
+/**
+ * Svelte action that turns any element into a file drop zone.
+ *
+ * Clicking the element (except directly on an `<input>`) forwards the click to
+ * the first `<input type="file">` child. Space and Enter do the same for
+ * keyboard users. Dragging a file onto the element adds visual highlight
+ * classes and calls `options.onFile` with the first dropped file on release.
+ */
 export const fileDrop: Action<HTMLElement, FileDropOptions> = (node, options) => {
   let current = options;
 

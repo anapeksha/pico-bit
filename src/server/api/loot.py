@@ -6,17 +6,21 @@ from helpers import sleep_ms
 from status_led import STATUS_LED
 
 from .._http import _JSON_HEADERS, _LOOT_FILE, _NO_STORE, _merge_headers, _ticks_ms
+from ..execution_stream import ExecutionStreamState
 from ..loot_stream import LootStreamState
 from ..sse import sse_comment, sse_event
 
 _LOOT_STREAM_HEARTBEAT_MS = 15_000
 _LOOT_STREAM_STEP_MS = 250
+_EXECUTION_STREAM_HEARTBEAT_MS = 15_000
+_EXECUTION_STREAM_STEP_MS = 250
 _USB_LOOT_FILE = 'loot-usb.json'
 
 
 class _LootMixin:
     # Attributes provided by SetupServer.__init__
     _loot_stream: LootStreamState
+    _execution_stream: ExecutionStreamState
 
     # Methods provided by SetupServer
     async def _send(self, writer, request, status: str, body, headers=None) -> None: ...
@@ -48,6 +52,24 @@ class _LootMixin:
         self._publish_loot_text(text)
         return record
 
+    def _init_execution_loot(self, target_os: str) -> None:
+        """Write a skeleton loot.json when injection begins (HID connection established)."""
+        record: dict[str, object] = {
+            'execution_step': 'Detect',
+            'execution_state': 'success',
+            'execution_failure_reason': None,
+            'target_os': target_os,
+            'timestamp': _ticks_ms(),
+            'source': 'binary:usb',
+        }
+        text = json.dumps(record)
+        try:
+            with open(_LOOT_FILE, 'w') as f:
+                f.write(text)
+            self._publish_loot_text(text)
+        except (OSError, MemoryError):
+            pass
+
     async def _handle_loot_receive(self, request, writer) -> None:
         gc.collect()
         try:
@@ -62,6 +84,7 @@ class _LootMixin:
                 writer, request, '500 Internal Server Error', {'message': 'Write failed.'}
             )
             return
+        self._execution_stream.on_loot_received()
         await self._send_json(
             writer,
             request,
@@ -110,6 +133,7 @@ class _LootMixin:
         except OSError:
             pass
 
+        self._execution_stream.on_loot_received()
         await STATUS_LED.show('loot_imported')
 
         await self._send_json(
@@ -217,3 +241,50 @@ class _LootMixin:
 
             writer.write(sse_comment('keepalive'))
             await writer.drain()
+
+    async def _handle_execution_stream(self, request, writer) -> None:
+        """Stream binary injection execution-step events over SSE.
+
+        Sends discrete 'execution' events as each step starts or finishes,
+        followed by a 'done' event when the run completes or errors out.
+        A reconnecting client replays all events from the current session.
+        """
+        await self._send_headers(
+            writer,
+            request,
+            '200 OK',
+            headers=_merge_headers(
+                {
+                    'Cache-Control': 'no-store',
+                    'Content-Type': 'text/event-stream; charset=utf-8',
+                    'X-Accel-Buffering': 'no',
+                },
+                _NO_STORE,
+            ),
+        )
+
+        sent = 0
+        while True:
+            events = self._execution_stream.events_from(sent)
+            if events:
+                for ev in events:
+                    writer.write(sse_event(event='execution', data=json.dumps(ev)))
+                sent += len(events)
+                await writer.drain()
+
+            if self._execution_stream.is_complete() and not self._execution_stream.events_from(
+                sent
+            ):
+                writer.write(sse_event(event='done', data='{}'))
+                await writer.drain()
+                return
+
+            waiter = self._execution_stream.waiter()
+            waited = 0
+            while not waiter.is_set() and waited < _EXECUTION_STREAM_HEARTBEAT_MS:
+                await sleep_ms(_EXECUTION_STREAM_STEP_MS)
+                waited += _EXECUTION_STREAM_STEP_MS
+
+            if not self._execution_stream.events_from(sent):
+                writer.write(sse_comment('keepalive'))
+                await writer.drain()

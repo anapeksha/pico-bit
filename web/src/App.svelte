@@ -7,7 +7,8 @@
   import MiddleSection from './sections/MiddleSection.svelte';
   import RightSection from './sections/RightSection.svelte';
   import TopSection from './sections/TopSection.svelte';
-  import { notice, showNotice, startPortal } from './stores/portal';
+  import { startPortal } from './stores/bootstrap';
+  import { notice, showNotice } from './stores/ui';
   import { initTheme } from './stores/theme';
 
   type Props = {
@@ -109,7 +110,7 @@
           />
         </div>
         <button
-          class="inline-flex w-full gap-1 cursor-pointer items-center justify-center rounded-lg border border-picobit-text bg-picobit-text px-4 py-2 text-[13px] font-medium text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]"
+          class="inline-flex h-9 w-full cursor-pointer items-center justify-center gap-1.5 rounded-lg border border-picobit-text bg-picobit-text px-4 text-[13px] font-medium leading-none text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]"
           type="submit"
         >
           <LockOpen size={16} />

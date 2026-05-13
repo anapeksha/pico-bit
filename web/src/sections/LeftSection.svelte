@@ -1,5 +1,6 @@
 <script lang="ts">
-  import { keyboard, seededThisBoot } from '../stores/portal';
+  import { keyboard } from '../stores/keyboard';
+  import { seededThisBoot } from '../stores/run';
 
   const panelClass =
     'rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4';
@@ -51,7 +52,7 @@
       <div class="my-3.5 h-px bg-[var(--border)]"></div>
       <form action="/logout" method="post">
         <button
-          class="inline-flex w-full cursor-pointer items-center justify-center rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-4 py-2 text-[13px] font-medium text-[var(--danger)] hover:border-[var(--danger-border)] hover:bg-[var(--danger-bg)]"
+          class="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-4 text-[13px] font-medium leading-none text-[var(--danger)] hover:border-[var(--danger-border)] hover:bg-[var(--danger-bg)]"
           type="submit"
         >
           Sign out

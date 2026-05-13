@@ -1,13 +1,9 @@
 <script lang="ts">
   import Eye from '@lucide/svelte/icons/eye';
   import EyeClosed from '@lucide/svelte/icons/eye-closed';
-  import {
-    apPassword,
-    apSsid,
-    hidState,
-    hostUsb,
-    usbStateLabel,
-  } from '../stores/portal';
+  import { apPassword, apSsid } from '../stores/ap';
+  import { hidState } from '../stores/keyboard';
+  import { hostUsb, usbStateLabel } from '../stores/usb';
 
   let revealPassword = $state(false);
 

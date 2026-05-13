@@ -1,8 +1,9 @@
 import { mount } from 'svelte';
 
 import App from './App.svelte';
-import './dev/mock';
 import './index.css';
+
+import.meta.env.DEV && (await import('./dev/mock'));
 
 const target = document.getElementById('app');
 
