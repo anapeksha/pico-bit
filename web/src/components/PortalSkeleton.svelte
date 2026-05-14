@@ -1,30 +1,23 @@
+<script lang="ts">
+  const statCards = [
+    { label: 'w-16', value: 'w-28' },
+    { label: 'w-20', value: 'w-24' },
+    { label: 'w-14', value: 'w-20' },
+    { label: 'w-16', value: 'w-32' },
+  ];
+</script>
+
 <div class="animate-pulse grid gap-4">
   <!-- TopSection: 4 stat cards matching TopSection.svelte layout -->
   <div class="flex flex-wrap justify-around gap-2">
-    <div
-      class="min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 sm:basis-[calc(50%-0.25rem)] xl:basis-[calc(25%-0.375rem)]"
-    >
-      <div class="mb-2 h-2.5 w-16 rounded bg-picobit-border-strong opacity-60"></div>
-      <div class="h-4 w-28 rounded bg-picobit-border-strong opacity-60"></div>
-    </div>
-    <div
-      class="min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 sm:basis-[calc(50%-0.25rem)] xl:basis-[calc(25%-0.375rem)]"
-    >
-      <div class="mb-2 h-2.5 w-20 rounded bg-picobit-border-strong opacity-60"></div>
-      <div class="h-4 w-24 rounded bg-picobit-border-strong opacity-60"></div>
-    </div>
-    <div
-      class="min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 sm:basis-[calc(50%-0.25rem)] xl:basis-[calc(25%-0.375rem)]"
-    >
-      <div class="mb-2 h-2.5 w-14 rounded bg-picobit-border-strong opacity-60"></div>
-      <div class="h-4 w-20 rounded bg-picobit-border-strong opacity-60"></div>
-    </div>
-    <div
-      class="min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 sm:basis-[calc(50%-0.25rem)] xl:basis-[calc(25%-0.375rem)]"
-    >
-      <div class="mb-2 h-2.5 w-16 rounded bg-picobit-border-strong opacity-60"></div>
-      <div class="h-4 w-32 rounded bg-picobit-border-strong opacity-60"></div>
-    </div>
+    {#each statCards as card}
+      <div
+        class="min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 sm:basis-[calc(50%-0.25rem)] xl:basis-[calc(25%-0.375rem)]"
+      >
+        <div class="mb-2 h-2.5 {card.label} rounded bg-picobit-border-strong opacity-60"></div>
+        <div class="h-4 {card.value} rounded bg-picobit-border-strong opacity-60"></div>
+      </div>
+    {/each}
   </div>
 
   <!-- Three-column grid matching App.svelte layout -->

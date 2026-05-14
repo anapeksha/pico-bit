@@ -1,24 +1,8 @@
 <script lang="ts">
   import Copy from '@lucide/svelte/icons/copy';
 
+  import { agentData } from '../lib/loot';
   import { loot } from '../stores/loot';
-
-  const TRACKING_KEYS = new Set([
-    'execution_failure_reason',
-    'execution_state',
-    'execution_step',
-    'source',
-    'target_os',
-    'timestamp',
-  ]);
-
-  function agentData(record: Record<string, unknown>): Record<string, unknown> {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(record)) {
-      if (!TRACKING_KEYS.has(k)) out[k] = v;
-    }
-    return out;
-  }
 
   function esc(s: string): string {
     return s

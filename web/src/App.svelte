@@ -10,7 +10,7 @@
   import TopSection from './sections/TopSection.svelte';
   import { startPortal } from './stores/bootstrap';
   import { initTheme } from './stores/theme';
-  import { notice, showNotice } from './stores/ui';
+  import { globalError, notice, showNotice } from './stores/ui';
 
   type Props = {
     authState?: 'login' | 'portal';
@@ -34,31 +34,71 @@
   onMount(() => {
     const stopTheme = initTheme();
     if (authState !== 'portal') return stopTheme;
-    let stopStream = () => {};
 
-    portalPromise = startPortal()
-      .then((stop) => {
-        stopStream = stop;
-      })
-      .catch((error) => {
+    let stop: (() => void) | null = null;
+    let cancelled = false;
+
+    const portalTask = startPortal();
+
+    portalTask.then((fn) => {
+      if (cancelled) fn();
+      else stop = fn;
+    });
+
+    portalPromise = portalTask
+      .then(() => {})
+      .catch((error: Error) => {
         showNotice(error.message || 'Portal bootstrap failed.', 'error');
         throw error;
       });
 
     return () => {
-      stopStream();
+      cancelled = true;
+      stop?.();
       stopTheme();
     };
   });
 
-  function handleBoundaryError(error: unknown, reset: () => void) {
+  function handleBoundaryError(error: unknown) {
     console.error('Portal render error:', error);
+    showNotice((error as Error)?.message || 'An unexpected error occurred.', 'error');
   }
 </script>
 
 <svelte:body class:auth-login={authState === 'login'} />
 
-{#if authState === 'login'}
+{#if $globalError}
+  <div
+    class="fixed inset-0 z-[9999] flex min-h-screen flex-col items-center justify-center bg-picobit-surface-3 p-6"
+    role="alert"
+    aria-live="assertive"
+  >
+    <div class="w-full max-w-lg rounded-[14px] border border-picobit-danger-border bg-picobit-surface p-8 shadow-xl">
+      <p class="mb-1 text-[11px] font-medium uppercase tracking-widest text-picobit-danger opacity-70">
+        Fatal Error
+      </p>
+      <h1 class="m-0 mb-4 text-[18px] font-semibold tracking-tight text-picobit-text">
+        Something went wrong
+      </h1>
+      <p class="m-0 mb-6 font-mono text-[13px] leading-relaxed text-picobit-text-2">
+        {$globalError.message || 'An unexpected error occurred.'}
+      </p>
+      {#if import.meta.env.DEV && $globalError.stack}
+        <pre
+          class="mb-6 overflow-auto rounded-lg bg-picobit-surface-2 p-3.5 font-mono text-[11px] leading-relaxed text-picobit-text-3 whitespace-pre-wrap"
+          aria-label="Stack trace"
+        >{$globalError.stack}</pre>
+      {/if}
+      <button
+        class="inline-flex h-9 cursor-pointer items-center rounded-lg border border-picobit-text bg-picobit-text px-4 text-[13px] font-medium text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]"
+        type="button"
+        onclick={() => window.location.reload()}
+      >
+        Reload page
+      </button>
+    </div>
+  </div>
+{:else if authState === 'login'}
   <section
     class="grid min-h-screen place-items-center bg-picobit-surface-3 p-6"
   >
