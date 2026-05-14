@@ -1,6 +1,7 @@
 import gc
 import os
 
+from status_led import STATUS_LED
 from usb import (
     USB_AGENT_UNIX_NAME,
     USB_AGENT_WINDOWS_NAME,
@@ -249,6 +250,10 @@ class _BinaryMixin:
                     remaining -= len(chunk)
         except (OSError, MemoryError):
             _clear_staged_binaries()
+            try:
+                await STATUS_LED.show('binary_inject_failed')
+            except Exception:  # noqa: BLE001
+                pass
             await self._send_json(
                 writer,
                 partial,
@@ -281,6 +286,10 @@ class _BinaryMixin:
             _clear_staged_binaries(keep=target_path)
         except OSError:
             _clear_staged_binaries()
+            try:
+                await STATUS_LED.show('binary_inject_failed')
+            except Exception:  # noqa: BLE001
+                pass
             await self._send_json(
                 writer,
                 partial,

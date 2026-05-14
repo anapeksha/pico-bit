@@ -229,7 +229,10 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         self._seed_payload()
 
         await STATUS_LED.show('setup_ap_starting')
-        await self._start_ap()
+        try:
+            await self._start_ap()
+        except OSError:
+            await STATUS_LED.halt('setup_ap_failed')
         await STATUS_LED.show('setup_ap_ready')
 
         try:
@@ -239,8 +242,8 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
                 self.port,
                 backlog=3,
             )
-        except OSError as exc:
-            raise RuntimeError('setup server bind failed') from exc
+        except OSError:
+            await STATUS_LED.halt('setup_server_failed')
 
         await STATUS_LED.show('setup_server_ready')
         STATUS_LED.on()
@@ -256,6 +259,11 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         except Exception as exc:  # noqa: BLE001
             message, notice = f'Runtime error: {type(exc).__name__}', 'error'
         self._record_run(script, message, notice, source=source)
+        if notice != 'success':
+            try:
+                await STATUS_LED.show('binary_inject_failed')
+            except Exception:  # noqa: BLE001
+                pass
         return message, notice
 
     async def _dispatch(self, request, writer) -> None:
@@ -369,6 +377,10 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
                 return
         except Exception:
             return
+        try:
+            await STATUS_LED.show('setup_ap_retry')
+        except Exception:  # noqa: BLE001
+            pass
         try:
             await self._start_ap()
         except Exception:

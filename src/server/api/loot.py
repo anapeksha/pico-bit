@@ -1,8 +1,8 @@
+import asyncio
 import gc
 import json
 import os
 
-from helpers import sleep_ms
 from status_led import STATUS_LED
 
 from .._http import _JSON_HEADERS, _LOOT_FILE, _NO_STORE, _merge_headers, _ticks_ms
@@ -10,8 +10,7 @@ from ..execution_stream import ExecutionStreamState
 from ..loot_crypto import decrypt, derive_key, encrypt
 from ..sse import sse_comment, sse_event
 
-_EXECUTION_STREAM_HEARTBEAT_MS = 15_000
-_EXECUTION_STREAM_STEP_MS = 250
+_EXECUTION_STREAM_HEARTBEAT_S = 15
 _USB_LOOT_FILE = 'loot-usb.json'
 
 
@@ -38,21 +37,24 @@ class _LootMixin:
     def _serialize_loot_record(self, record: dict[str, object]) -> str:
         return json.dumps(record)
 
-    def _read_loot_text(self) -> str:
+    async def _read_loot_text(self) -> str:
+        await asyncio.sleep(0)
         with open(_LOOT_FILE, 'rb') as f:
             raw = f.read()
-        return decrypt(raw, self._loot_key())
+        return await decrypt(raw, self._loot_key())
 
-    def _save_loot_data(self, data, *, source: str) -> dict[str, object]:
+    async def _save_loot_data(self, data, *, source: str) -> dict[str, object]:
         record = self._normalize_loot_record(data)
         record['source'] = source
         text = self._serialize_loot_record(record)
+        await asyncio.sleep(0)
         gc.collect()
+        encrypted = await encrypt(text, self._loot_key())
         with open(_LOOT_FILE, 'wb') as f:
-            f.write(encrypt(text, self._loot_key()))
+            f.write(encrypted)
         return record
 
-    def _init_execution_loot(self, target_os: str) -> None:
+    async def _init_execution_loot(self, target_os: str) -> None:
         """Write a skeleton loot.json when injection begins (HID connection established)."""
         record: dict[str, object] = {
             'execution_step': 'Detect',
@@ -64,8 +66,9 @@ class _LootMixin:
         }
         text = json.dumps(record)
         try:
+            encrypted = await encrypt(text, self._loot_key())
             with open(_LOOT_FILE, 'wb') as f:
-                f.write(encrypt(text, self._loot_key()))
+                f.write(encrypted)
         except (OSError, MemoryError):
             pass
 
@@ -77,8 +80,12 @@ class _LootMixin:
             await self._send_json(writer, request, '400 Bad Request', {'message': 'Invalid JSON.'})
             return
         try:
-            record = self._save_loot_data(data, source='network')
+            record = await self._save_loot_data(data, source='network')
         except (OSError, MemoryError):
+            try:
+                await STATUS_LED.show('binary_inject_failed')
+            except Exception:  # noqa: BLE001
+                pass
             await self._send_json(
                 writer, request, '500 Internal Server Error', {'message': 'Write failed.'}
             )
@@ -93,6 +100,7 @@ class _LootMixin:
 
     async def _handle_usb_loot_import(self, request, writer) -> None:
         gc.collect()
+        await asyncio.sleep(0)
         try:
             with open(_USB_LOOT_FILE) as f:
                 raw = f.read()
@@ -117,8 +125,12 @@ class _LootMixin:
             return
 
         try:
-            record = self._save_loot_data(data, source='usb_drive')
+            record = await self._save_loot_data(data, source='usb_drive')
         except (OSError, MemoryError):
+            try:
+                await STATUS_LED.show('binary_inject_failed')
+            except Exception:  # noqa: BLE001
+                pass
             await self._send_json(
                 writer,
                 request,
@@ -149,7 +161,7 @@ class _LootMixin:
 
     async def _handle_loot_get(self, request, writer) -> None:
         try:
-            text = self._read_loot_text()
+            text = await self._read_loot_text()
         except OSError:
             await self._send_json(
                 writer,
@@ -168,7 +180,7 @@ class _LootMixin:
 
     async def _handle_loot_download(self, request, writer) -> None:
         try:
-            text = self._read_loot_text()
+            text = await self._read_loot_text()
         except OSError:
             await self._send_json(
                 writer,
@@ -219,18 +231,16 @@ class _LootMixin:
                 sent += len(events)
                 await writer.drain()
 
-            if self._execution_stream.is_complete() and not self._execution_stream.events_from(
-                sent
-            ):
+            if self._execution_stream.is_complete():
                 writer.write(sse_event(event='done', data='{}'))
                 await writer.drain()
                 return
 
             waiter = self._execution_stream.waiter()
-            waited = 0
-            while not waiter.is_set() and waited < _EXECUTION_STREAM_HEARTBEAT_MS:
-                await sleep_ms(_EXECUTION_STREAM_STEP_MS)
-                waited += _EXECUTION_STREAM_STEP_MS
+            try:
+                await asyncio.wait_for(waiter.wait(), _EXECUTION_STREAM_HEARTBEAT_S)
+            except TimeoutError:
+                pass
 
             if not self._execution_stream.events_from(sent):
                 writer.write(sse_comment('keepalive'))
