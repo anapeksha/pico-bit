@@ -277,7 +277,7 @@ def test_handle_loot_receive_persists_timestamp_and_publishes(tmp_path, monkeypa
     asyncio.run(server._handle_loot_receive(request, writer))
     status, payload = _json_response(writer)
 
-    saved = json.loads(loot_crypto_decrypt(loot_file.read_bytes(), _TEST_LOOT_KEY))
+    saved = json.loads(asyncio.run(loot_crypto_decrypt(loot_file.read_bytes(), _TEST_LOOT_KEY)))
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['message'] == 'Loot saved.'
@@ -289,8 +289,10 @@ def test_handle_loot_receive_persists_timestamp_and_publishes(tmp_path, monkeypa
 def test_handle_loot_get_returns_saved_record(tmp_path, monkeypatch) -> None:
     loot_file = tmp_path / 'loot.json'
     loot_file.write_bytes(
-        loot_crypto_encrypt(
-            json.dumps({'system': {'hostname': 'pico'}, 'timestamp': 123}), _TEST_LOOT_KEY
+        asyncio.run(
+            loot_crypto_encrypt(
+                json.dumps({'system': {'hostname': 'pico'}, 'timestamp': 123}), _TEST_LOOT_KEY
+            )
         )
     )
     server = SetupServer()
@@ -313,8 +315,10 @@ def test_handle_loot_get_returns_saved_record(tmp_path, monkeypatch) -> None:
 def test_handle_loot_download_returns_json_attachment(tmp_path, monkeypatch) -> None:
     loot_file = tmp_path / 'loot.json'
     loot_file.write_bytes(
-        loot_crypto_encrypt(
-            json.dumps({'system': {'arch': 'aarch64'}, 'timestamp': 456}), _TEST_LOOT_KEY
+        asyncio.run(
+            loot_crypto_encrypt(
+                json.dumps({'system': {'arch': 'aarch64'}, 'timestamp': 456}), _TEST_LOOT_KEY
+            )
         )
     )
     server = SetupServer()
@@ -358,7 +362,7 @@ def test_handle_usb_loot_import_promotes_usb_file_to_canonical_loot(tmp_path, mo
 
     asyncio.run(server._handle_api(request, writer))
     status, payload = _json_response(writer)
-    saved = json.loads(loot_crypto_decrypt(loot_file.read_bytes(), _TEST_LOOT_KEY))
+    saved = json.loads(asyncio.run(loot_crypto_decrypt(loot_file.read_bytes(), _TEST_LOOT_KEY)))
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['notice'] == 'success'

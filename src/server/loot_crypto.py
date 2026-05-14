@@ -22,6 +22,7 @@ treated as unencrypted plaintext so existing unencrypted loot.json files
 continue to be readable.
 """
 
+import asyncio
 import hashlib
 import os
 
@@ -35,13 +36,15 @@ def derive_key(ssid: str, password: str) -> bytes:
     return hashlib.sha256((ssid + ':' + password).encode('utf-8')).digest()
 
 
-def _keystream(key: bytes, nonce: bytes, length: int) -> bytearray:
+async def _keystream(key: bytes, nonce: bytes, length: int) -> bytearray:
     out = bytearray()
     counter = 0
     while len(out) < length:
         ctr = bytes([(counter >> 8) & 0xFF, counter & 0xFF])
         out.extend(hashlib.sha256(key + nonce + ctr).digest())
         counter += 1
+        if counter % 8 == 0:
+            await asyncio.sleep(0)
     del out[length:]
     return out
 
@@ -92,18 +95,18 @@ def _decompress(data: bytes) -> bytes:
         return data
 
 
-def encrypt(plaintext: str, key: bytes) -> bytes:
+async def encrypt(plaintext: str, key: bytes) -> bytes:
     """Compress and encrypt a plaintext JSON string; return opaque bytes."""
     try:
         nonce = os.urandom(_NONCE_LEN)
     except (AttributeError, OSError):
         nonce = b'\x00' * _NONCE_LEN
     compressed = _compress(plaintext.encode('utf-8'))
-    ks = _keystream(key, nonce, len(compressed))
+    ks = await _keystream(key, nonce, len(compressed))
     return _MAGIC + nonce + _xor(compressed, ks)
 
 
-def decrypt(data: bytes, key: bytes) -> str:
+async def decrypt(data: bytes, key: bytes) -> str:
     """Decrypt and decompress loot bytes; returns the JSON string.
 
     Files that do not carry the PCB1 magic are assumed to be unencrypted
@@ -113,6 +116,6 @@ def decrypt(data: bytes, key: bytes) -> str:
         return data.decode('utf-8', 'ignore')
     nonce = data[4:_HEADER_LEN]
     encrypted = data[_HEADER_LEN:]
-    ks = _keystream(key, nonce, len(encrypted))
+    ks = await _keystream(key, nonce, len(encrypted))
     compressed = _xor(encrypted, ks)
     return _decompress(compressed).decode('utf-8')
