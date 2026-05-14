@@ -13,6 +13,9 @@ if (shouldMock) {
   const runs: MockRecord[] = [];
   let staged = false;
 
+  // Artificial latency so skeleton loaders are visible during development.
+  const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
   const jsonResponse = (body: unknown, status = 200) =>
     new Response(JSON.stringify(body), {
       status,
@@ -66,6 +69,7 @@ if (shouldMock) {
     }
 
     if (url === '/api/bootstrap') {
+      await delay(1500);
       return jsonResponse({
         ap_password: 'PicoBit24Net',
         ap_ssid: 'PicoBit',
@@ -187,6 +191,7 @@ if (shouldMock) {
     }
 
     if (url === '/api/loot/import-usb' && method === 'POST') {
+      await delay(1200);
       loot = {
         execution_step: 'Cleanup',
         execution_state: 'success',

@@ -28,7 +28,6 @@ import os
 _MAGIC = b'PCB1'
 _NONCE_LEN = 4
 _HEADER_LEN = len(_MAGIC) + _NONCE_LEN  # 8
-_BLOCK = 32  # SHA-256 digest size
 
 
 def derive_key(ssid: str, password: str) -> bytes:

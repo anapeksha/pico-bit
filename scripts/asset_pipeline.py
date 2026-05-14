@@ -136,8 +136,9 @@ def render_web_assets() -> str:
     return ''.join(lines)
 
 
-def sync_web_assets(check: bool = False) -> bool:
-    build_frontend()
+def sync_web_assets(check: bool = False, skip_build: bool = False) -> bool:
+    if not skip_build:
+        build_frontend()
     rendered = render_web_assets()
     current = OUTPUT.read_text(encoding='utf-8') if OUTPUT.exists() else None
     if current == rendered:

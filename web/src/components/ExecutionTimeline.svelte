@@ -52,7 +52,7 @@
         </div>
 
         {#if !isLast}
-          <div class="h-px w-full bg-neutral-700 sm:block"></div>
+          <div class="h-px w-full bg-picobit-border-strong sm:block"></div>
         {/if}
       </div>
 

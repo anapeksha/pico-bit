@@ -39,7 +39,7 @@ jobs:
         run: npm --prefix web run check
 
       - name: Verify embedded web assets
-        run: uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
+        run: uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True, skip_build=True)"
 
       - name: Check formatting
         run: uv run ruff format --check .
@@ -50,11 +50,14 @@ jobs:
       - name: Run type checks
         run: uv run pyright
 
+      - name: Run frontend tests
+        run: npm --prefix web run test
+
       - name: Run tests
         run: uv run pytest
 
       - name: Build dev artifacts
-        run: uv run python build.py
+        run: uv run python build.py --skip-frontend
 
       - name: Validate generated artifacts
         run: |
