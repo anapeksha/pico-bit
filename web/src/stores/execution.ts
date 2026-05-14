@@ -42,7 +42,7 @@ let executionStream: EventSource | null = null;
  * Resets all steps to `'idle'` before connecting.
  * Returns `stopExecutionStream` as a teardown function.
  */
-export function startExecutionStream(): () => void {
+export function startExecutionStream(onStop?: () => void): () => void {
   stopExecutionStream();
   resetExecution();
 
@@ -61,10 +61,12 @@ export function startExecutionStream(): () => void {
 
   executionStream.addEventListener('done', () => {
     stopExecutionStream();
+    onStop?.();
   });
 
   executionStream.onerror = () => {
     stopExecutionStream();
+    onStop?.();
   };
 
   return stopExecutionStream;

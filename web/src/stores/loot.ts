@@ -1,13 +1,9 @@
 /**
- * Agent loot state: snapshot loading, USB drive import, and live SSE stream.
+ * Agent loot state: snapshot loading and USB drive import.
  *
- * On startup, `loadLootSnapshot` fetches any existing loot from the device.
- * `startLootStream` then opens a persistent SSE connection that pushes
- * incremental updates as the agent writes data back to the Pico drive.
- * On SSE error the stream closes and falls back to a one-shot snapshot fetch.
- *
- * `importUsbLoot` triggers a manual read of the USB drive loot file — useful
- * when the drive already contained data before this portal session started.
+ * `loadLootSnapshot` fetches any existing loot from the device on startup and
+ * whenever the execution stream signals completion.
+ * `importUsbLoot` triggers a manual read of the USB drive loot file.
  */
 import { writable } from 'svelte/store';
 
@@ -20,8 +16,6 @@ export const loot = writable<LootRecord | null>(null);
 
 /** `true` while a USB loot import request is in flight. */
 export const importingLoot = writable(false);
-
-let lootStream: EventSource | null = null;
 
 /**
  * Fetch the current loot snapshot from `/api/loot`.
@@ -54,30 +48,4 @@ export async function importUsbLoot() {
   } finally {
     importingLoot.set(false);
   }
-}
-
-function applyLootUpdate(data: MessageEvent<string>) {
-  try {
-    loot.set(JSON.parse(data.data));
-  } catch {
-    // Ignore malformed stream frames; the snapshot path remains available.
-  }
-}
-
-/**
- * Open an SSE connection to `/api/loot/stream` and update `loot` on each
- * `loot` event.  On error the stream closes and falls back to a snapshot fetch.
- * Returns a teardown function — call it on component destroy or portal stop.
- */
-export function startLootStream(): () => void {
-  if (lootStream || typeof EventSource === 'undefined') return () => {};
-  lootStream = new EventSource('/api/loot/stream');
-  lootStream.addEventListener('loot', applyLootUpdate as EventListener);
-  lootStream.onerror = () => {
-    loadLootSnapshot().catch(() => {});
-  };
-  return () => {
-    lootStream?.close();
-    lootStream = null;
-  };
 }

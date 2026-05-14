@@ -13,9 +13,9 @@ import { derived, get, writable } from 'svelte/store';
 
 import { requestJson, uploadBinaryFile } from '../lib/api';
 import type { NoticeTone, TargetOs } from '../lib/types';
-import { startExecutionStream } from './execution';
+import { resetExecution, startExecutionStream } from './execution';
 import { keyboard } from './keyboard';
-import { runHistory } from './run';
+import { loadLootSnapshot } from './loot';
 import { applyUsbAgent } from './usb';
 
 const OS_CODE_TO_TARGET: Record<string, TargetOs> = {
@@ -40,10 +40,17 @@ export const uploadingBinary = writable(false);
 export const injectingBinary = writable(false);
 
 /** Target OS for the HID stager script, derived from the active keyboard OS selection. */
-export const binaryTargetOs = derived(keyboard, ($k) => OS_CODE_TO_TARGET[$k.os] ?? 'windows');
+export const binaryTargetOs = derived(
+  keyboard,
+  ($k) => OS_CODE_TO_TARGET[$k.os] ?? 'windows',
+);
 
 /** Section-local status notice shown inside Binary Armory. */
-export const armoryNotice = writable<{ message: string; tone: NoticeTone; visible: boolean }>({
+export const armoryNotice = writable<{
+  message: string;
+  tone: NoticeTone;
+  visible: boolean;
+}>({
   message: '',
   tone: 'quiet',
   visible: false,
@@ -63,11 +70,16 @@ export async function uploadBinary(file: File) {
   uploadProgress.set(0);
   setArmoryNotice('Uploading...', 'quiet');
   try {
-    const data = await uploadBinaryFile(file, (percent) => uploadProgress.set(percent));
+    const data = await uploadBinaryFile(file, (percent) =>
+      uploadProgress.set(percent),
+    );
     hasBinary.set(true);
     stagedBinaryName.set(data.filename || file.name);
     applyUsbAgent(data.usb_agent);
-    setArmoryNotice(data.message || 'Upload complete.', data.notice || 'success');
+    setArmoryNotice(
+      data.message || 'Upload complete.',
+      data.notice || 'success',
+    );
   } catch (error: any) {
     setArmoryNotice(error.message || 'Upload failed.', 'error');
   } finally {
@@ -84,21 +96,29 @@ export async function uploadBinary(file: File) {
 export async function injectBinary() {
   injectingBinary.set(true);
   setArmoryNotice('Injecting stager...', 'quiet');
-  const stopStream = startExecutionStream();
+
+  let data: Record<string, any>;
   try {
-    const data = await requestJson<Record<string, any>>('/api/inject_binary', {
+    data = await requestJson<Record<string, any>>('/api/inject_binary', {
       method: 'POST',
       body: JSON.stringify({ os: get(binaryTargetOs) }),
     });
-    applyUsbAgent(data.usb_agent);
-    if (data.run_history) runHistory.set(data.run_history);
-    setArmoryNotice(data.message || 'Injected.', data.notice || 'success');
   } catch (error: any) {
     applyUsbAgent(error.data?.usb_agent);
-    if (error.data?.run_history) runHistory.set(error.data.run_history);
     setArmoryNotice(error.message || 'Injection failed.', 'error');
-  } finally {
+    resetExecution();
     injectingBinary.set(false);
-    stopStream();
+    return;
   }
+
+  // POST returned — HID stager is running in the background on the device.
+  // Open the execution SSE stream now (no concurrent POST); it self-closes on `done`.
+  applyUsbAgent(data.usb_agent);
+  setArmoryNotice(data.message || 'Injection started.', 'success');
+
+  startExecutionStream(() => {
+    // Fires on `done` (success) or SSE error — clear state either way.
+    loadLootSnapshot().catch(() => {});
+    injectingBinary.set(false);
+  });
 }

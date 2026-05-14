@@ -38,7 +38,6 @@ from .api.payload import _PayloadMixin
 from .api.usb_agent import _UsbAgentMixin
 from .app import AppRenderer
 from .execution_stream import ExecutionStreamState
-from .loot_stream import LootStreamState
 
 __all__ = [
     'SetupServer',
@@ -61,7 +60,6 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         self._ap_ip = _DEFAULT_AP_IP
         self._ap_password_in_use = AP_PASSWORD
         self._keyboard_layout = DEFAULT_LAYOUT_CODE
-        self._loot_stream = LootStreamState()
         self._execution_stream = ExecutionStreamState()
         self._usb = USB
         self._payload_seeded = False
@@ -255,6 +253,8 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             message, notice = f'Error: {exc}', 'error'
         except OSError as exc:
             message, notice = f'USB error: {exc}', 'error'
+        except Exception as exc:  # noqa: BLE001
+            message, notice = f'Runtime error: {type(exc).__name__}', 'error'
         self._record_run(script, message, notice, source=source)
         return message, notice
 

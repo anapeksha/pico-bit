@@ -8,11 +8,8 @@ from status_led import STATUS_LED
 from .._http import _JSON_HEADERS, _LOOT_FILE, _NO_STORE, _merge_headers, _ticks_ms
 from ..execution_stream import ExecutionStreamState
 from ..loot_crypto import decrypt, derive_key, encrypt
-from ..loot_stream import LootStreamState
 from ..sse import sse_comment, sse_event
 
-_LOOT_STREAM_HEARTBEAT_MS = 15_000
-_LOOT_STREAM_STEP_MS = 250
 _EXECUTION_STREAM_HEARTBEAT_MS = 15_000
 _EXECUTION_STREAM_STEP_MS = 250
 _USB_LOOT_FILE = 'loot-usb.json'
@@ -20,7 +17,6 @@ _USB_LOOT_FILE = 'loot-usb.json'
 
 class _LootMixin:
     # Attributes provided by SetupServer.__init__
-    _loot_stream: LootStreamState
     _execution_stream: ExecutionStreamState
     _ap_password_in_use: str
 
@@ -47,9 +43,6 @@ class _LootMixin:
             raw = f.read()
         return decrypt(raw, self._loot_key())
 
-    def _publish_loot_text(self, text: str) -> int:
-        return self._loot_stream.publish(text)
-
     def _save_loot_data(self, data, *, source: str) -> dict[str, object]:
         record = self._normalize_loot_record(data)
         record['source'] = source
@@ -57,7 +50,6 @@ class _LootMixin:
         gc.collect()
         with open(_LOOT_FILE, 'wb') as f:
             f.write(encrypt(text, self._loot_key()))
-        self._publish_loot_text(text)
         return record
 
     def _init_execution_loot(self, target_os: str) -> None:
@@ -74,7 +66,6 @@ class _LootMixin:
         try:
             with open(_LOOT_FILE, 'wb') as f:
                 f.write(encrypt(text, self._loot_key()))
-            self._publish_loot_text(text)
         except (OSError, MemoryError):
             pass
 
@@ -197,58 +188,6 @@ class _LootMixin:
                 _NO_STORE,
             ),
         )
-
-    async def _handle_loot_stream(self, request, writer) -> None:
-        """Stream loot updates over SSE.
-
-        SSE is a better fit than WebSockets here:
-        - the browser only needs one-way updates
-        - the Pico avoids websocket upgrade + frame handling
-        - EventSource reconnects automatically if the AP bounces
-        """
-        await self._send_headers(
-            writer,
-            request,
-            '200 OK',
-            headers=_merge_headers(
-                {
-                    'Cache-Control': 'no-store',
-                    'Content-Type': 'text/event-stream; charset=utf-8',
-                    'X-Accel-Buffering': 'no',
-                },
-                _NO_STORE,
-            ),
-        )
-
-        current_revision, current_text = self._loot_stream.snapshot()
-        if current_text:
-            writer.write(sse_event(event='loot', data=current_text, event_id=current_revision))
-        else:
-            writer.write(sse_event(event='empty', data='{}', event_id=current_revision))
-        await writer.drain()
-
-        last_revision = current_revision
-        while True:
-            waiter = self._loot_stream.waiter()
-            waited_ms = 0
-            while not waiter.is_set() and waited_ms < _LOOT_STREAM_HEARTBEAT_MS:
-                await sleep_ms(_LOOT_STREAM_STEP_MS)
-                waited_ms += _LOOT_STREAM_STEP_MS
-
-            current_revision, current_text = self._loot_stream.snapshot()
-            if current_revision != last_revision:
-                if current_text:
-                    writer.write(
-                        sse_event(event='loot', data=current_text, event_id=current_revision)
-                    )
-                else:
-                    writer.write(sse_event(event='empty', data='{}', event_id=current_revision))
-                await writer.drain()
-                last_revision = current_revision
-                continue
-
-            writer.write(sse_comment('keepalive'))
-            await writer.drain()
 
     async def _handle_execution_stream(self, request, writer) -> None:
         """Stream binary injection execution-step events over SSE.
