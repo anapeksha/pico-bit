@@ -9,13 +9,20 @@
  * `armoryNotice` is a section-local notice distinct from the global toast;
  * use `setArmoryNotice` rather than writing to the store directly.
  */
-import { get, writable } from 'svelte/store';
+import { derived, get, writable } from 'svelte/store';
 
 import { requestJson, uploadBinaryFile } from '../lib/api';
 import type { NoticeTone, TargetOs } from '../lib/types';
 import { startExecutionStream } from './execution';
+import { keyboard } from './keyboard';
 import { runHistory } from './run';
 import { applyUsbAgent } from './usb';
+
+const OS_CODE_TO_TARGET: Record<string, TargetOs> = {
+  MAC: 'macos',
+  LINUX: 'linux',
+  WIN: 'windows',
+};
 
 /** `true` when a staged binary is present on the device. */
 export const hasBinary = writable(false);
@@ -32,8 +39,8 @@ export const uploadingBinary = writable(false);
 /** `true` while the HID injection POST is in flight. */
 export const injectingBinary = writable(false);
 
-/** Target OS for the HID stager script (`'windows'`, `'mac'`, or `'linux'`). */
-export const binaryTargetOs = writable<TargetOs>('windows');
+/** Target OS for the HID stager script, derived from the active keyboard OS selection. */
+export const binaryTargetOs = derived(keyboard, ($k) => OS_CODE_TO_TARGET[$k.os] ?? 'windows');
 
 /** Section-local status notice shown inside Binary Armory. */
 export const armoryNotice = writable<{ message: string; tone: NoticeTone; visible: boolean }>({
@@ -77,7 +84,7 @@ export async function uploadBinary(file: File) {
 export async function injectBinary() {
   injectingBinary.set(true);
   setArmoryNotice('Injecting stager...', 'quiet');
-  startExecutionStream();
+  const stopStream = startExecutionStream();
   try {
     const data = await requestJson<Record<string, any>>('/api/inject_binary', {
       method: 'POST',
@@ -92,5 +99,6 @@ export async function injectBinary() {
     setArmoryNotice(error.message || 'Injection failed.', 'error');
   } finally {
     injectingBinary.set(false);
+    stopStream();
   }
 }

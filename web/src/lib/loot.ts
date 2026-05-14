@@ -1,5 +1,27 @@
 import type { LootRecord } from './types';
 
+export const TRACKING_KEYS = new Set([
+  'execution_failure_reason',
+  'execution_state',
+  'execution_step',
+  'source',
+  'target_os',
+  'timestamp',
+]);
+
+export function hasAgentData(record: Record<string, unknown> | null): boolean {
+  if (!record) return false;
+  return Object.keys(record).some((k) => !TRACKING_KEYS.has(k));
+}
+
+export function agentData(record: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(record)) {
+    if (!TRACKING_KEYS.has(k)) out[k] = v;
+  }
+  return out;
+}
+
 export type LootRow = {
   label: string;
   mono?: boolean;

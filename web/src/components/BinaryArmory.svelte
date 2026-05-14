@@ -8,6 +8,7 @@
 
   import { fileDrop } from '../attachments/fileDrop';
   import { formatBytes, validateArmoryFile } from '../lib/binary';
+  import { hasAgentData } from '../lib/loot';
   import {
     armoryNotice,
     binaryTargetOs,
@@ -24,24 +25,9 @@
   import ExecutionTimeline from './ExecutionTimeline.svelte';
   import LootViewer from './LootViewer.svelte';
 
-  const TRACKING_KEYS = new Set([
-    'execution_failure_reason',
-    'execution_state',
-    'execution_step',
-    'source',
-    'target_os',
-    'timestamp',
-  ]);
-
-  function hasAgentData(record: Record<string, unknown> | null): boolean {
-    if (!record) return false;
-    return Object.keys(record).some((k) => !TRACKING_KEYS.has(k));
-  }
-
   let selectedFile = $state<File | null>(null);
   let fileInput = $state<HTMLInputElement | null>(null);
   let fileError = $state('');
-  let importPromise = $state<Promise<void>>(Promise.resolve());
 
   const buttonClass =
     'inline-flex h-9 cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 text-[13px] font-medium leading-none disabled:cursor-not-allowed disabled:opacity-40';
@@ -198,44 +184,36 @@
         </div>
       </div>
 
-      {#await importPromise}
-        <div class="h-24 animate-pulse rounded-lg bg-picobit-border"></div>
-      {:then}
-        <div class="relative">
-          {#if $effect.pending()}
-            <div
-              class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-picobit-surface/70 backdrop-blur-[2px]"
-            >
-              <span class="text-xs text-picobit-text-3">Importing…</span>
-            </div>
-          {/if}
-          {#if hasAgentData($loot)}
-            <LootViewer />
-          {:else}
-            <div
-              class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3"
-            >
-              <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">
-                USB stager:
-              </p>
-              <pre
-                class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">Backend-generated at injection time for {$binaryTargetOs}. It opens the host shell, writes a temporary runner script, executes payload.{$binaryTargetOs ===
-                'windows'
-                  ? 'exe'
-                  : 'bin'}, stores loot-usb.json on the Pico drive, then cleans up.</pre>
-            </div>
-          {/if}
-        </div>
-      {/await}
+      <div class="relative">
+        {#if $importingLoot}
+          <div
+            class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-picobit-surface/70 backdrop-blur-[2px]"
+          >
+            <span class="text-xs text-picobit-text-3">Importing…</span>
+          </div>
+        {/if}
+        {#if hasAgentData($loot)}
+          <LootViewer />
+        {:else}
+          <div
+            class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3"
+          >
+            <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">USB stager:</p>
+            <pre
+              class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">Backend-generated at injection time for {$binaryTargetOs}. It opens the host shell, writes a temporary runner script, executes payload.{$binaryTargetOs ===
+              'windows'
+                ? 'exe'
+                : 'bin'}, stores loot-usb.json on the Pico drive, then cleans up.</pre>
+          </div>
+        {/if}
+      </div>
 
       <div class="flex justify-end gap-1.5">
         <button
           class={lootGhostButton}
           type="button"
           disabled={$importingLoot}
-          onclick={() => {
-            importPromise = importUsbLoot();
-          }}
+          onclick={importUsbLoot}
           title="Import loot from USB drive"
         >
           <Import size={14} />
