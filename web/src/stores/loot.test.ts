@@ -82,33 +82,4 @@ describe('loot store', () => {
     expect(get(importingLoot)).toBe(false);
   });
 
-  it('startLootStream returns a teardown function', async () => {
-    const closeSpy = vi.fn();
-    const addEventListenerSpy = vi.fn();
-    vi.stubGlobal('EventSource', vi.fn(() => ({
-      addEventListener: addEventListenerSpy,
-      close: closeSpy,
-      onerror: null,
-    })));
-
-    const { startLootStream } = await freshImport();
-    const stop = startLootStream();
-    expect(typeof stop).toBe('function');
-    stop();
-    expect(closeSpy).toHaveBeenCalledOnce();
-    vi.unstubAllGlobals();
-    vi.stubGlobal('fetch', vi.fn());
-  });
-
-  it('startLootStream is a no-op when EventSource is not defined', async () => {
-    const originalEventSource = (globalThis as any).EventSource;
-    delete (globalThis as any).EventSource;
-
-    const { startLootStream } = await freshImport();
-    const stop = startLootStream();
-    expect(typeof stop).toBe('function');
-    stop();
-
-    (globalThis as any).EventSource = originalEventSource;
-  });
 });

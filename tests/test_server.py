@@ -278,15 +278,12 @@ def test_handle_loot_receive_persists_timestamp_and_publishes(tmp_path, monkeypa
     status, payload = _json_response(writer)
 
     saved = json.loads(loot_crypto_decrypt(loot_file.read_bytes(), _TEST_LOOT_KEY))
-    revision, published = server._loot_stream.snapshot()
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['message'] == 'Loot saved.'
     assert isinstance(payload['timestamp'], int)
     assert saved['system']['hostname'] == 'test-host'
     assert saved['timestamp'] == payload['timestamp']
-    assert revision == 1
-    assert json.loads(published)['timestamp'] == payload['timestamp']
 
 
 def test_handle_loot_get_returns_saved_record(tmp_path, monkeypatch) -> None:
@@ -362,14 +359,11 @@ def test_handle_usb_loot_import_promotes_usb_file_to_canonical_loot(tmp_path, mo
     asyncio.run(server._handle_api(request, writer))
     status, payload = _json_response(writer)
     saved = json.loads(loot_crypto_decrypt(loot_file.read_bytes(), _TEST_LOOT_KEY))
-    revision, published = server._loot_stream.snapshot()
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['notice'] == 'success'
     assert saved['system']['hostname'] == 'usb-host'
     assert saved['source'] == 'usb_drive'
-    assert revision == 1
-    assert json.loads(published)['source'] == 'usb_drive'
     assert not usb_loot_file.exists()
     assert shown == ['loot_imported']
 
@@ -482,11 +476,17 @@ def test_inject_binary_uses_usb_drive_delivery(tmp_path, monkeypatch) -> None:
     writer = FakeWriter()
     request = _request('/api/inject_binary', body={'os': 'linux'})
 
-    asyncio.run(server._handle_api(request, writer))
+    # Handler returns immediately; background task runs on sleep(0).
+    async def run() -> None:
+        await server._handle_api(request, writer)
+        await asyncio.sleep(0)
+
+    asyncio.run(run())
     status, payload = _json_response(writer)
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['notice'] == 'success'
+    assert payload['message'] == 'Injection started.'
     assert captured['source'] == 'binary:usb'
     assert 'payload.bin' in str(captured['script'])
     assert shown == ['binary_injecting']
@@ -524,11 +524,16 @@ def test_inject_binary_ignores_client_supplied_stager_command(tmp_path, monkeypa
         },
     )
 
-    asyncio.run(server._handle_api(request, writer))
+    async def run() -> None:
+        await server._handle_api(request, writer)
+        await asyncio.sleep(0)
+
+    asyncio.run(run())
     status, payload = _json_response(writer)
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['notice'] == 'success'
+    assert payload['message'] == 'Injection started.'
     assert captured['source'] == 'binary:usb'
     assert 'client-controlled' not in str(captured['script'])
     assert '/Volumes/*' in str(captured['script'])

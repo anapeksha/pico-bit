@@ -1,12 +1,11 @@
 /**
- * Application bootstrap: fetches device state on startup and wires up live streams.
+ * Application bootstrap: fetches device state on startup.
  *
  * `loadBootstrap` fetches `/api/bootstrap` and fans the response out to every
  * domain store so they all reflect the current device state in one round-trip.
  *
- * `startPortal` calls `loadBootstrap`, then opens the loot SSE stream and
- * returns its teardown function.  Call it inside `onMount` and return the
- * teardown so Svelte cleans up on unmount.
+ * `startPortal` calls `loadBootstrap` and returns a no-op teardown for
+ * symmetry with `onMount` conventions.
  */
 import { requestJson } from '../lib/api';
 import type { BootstrapState } from '../lib/types';
@@ -14,7 +13,7 @@ import { apPassword, apSsid, authEnabled } from './ap';
 import { hasBinary, stagedBinaryName } from './binary';
 import { payload, payloadState, validation } from './editor';
 import { applyKeyboardState, keyboardReady } from './keyboard';
-import { loadLootSnapshot, startLootStream } from './loot';
+import { loadLootSnapshot } from './loot';
 import { runHistory, seededThisBoot } from './run';
 import { showNotice } from './ui';
 import { applyUsbAgent } from './usb';
@@ -54,5 +53,5 @@ export async function loadBootstrap() {
  */
 export async function startPortal(): Promise<() => void> {
   await loadBootstrap();
-  return startLootStream();
+  return () => {};
 }

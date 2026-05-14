@@ -1,3 +1,4 @@
+import asyncio
 import gc
 import json
 
@@ -27,7 +28,6 @@ from status_led import STATUS_LED
 
 from .._http import _KEYBOARD_LAYOUT_FILE, _RUN_HISTORY_LIMIT, _ticks_ms
 from ..execution_stream import ExecutionStreamState
-from ..loot_stream import LootStreamState
 
 _BINARY_TARGET_OSES = {'windows', 'linux', 'macos'}
 
@@ -40,7 +40,6 @@ class _PayloadMixin:
     _payload_seeded: bool
     _run_history: list[dict[str, object]]
     _run_sequence: int
-    _loot_stream: LootStreamState
     _execution_stream: ExecutionStreamState
 
     # Methods provided by SetupServer / other mixins
@@ -56,7 +55,6 @@ class _PayloadMixin:
     async def _handle_loot_get(self, request, writer) -> None: ...
     async def _handle_loot_download(self, request, writer) -> None: ...
     async def _handle_usb_loot_import(self, request, writer) -> None: ...
-    async def _handle_loot_stream(self, request, writer) -> None: ...
     async def _handle_execution_stream(self, request, writer) -> None: ...
     async def _handle_usb_agent(self, request, writer) -> None: ...
     async def _send(self, writer, request, status: str, body, headers=None) -> None: ...
@@ -166,6 +164,30 @@ class _PayloadMixin:
 
     def record_run(self, script: str, message: str, notice: str, *, source: str) -> None:
         self._record_run(script, message, notice, source=source)
+
+    async def _run_binary_injection(self, target_os: str) -> None:
+        """Background task: type the stager script via HID and publish execution events.
+
+        Called via asyncio.create_task so /api/inject_binary can return 200 OK
+        immediately without blocking the HTTP connection while HID typing runs.
+        """
+        try:
+            await STATUS_LED.show('binary_injecting')
+            script = self._stager_script(target_os)
+            message, notice = await self._run_payload(script, source='binary:usb')
+        except Exception as exc:  # noqa: BLE001
+            message = f'Runtime error: {type(exc).__name__}'
+            notice = 'error'
+
+        if notice == 'success':
+            self._execution_stream.publish('Copy', 'success')
+            self._execution_stream.publish('Execute', 'loading')
+        else:
+            self._execution_stream.publish('Copy', 'error', reason=message)
+            try:
+                await STATUS_LED.show('binary_inject_failed')
+            except Exception:  # noqa: BLE001
+                pass
 
     def _bootstrap_state(self) -> dict[str, object]:
         message = ''
@@ -357,10 +379,6 @@ class _PayloadMixin:
             await self._handle_usb_loot_import(request, writer)
             return
 
-        if path == '/api/loot/stream' and method == 'GET':
-            await self._handle_loot_stream(request, writer)
-            return
-
         if path == '/api/usb-agent':
             await self._handle_usb_agent(request, writer)
             return
@@ -428,26 +446,17 @@ class _PayloadMixin:
             self._init_execution_loot(target_os)
             self._execution_stream.publish('Copy', 'loading')
 
-            await STATUS_LED.show('binary_injecting')
-            script = self._stager_script(target_os)
-            message, notice = await self._run_payload(script, source='binary:usb')
+            # Fire the HID stager in a background task so this HTTP response
+            # can return immediately — the execution SSE stream takes over.
+            asyncio.create_task(self._run_binary_injection(target_os))
 
-            if notice == 'success':
-                self._execution_stream.publish('Copy', 'success')
-                self._execution_stream.publish('Execute', 'loading')
-            else:
-                self._execution_stream.publish('Copy', 'error', reason=message)
-                await STATUS_LED.show('binary_inject_failed')
-
-            status = '200 OK' if notice == 'success' else '400 Bad Request'
             await self._send_json(
                 writer,
                 request,
-                status,
+                '200 OK',
                 {
-                    'message': message,
-                    'notice': notice,
-                    'run_history': self._recent_runs(),
+                    'message': 'Injection started.',
+                    'notice': 'success',
                     'usb_agent': self._usb_agent_state(),
                 },
             )
