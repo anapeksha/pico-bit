@@ -289,9 +289,11 @@ def test_handle_loot_receive_persists_timestamp_and_publishes(tmp_path, monkeypa
 def test_handle_loot_get_returns_saved_record(tmp_path, monkeypatch) -> None:
     loot_file = tmp_path / 'loot.json'
     loot_file.write_bytes(
-        asyncio.run(loot_crypto_encrypt(
-            json.dumps({'system': {'hostname': 'pico'}, 'timestamp': 123}), _TEST_LOOT_KEY
-        ))
+        asyncio.run(
+            loot_crypto_encrypt(
+                json.dumps({'system': {'hostname': 'pico'}, 'timestamp': 123}), _TEST_LOOT_KEY
+            )
+        )
     )
     server = SetupServer()
     monkeypatch.setattr(routes_loot, '_LOOT_FILE', str(loot_file))
@@ -313,9 +315,11 @@ def test_handle_loot_get_returns_saved_record(tmp_path, monkeypatch) -> None:
 def test_handle_loot_download_returns_json_attachment(tmp_path, monkeypatch) -> None:
     loot_file = tmp_path / 'loot.json'
     loot_file.write_bytes(
-        asyncio.run(loot_crypto_encrypt(
-            json.dumps({'system': {'arch': 'aarch64'}, 'timestamp': 456}), _TEST_LOOT_KEY
-        ))
+        asyncio.run(
+            loot_crypto_encrypt(
+                json.dumps({'system': {'arch': 'aarch64'}, 'timestamp': 456}), _TEST_LOOT_KEY
+            )
+        )
     )
     server = SetupServer()
     monkeypatch.setattr(routes_loot, '_LOOT_FILE', str(loot_file))
