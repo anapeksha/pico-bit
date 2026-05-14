@@ -215,12 +215,14 @@
             <div
               class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3"
             >
-              <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">USB stager:</p>
+              <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">
+                USB stager:
+              </p>
               <pre
                 class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">Backend-generated at injection time for {$binaryTargetOs}. It opens the host shell, writes a temporary runner script, executes payload.{$binaryTargetOs ===
-              'windows'
-                ? 'exe'
-                : 'bin'}, stores loot-usb.json on the Pico drive, then cleans up.</pre>
+                'windows'
+                  ? 'exe'
+                  : 'bin'}, stores loot-usb.json on the Pico drive, then cleans up.</pre>
             </div>
           {/if}
         </div>
@@ -231,7 +233,9 @@
           class={lootGhostButton}
           type="button"
           disabled={$importingLoot}
-          onclick={() => { importPromise = importUsbLoot(); }}
+          onclick={() => {
+            importPromise = importUsbLoot();
+          }}
           title="Import loot from USB drive"
         >
           <Import size={14} />

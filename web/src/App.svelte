@@ -9,8 +9,8 @@
   import RightSection from './sections/RightSection.svelte';
   import TopSection from './sections/TopSection.svelte';
   import { startPortal } from './stores/bootstrap';
-  import { notice, showNotice } from './stores/ui';
   import { initTheme } from './stores/theme';
+  import { notice, showNotice } from './stores/ui';
 
   type Props = {
     authState?: 'login' | 'portal';
