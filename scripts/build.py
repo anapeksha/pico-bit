@@ -387,11 +387,11 @@ def build_bundle(build_overrides=None):
     print(f'Done -> {OUTPUT.relative_to(ROOT)} ({final_size} bytes)')
 
 
-def build(build_overrides=None) -> None:
+def build(build_overrides=None, skip_frontend: bool = False) -> None:
     if build_overrides is None:
         build_overrides = build_module_overrides(ROOT)
 
-    sync_web_assets()
+    sync_web_assets(skip_build=skip_frontend)
     build_bundle(build_overrides)
 
     source_dir = prepare_source_tree(
@@ -424,6 +424,11 @@ def _build_parser():
     parser.add_argument('--portal-password')
     parser.add_argument('--cors-allowed-origin')
     parser.add_argument('--cors-allow-credentials')
+    parser.add_argument(
+        '--skip-frontend',
+        action='store_true',
+        help='Skip the Vite frontend build (use when assets are already compiled).',
+    )
     return parser
 
 
@@ -438,5 +443,6 @@ def run_build(argv=None):
         build_module_overrides(
             ROOT,
             device_config_overrides=config_overrides,
-        )
+        ),
+        skip_frontend=args.skip_frontend,
     )

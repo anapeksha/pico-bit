@@ -19,4 +19,7 @@ if (target) {
       username: target.dataset.username || '',
     },
   });
+
+  // App is now rendered — drop the pre-mount spinner.
+  document.getElementById('app-loading')?.remove();
 }

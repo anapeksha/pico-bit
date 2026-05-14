@@ -456,7 +456,7 @@ def test_usb_agent_route_mounts_fake_drive(monkeypatch) -> None:
     assert shown == ['usb_agent_mounted']
 
 
-def test_inject_binary_uses_usb_drive_delivery(monkeypatch) -> None:
+def test_inject_binary_uses_usb_drive_delivery(tmp_path, monkeypatch) -> None:
     shown: list[str] = []
     captured: dict[str, object] = {}
     server = SetupServer()
@@ -465,6 +465,7 @@ def test_inject_binary_uses_usb_drive_delivery(monkeypatch) -> None:
     fake_drive = FakeUSBService()
     fake_drive.mounted = True
     server._usb = fake_drive
+    monkeypatch.setattr(routes_loot, '_LOOT_FILE', str(tmp_path / 'loot.json'))
 
     async def fake_show(stage: str) -> None:
         shown.append(stage)
@@ -491,7 +492,7 @@ def test_inject_binary_uses_usb_drive_delivery(monkeypatch) -> None:
     assert shown == ['binary_injecting']
 
 
-def test_inject_binary_ignores_client_supplied_stager_command(monkeypatch) -> None:
+def test_inject_binary_ignores_client_supplied_stager_command(tmp_path, monkeypatch) -> None:
     captured: dict[str, object] = {}
     server = SetupServer()
     server._is_authorized = lambda request: True  # type: ignore[method-assign]
@@ -499,6 +500,7 @@ def test_inject_binary_ignores_client_supplied_stager_command(monkeypatch) -> No
     fake_drive = FakeUSBService()
     fake_drive.mounted = True
     server._usb = fake_drive
+    monkeypatch.setattr(routes_loot, '_LOOT_FILE', str(tmp_path / 'loot.json'))
 
     async def fake_run_payload(script: str, *, source: str = 'portal') -> tuple[str, str]:
         captured['script'] = script

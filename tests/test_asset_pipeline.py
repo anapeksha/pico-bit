@@ -48,6 +48,14 @@ def test_embedded_web_assets_stay_within_raw_byte_budget() -> None:
     assert total <= WEB_ASSET_SIZE_BUDGET
 
 
+def test_sync_web_assets_skip_build_does_not_call_build_frontend(monkeypatch) -> None:
+    invocations: list[int] = []
+    monkeypatch.setattr(ASSET_PIPELINE, 'build_frontend', lambda: invocations.append(1))
+    # dist/web is already populated by the earlier tests in this session.
+    ASSET_PIPELINE.sync_web_assets(skip_build=True)
+    assert invocations == []
+
+
 def test_static_asset_routes_include_mime_types_and_spa_aliases() -> None:
     ASSET_PIPELINE.build_frontend()
     namespace: dict[str, object] = {}

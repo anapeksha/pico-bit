@@ -63,6 +63,26 @@ def test_build_emits_ruff_clean_bundle() -> None:
     )
 
 
+def test_build_skip_frontend_reuses_compiled_artifacts() -> None:
+    root = Path(__file__).resolve().parents[1]
+    dist_web = root / 'dist' / 'web'
+    if not (dist_web / 'index.html').is_file():
+        subprocess.run(
+            ['npm', '--prefix', str(root / 'web'), 'run', 'build'],
+            cwd=root,
+            check=True,
+        )
+
+    result = subprocess.run(
+        [sys.executable, 'build.py', '--skip-frontend'],
+        cwd=root,
+        check=True,
+    )
+    assert result.returncode == 0
+    assert (root / 'dist' / 'boot.py').is_file()
+    assert (dist_web / 'index.html').is_file()
+
+
 def test_build_emits_compiled_mpy_tree() -> None:
     root = Path(__file__).resolve().parents[1]
     dist = root / 'dist' / 'mpy'

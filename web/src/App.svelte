@@ -1,6 +1,7 @@
 <script lang="ts">
   import LockOpen from '@lucide/svelte/icons/lock-open';
   import { onMount } from 'svelte';
+  import PortalSkeleton from './components/PortalSkeleton.svelte';
   import ThemeToggle from './components/ThemeToggle.svelte';
   import ValidationModal from './components/ValidationModal.svelte';
   import LeftSection from './sections/LeftSection.svelte';
@@ -8,8 +9,8 @@
   import RightSection from './sections/RightSection.svelte';
   import TopSection from './sections/TopSection.svelte';
   import { startPortal } from './stores/bootstrap';
-  import { notice, showNotice } from './stores/ui';
   import { initTheme } from './stores/theme';
+  import { notice, showNotice } from './stores/ui';
 
   type Props = {
     authState?: 'login' | 'portal';
@@ -25,22 +26,34 @@
     username = '',
   }: Props = $props();
 
+  // Never-resolving placeholder keeps the skeleton visible until onMount assigns
+  // the real bootstrap promise (avoids a flash of portal content before the
+  // promise is set up).
+  let portalPromise = $state<Promise<void>>(new Promise(() => {}));
+
   onMount(() => {
     const stopTheme = initTheme();
     if (authState !== 'portal') return stopTheme;
-    let cleanup = () => {};
-    startPortal()
+    let stopStream = () => {};
+
+    portalPromise = startPortal()
       .then((stop) => {
-        cleanup = stop;
+        stopStream = stop;
       })
-      .catch((error) =>
-        showNotice(error.message || 'Portal bootstrap failed.', 'error'),
-      );
+      .catch((error) => {
+        showNotice(error.message || 'Portal bootstrap failed.', 'error');
+        throw error;
+      });
+
     return () => {
-      cleanup();
+      stopStream();
       stopTheme();
     };
   });
+
+  function handleBoundaryError(error: unknown, reset: () => void) {
+    console.error('Portal render error:', error);
+  }
 </script>
 
 <svelte:body class:auth-login={authState === 'login'} />
@@ -122,7 +135,7 @@
 {:else}
   {#if $notice.visible}
     <div
-      class={`fixed top-16 right-5 z-[1100] max-w-sm rounded-[10px] border px-3.5 py-2.5 text-xs leading-relaxed shadow-xl ${
+      class={`fixed top-16 right-5 z-1100 max-w-sm rounded-[10px] border px-3.5 py-2.5 text-xs leading-relaxed shadow-xl ${
         $notice.tone === 'success'
           ? 'border-picobit-success-border bg-picobit-success-bg text-picobit-success'
           : $notice.tone === 'error'
@@ -137,6 +150,7 @@
   {/if}
 
   <div>
+    <!-- Nav stays outside {#await} so it is always visible during load -->
     <nav
       class="fixed inset-x-0 top-0 z-50 flex h-12 items-center gap-3 border-b border-black/10 bg-white/80 px-6 backdrop-blur-xl dark:border-white/10 dark:bg-black/80"
     >
@@ -149,18 +163,51 @@
       <ThemeToggle />
     </nav>
 
-    <main class="mx-auto grid max-w-360 gap-4 px-4 pt-6 pb-16 sm:px-6">
-      <TopSection />
+    <svelte:boundary onerror={handleBoundaryError}>
+      <main class="mx-auto grid max-w-360 gap-4 px-4 pt-6 pb-16 sm:px-6">
+        {#await portalPromise}
+          <PortalSkeleton />
+        {:then}
+          <TopSection />
+          <div
+            class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_17rem] xl:grid-cols-[15rem_minmax(0,1fr)_17rem]"
+          >
+            <LeftSection />
+            <MiddleSection />
+            <RightSection />
+          </div>
+        {:catch error}
+          <div
+            class="rounded-xl border border-picobit-danger-border bg-picobit-danger-bg px-4 py-4"
+            role="alert"
+          >
+            <p class="m-0 text-sm text-picobit-danger">
+              {error?.message ?? 'Portal failed to load. Refresh to retry.'}
+            </p>
+          </div>
+        {/await}
+      </main>
+      <ValidationModal />
 
-      <div
-        class="grid items-start gap-4 xl:grid-cols-[15rem_minmax(0,1fr)_17rem] lg:grid-cols-[minmax(0,1fr)_17rem]"
-      >
-        <LeftSection />
-        <MiddleSection />
-        <RightSection />
-      </div>
-    </main>
-
-    <ValidationModal />
+      {#snippet failed(error, reset)}
+        <main class="mx-auto max-w-360 px-4 pt-6 pb-16 sm:px-6">
+          <div
+            class="rounded-xl border border-picobit-danger-border bg-picobit-danger-bg px-4 py-6"
+            role="alert"
+          >
+            <p class="m-0 mb-3 text-sm text-picobit-danger">
+              {(error as Error)?.message ?? 'An unexpected error occurred.'}
+            </p>
+            <button
+              class="inline-flex h-8 cursor-pointer items-center rounded-lg border border-picobit-danger-border px-3 text-[13px] text-picobit-danger hover:bg-picobit-danger-bg"
+              type="button"
+              onclick={reset}
+            >
+              Retry
+            </button>
+          </div>
+        </main>
+      {/snippet}
+    </svelte:boundary>
   </div>
 {/if}

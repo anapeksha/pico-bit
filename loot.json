@@ -1,2 +1,61 @@
-PCB1"�(��_�<Y��b9¶���s`�9��jR���/Prta� ��6G
-f�D���a��,�n8הS{�w��x�A�y4��R�FM��ȿ;~N:U��p��t1c��aۆ����P	�`
+{
+  "source": "usb_drive",
+  "timestamp": 1747123456,
+  "type": "recon",
+  "execution_step": "Done",
+  "execution_state": "success",
+  "execution_failure_reason": null,
+  "target_os": "linux",
+  "system": {
+    "hostname": "target-host",
+    "os_name": "Ubuntu",
+    "os_version": "22.04.3 LTS",
+    "kernel": "5.15.0-89-generic",
+    "arch": "x86_64",
+    "total_mem_mb": 8192,
+    "used_mem_mb": 3421,
+    "uptime_secs": 86712
+  },
+  "user": {
+    "username": "jdoe",
+    "home_dir": "/home/jdoe",
+    "is_elevated": false
+  },
+  "processes": [
+    { "pid": 1, "name": "systemd" },
+    { "pid": 812, "name": "sshd" }
+  ],
+  "interfaces": [{ "name": "lo" }, { "name": "eth0" }, { "name": "wlan0" }],
+  "wifi": [
+    { "ssid": "HomeNetwork", "password": "example-password" },
+    { "ssid": "OfficeWifi", "password": "another-example" }
+  ],
+  "software": [
+    { "name": "git", "version": "2.34.1" },
+    { "name": "python3", "version": "3.10.12" },
+    { "name": "curl", "version": "7.81.0" }
+  ],
+  "env_secrets": [
+    { "key": "AWS_ACCESS_KEY_ID", "value": "AKIAIOSFODNN7EXAMPLE" },
+    { "key": "DATABASE_URL", "value": "postgres://user:pass@localhost/db" }
+  ],
+  "ssh_keys": [
+    {
+      "file": "/home/jdoe/.ssh/id_rsa",
+      "content": "-----BEGIN RSA PRIVATE KEY-----"
+    },
+    {
+      "file": "/home/jdoe/.ssh/id_ed25519",
+      "content": "-----BEGIN OPENSSH PRIVATE KEY-----"
+    }
+  ],
+  "browser_paths": [
+    "/home/jdoe/.config/google-chrome/Default/Login Data",
+    "/home/jdoe/.mozilla/firefox/abcd1234.default/logins.json"
+  ],
+  "shell_history": [
+    "git commit -m 'update'",
+    "ssh admin@192.168.1.1",
+    "cat /etc/passwd"
+  ]
+}

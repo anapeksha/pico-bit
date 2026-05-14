@@ -8,8 +8,36 @@
       content="Edit, validate, and run payloads from the Pico Bit portal."
     />
     <title>Pico Bit Injector</title>
+    <style>
+      #app-loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #fff;
+        z-index: 9999;
+      }
+      @media (prefers-color-scheme: dark) {
+        #app-loading { background: #050505; }
+      }
+      #app-loading-ring {
+        width: 1.25rem;
+        height: 1.25rem;
+        border: 2px solid #8e8e93;
+        border-top-color: transparent;
+        border-radius: 50%;
+        animation: picobit-spin 0.65s linear infinite;
+      }
+      @keyframes picobit-spin {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body data-auth-state="{{auth_state}}">
+    <div id="app-loading" role="status" aria-label="Loading">
+      <div id="app-loading-ring"></div>
+    </div>
     <div
       id="app"
       data-auth-state="{{auth_state}}"
