@@ -1080,7 +1080,7 @@ class HIDKeyboard:
             await self.wait_open(5000)
 
         elapsed = 0
-        while self._xfer_busy and elapsed < 50:
+        while self._xfer_busy and elapsed < 150:
             await sleep_ms(2)
             elapsed += 2
 
@@ -1097,7 +1097,7 @@ class HIDKeyboard:
             return
 
         elapsed = 0
-        while self._xfer_busy and elapsed < 50:
+        while self._xfer_busy and elapsed < 150:
             await sleep_ms(2)
             elapsed += 2
 
