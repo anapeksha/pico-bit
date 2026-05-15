@@ -1077,7 +1077,7 @@ class HIDKeyboard:
     async def _send(self) -> None:
         self._submit_total += 1
         if not self._ready:
-            await self.wait_open(2000)
+            await self.wait_open(5000)
 
         elapsed = 0
         while self._xfer_busy and elapsed < 50:

