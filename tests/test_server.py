@@ -568,7 +568,7 @@ def test_usb_drive_linux_stager_writes_usb_loot_and_removes_temp_agent() -> None
     script = server._stager_script('linux')
 
     assert 'CTRL-ALT t' in script
-    assert 'DEFAULTCHARDELAY 10' in script
+    assert 'DEFAULTCHARDELAY 30' in script
     assert '/media/$USER/* /run/media/$USER/* /mnt/*' in script
     assert 'payload.bin' in script
     assert '--loot-out "$d/loot-usb.json"' in script
@@ -585,7 +585,7 @@ def test_usb_drive_macos_stager_waits_for_terminal_and_types_multiline_script() 
     assert 'GUI SPACE' in script
     assert 'STRING Terminal\nENTER' in script
     assert 'DELAY 6000' in script
-    assert 'DEFAULTCHARDELAY 10' in script
+    assert 'DEFAULTCHARDELAY 30' in script
     assert '/Volumes/*' in script
     assert 'payload.bin' in script
     assert '--loot-out "$d/loot-usb.json"' in script
