@@ -584,7 +584,7 @@ def test_usb_drive_macos_stager_waits_for_terminal_and_types_multiline_script() 
 
     assert 'GUI SPACE' in script
     assert 'STRING Terminal\nENTER' in script
-    assert 'DELAY 4000' in script
+    assert 'DELAY 6000' in script
     assert 'DEFAULTCHARDELAY 10' in script
     assert '/Volumes/*' in script
     assert 'payload.bin' in script
