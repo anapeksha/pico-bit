@@ -59,7 +59,7 @@ jobs:
           python-version: '3.14'
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '24'
           cache: npm
@@ -97,7 +97,7 @@ jobs:
             --release-version "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
 
       - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pico-bit-uf2
           path: |
@@ -146,7 +146,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.ref }}
 
@@ -222,7 +222,7 @@ jobs:
           done
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: agent-${{ matrix.platform }}-${{ matrix.arch }}
           path: agent/dist/*
@@ -237,7 +237,7 @@ jobs:
 
     steps:
       - name: Download staged agent binaries
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: agent-*
           path: agent-artifacts
@@ -256,7 +256,7 @@ jobs:
           )
 
       - name: Upload workflow artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pico-bit-agent-zips
           path: dist/payloads-*.zip
@@ -287,20 +287,20 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.ref }}
 
       - name: Download UF2 artifacts
         if: needs.build-uf2.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: pico-bit-uf2
           path: dist
 
       - name: Download agent zip artifacts
         if: needs.package-agent-zips.result == 'success'
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: pico-bit-agent-zips
           path: dist
@@ -309,7 +309,7 @@ jobs:
         run: python3 release.py refresh-release-json
 
       - name: Publish release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}
           files: |
