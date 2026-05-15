@@ -13,9 +13,9 @@ import { derived, get, writable } from 'svelte/store';
 
 import { requestJson, uploadBinaryFile } from '../lib/api';
 import type { NoticeTone, TargetOs } from '../lib/types';
+import { loadBootstrap } from './bootstrap';
 import { resetExecution, startExecutionStream } from './execution';
 import { keyboard } from './keyboard';
-import { loadLootSnapshot } from './loot';
 import { applyUsbAgent } from './usb';
 
 const OS_CODE_TO_TARGET: Record<string, TargetOs> = {
@@ -109,8 +109,8 @@ export async function injectBinary() {
   setArmoryNotice(data.message || 'Injection started.', 'success');
 
   startExecutionStream(() => {
-    // Fires on `done` (success) or SSE error — clear state either way.
-    loadLootSnapshot().catch(() => {});
+    // Fires on `done` (success) or SSE error — refresh all state including run history.
+    loadBootstrap().catch(() => {});
     injectingBinary.set(false);
   });
 }
