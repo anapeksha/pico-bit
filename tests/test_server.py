@@ -67,6 +67,12 @@ def _raw_response(writer: FakeWriter) -> tuple[str, str]:
     return status, body.decode('utf-8')
 
 
+def _typed_strings(script: str) -> str:
+    return ''.join(
+        line[len('STRING ') :] for line in script.splitlines() if line.startswith('STRING ')
+    )
+
+
 def test_render_app_switches_single_spa_between_login_and_portal() -> None:
     server = SetupServer()
 
@@ -549,49 +555,53 @@ def test_inject_binary_rejects_unknown_target_os() -> None:
 def test_usb_drive_windows_stager_copies_extensionless_agent_to_exe() -> None:
     server = SetupServer()
     script = server._stager_script('windows')
+    typed = _typed_strings(script)
 
     assert 'powershell -NoProfile -ExecutionPolicy Bypass' in script
     assert 'DEFAULTCHARDELAY 10' in script
-    assert 'foreach($d in Get-PSDrive -PSProvider FileSystem)' in script
-    assert 'payload.exe' in script
-    assert '--loot-out' in script
-    assert 'loot-usb.json' in script
-    assert "Join-Path $env:TEMP 'pa.exe'" in script
-    assert 'if($?)' in script
-    assert 'del $x -ea 0' in script
-    assert script.count('STRING ') == 2
+    assert 'foreach($d in Get-PSDrive -PSProvider FileSystem)' in typed
+    assert 'payload.exe' in typed
+    assert '--loot-out' in typed
+    assert 'loot-usb.json' in typed
+    assert "Join-Path $env:TEMP 'pa.exe'" in typed
+    assert 'if($?)' in typed
+    assert 'del $x -ea 0' in typed
+    assert script.count('STRING ') >= 2
     assert script.count('\nENTER\n') == 2
 
 
 def test_usb_drive_linux_stager_writes_usb_loot_and_removes_temp_agent() -> None:
     server = SetupServer()
     script = server._stager_script('linux')
+    typed = _typed_strings(script)
 
     assert 'CTRL-ALT t' in script
-    assert 'DELAY 2000' in script
-    assert '/media/$USER/* /run/media/$USER/* /mnt/*' in script
-    assert 'payload.bin' in script
-    assert '--loot-out "$d/loot-usb.json"' in script
-    assert '/tmp/pa' in script
-    assert 'rm -f /tmp/pa' in script
-    assert script.count('STRING ') == 1
+    assert 'DELAY 2500' in script
+    assert 'DEFAULTCHARDELAY 10' in script
+    assert '/media/$USER/* /run/media/$USER/* /mnt/*' in typed
+    assert 'payload.bin' in typed
+    assert '--loot-out "$d/loot-usb.json"' in typed
+    assert '/tmp/pa' in typed
+    assert 'rm -f /tmp/pa' in typed
+    assert script.count('STRING ') >= 1
     assert script.count('\nENTER\n') == 1
 
 
 def test_usb_drive_macos_stager_waits_for_terminal_and_types_multiline_script() -> None:
     server = SetupServer()
     script = server._stager_script('macos')
+    typed = _typed_strings(script)
 
     assert 'GUI SPACE' in script
     assert 'STRING Terminal\nENTER' in script
-    assert 'DELAY 2000' in script
-    assert 'DEFAULTCHARDELAY' not in script
-    assert '/Volumes/*' in script
-    assert 'payload.bin' in script
-    assert '--loot-out "$d/loot-usb.json"' in script
-    assert '/tmp/pa' in script
-    assert 'rm -f /tmp/pa' in script
-    assert script.count('STRING ') == 2
+    assert 'DELAY 3500' in script
+    assert 'DEFAULTCHARDELAY 10' in script
+    assert '/Volumes/*' in typed
+    assert 'payload.bin' in typed
+    assert '--loot-out "$d/loot-usb.json"' in typed
+    assert '/tmp/pa' in typed
+    assert 'rm -f /tmp/pa' in typed
+    assert script.count('STRING ') >= 2
     assert script.count('\nENTER\n') == 2
 
 
