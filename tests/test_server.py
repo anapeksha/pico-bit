@@ -523,8 +523,8 @@ def test_inject_binary_ignores_client_supplied_stager_command(tmp_path, monkeypa
     assert captured['source'] == 'binary:usb'
     assert 'client-controlled' not in str(captured['script'])
     assert '/Volumes/*' in str(captured['script'])
-    assert '/tmp/pico_bit_usb.sh' in str(captured['script'])
-    assert 'cat > "$tmp"' in str(captured['script'])
+    assert '/tmp/pa' in str(captured['script'])
+    assert '--loot-out' in str(captured['script'])
 
 
 def test_inject_binary_rejects_unknown_target_os() -> None:
@@ -552,13 +552,13 @@ def test_usb_drive_windows_stager_copies_extensionless_agent_to_exe() -> None:
 
     assert 'powershell -NoProfile -ExecutionPolicy Bypass' in script
     assert 'DEFAULTCHARDELAY 10' in script
-    assert 'pico_bit_usb.ps1' in script
-    assert 'Set-Content -LiteralPath $p -Encoding ASCII' in script
+    assert 'foreach($d in Get-PSDrive -PSProvider FileSystem)' in script
     assert 'payload.exe' in script
     assert '--loot-out' in script
     assert 'loot-usb.json' in script
-    assert 'pico_agent.exe' in script
-    assert 'Remove-Item' in script
+    assert "Join-Path $env:TEMP 'pa.exe'" in script
+    assert 'if($?)' in script
+    assert 'del $x -ea 0' in script
     assert script.count('STRING ') == 2
     assert script.count('\nENTER\n') == 2
 
@@ -570,12 +570,10 @@ def test_usb_drive_linux_stager_writes_usb_loot_and_removes_temp_agent() -> None
     assert 'CTRL-ALT t' in script
     assert 'DEFAULTCHARDELAY 10' in script
     assert '/media/$USER/* /run/media/$USER/* /mnt/*' in script
-    assert 'tmp=/tmp/pico_bit_usb.sh' in script
-    assert "printf '%s\\n'" in script
-    assert 'cat > "$tmp"' in script
     assert 'payload.bin' in script
     assert '--loot-out "$d/loot-usb.json"' in script
-    assert 'rm -f /tmp/pico_agent' in script
+    assert '/tmp/pa' in script
+    assert 'rm -f /tmp/pa' in script
     assert script.count('STRING ') == 1
     assert script.count('\nENTER\n') == 1
 
@@ -586,14 +584,13 @@ def test_usb_drive_macos_stager_waits_for_terminal_and_types_multiline_script() 
 
     assert 'GUI SPACE' in script
     assert 'STRING Terminal\nENTER' in script
-    assert 'DELAY 2600' in script
+    assert 'DELAY 4000' in script
     assert 'DEFAULTCHARDELAY 10' in script
     assert '/Volumes/*' in script
-    assert 'tmp=/tmp/pico_bit_usb.sh' in script
-    assert "printf '%s\\n'" in script
-    assert 'cat > "$tmp"' in script
+    assert 'payload.bin' in script
     assert '--loot-out "$d/loot-usb.json"' in script
-    assert 'rm -f /tmp/pico_agent' in script
+    assert '/tmp/pa' in script
+    assert 'rm -f /tmp/pa' in script
     assert script.count('STRING ') == 2
     assert script.count('\nENTER\n') == 2
 

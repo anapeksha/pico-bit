@@ -37,6 +37,7 @@ class _PayloadMixin:
     _ap_ip: str
     _ap_password_in_use: str
     _keyboard_layout: str
+    _keyboard_layout_state_cache: dict[str, object] | None
     _payload_seeded: bool
     _run_history: list[dict[str, object]]
     _run_sequence: int
@@ -105,15 +106,18 @@ class _PayloadMixin:
         if not is_supported_layout(normalized):
             raise ValueError('unsupported keyboard layout')
         self._keyboard_layout = normalized
+        self._keyboard_layout_state_cache = None
         if persist:
             self._persist_keyboard_layout(normalized)
         return normalized
 
     def _keyboard_layout_state(self) -> dict[str, object]:
+        if self._keyboard_layout_state_cache is not None:
+            return self._keyboard_layout_state_cache
         option = layout_option(self._keyboard_layout)
         platform, layout = split_layout_code(self._keyboard_layout)
         target_label = option['platform_label'] + ' · ' + option['label']
-        return {
+        self._keyboard_layout_state_cache = {
             'keyboard_layout': layout,
             'keyboard_layout_code': layout,
             'keyboard_layout_hint': 'Used for typed text and remembered on the device.',
@@ -129,6 +133,7 @@ class _PayloadMixin:
             'keyboard_oses': supported_platforms(),
             'keyboard_target_label': target_label,
         }
+        return self._keyboard_layout_state_cache
 
     def _validation_state(self, script: str) -> AnalysisResult:
         return analyze_script(script)
@@ -145,7 +150,7 @@ class _PayloadMixin:
         return 'Empty payload'
 
     def _recent_runs(self) -> list[dict[str, object]]:
-        return [dict(item) for item in self._run_history]
+        return list(self._run_history)
 
     def _record_run(self, script: str, message: str, notice: str, *, source: str) -> None:
         self._run_sequence += 1

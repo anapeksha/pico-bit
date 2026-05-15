@@ -17,7 +17,10 @@ from usb import USB
 
 from ._http import (
     _AP_CHECK_INTERVAL_MS,
+    _BASE_HEADERS,
     _DEFAULT_AP_IP,
+    _EMPTY_HEADERS,
+    _JSON_RESPONSE_HEADERS,
     _LOGIN_LOCKOUT_MS,
     _MAX_BINARY_SIZE,
     _MAX_LOGIN_ATTEMPTS,
@@ -60,6 +63,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
         self._ap_ip = _DEFAULT_AP_IP
         self._ap_password_in_use = AP_PASSWORD
         self._keyboard_layout = DEFAULT_LAYOUT_CODE
+        self._keyboard_layout_state_cache: dict[str, object] | None = None
         self._execution_stream = ExecutionStreamState()
         self._usb = USB
         self._payload_seeded = False
@@ -78,7 +82,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
     async def _send_headers(self, writer, request, status: str, headers=None) -> None:
         gc.collect()
         response_headers = _merge_headers(
-            {'Connection': 'close', 'X-Content-Type-Options': 'nosniff'},
+            _BASE_HEADERS,
             headers,
             self._cors_headers(request),
         )
@@ -95,11 +99,11 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
 
     def _cors_headers(self, request) -> dict[str, str]:
         if not CORS_ALLOWED_ORIGIN:
-            return {}
+            return _EMPTY_HEADERS
 
         origin = request['headers'].get('origin', '')
         if CORS_ALLOWED_ORIGIN != '*' and origin != CORS_ALLOWED_ORIGIN:
-            return {}
+            return _EMPTY_HEADERS
 
         headers = {
             'Access-Control-Allow-Headers': 'Content-Type',
@@ -115,7 +119,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
     async def _send(self, writer, request, status: str, body: str | bytes, headers=None) -> None:
         gc.collect()
         response_headers = _merge_headers(
-            {'Connection': 'close', 'X-Content-Type-Options': 'nosniff'},
+            _BASE_HEADERS,
             headers,
             self._cors_headers(request),
         )
@@ -141,10 +145,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             request,
             status,
             json.dumps(data),
-            headers=_merge_headers(
-                {'Content-Type': 'application/json; charset=utf-8'},
-                _NO_STORE,
-            ),
+            headers=_JSON_RESPONSE_HEADERS,
         )
 
     async def _redirect(self, writer, request, location: str, headers=None) -> None:
@@ -217,6 +218,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
     async def execute_script(self, script: str) -> None:
         async with self._run_lock_obj():
             validate_script(script)
+            gc.collect()
             keyboard = await self._ensure_keyboard()
             await STATUS_LED.show('payload_running')
             await run_script(keyboard, script, default_layout=self._keyboard_layout)
