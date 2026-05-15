@@ -1,11 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatBytes, validateArmoryFile } from './binary';
 
-function makeFile(
-  name: string,
-  bytes: number[],
-  type = 'application/octet-stream',
-): File {
+function makeFile(name: string, bytes: number[], type = 'application/octet-stream'): File {
   return new File([new Uint8Array(bytes)], name, { type });
 }
 

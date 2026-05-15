@@ -28,8 +28,7 @@
   --color-picobit-warning: #9a5a00;
   --color-picobit-warning-bg: #fff5e8;
   --color-picobit-warning-border: #f2d4a7;
-  --font-sans:
-    -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
   --font-mono: 'SF Mono', ui-monospace, 'Cascadia Mono', 'Menlo', monospace;
 }
 

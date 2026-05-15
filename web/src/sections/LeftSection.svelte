@@ -2,10 +2,8 @@
   import { keyboard } from '../stores/keyboard';
   import { seededThisBoot } from '../stores/run';
 
-  const panelClass =
-    'rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4';
-  const titleClass =
-    'm-0 mb-2.5 text-[13px] font-semibold tracking-[-0.005em] text-[var(--text)]';
+  const panelClass = 'rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4';
+  const titleClass = 'm-0 mb-2.5 text-[13px] font-semibold tracking-[-0.005em] text-[var(--text)]';
 </script>
 
 <div
@@ -19,13 +17,12 @@
       </p>
       <ul class="m-0 list-disc pl-4 text-xs leading-7 text-[var(--text-3)]">
         <li>
-          <strong>Stage&nbsp;1&nbsp;&middot;&nbsp;Recon</strong> - write DuckyScript
-          to type commands or exfiltrate data from the target
+          <strong>Stage&nbsp;1&nbsp;&middot;&nbsp;Recon</strong> - write DuckyScript to type commands
+          or exfiltrate data from the target
         </li>
         <li>
-          <strong>Stage&nbsp;2&nbsp;&middot;&nbsp;Inject</strong> - upload an agent
-          binary, then HID-inject the USB execution stager; the agent writes loot
-          back to the Pico drive
+          <strong>Stage&nbsp;2&nbsp;&middot;&nbsp;Inject</strong> - upload an agent binary, then HID-inject
+          the USB execution stager; the agent writes loot back to the Pico drive
         </li>
         <li>Loot panel live-updates as data arrives</li>
       </ul>
@@ -34,9 +31,7 @@
     <div class={panelClass}>
       <p class={titleClass}>Status</p>
       <dl class="m-0 grid">
-        <div
-          class="flex items-center justify-between gap-2 border-b border-[var(--border)] pb-2"
-        >
+        <div class="flex items-center justify-between gap-2 border-b border-[var(--border)] pb-2">
           <span class="text-xs text-[var(--text-3)]">Seeded this boot</span>
           <span class="text-right text-xs font-medium text-[var(--text)]">
             {$seededThisBoot ? 'Yes' : 'No'}

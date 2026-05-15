@@ -61,19 +61,14 @@
   }
 </script>
 
-<section
-  class:flex-1={$activeAccordion === 'armory'}
-  class="flex min-h-0 shrink-0 flex-col"
->
+<section class:flex-1={$activeAccordion === 'armory'} class="flex min-h-0 shrink-0 flex-col">
   <button
     class="flex w-full cursor-pointer items-center gap-2 border-0 border-b border-picobit-border bg-picobit-surface-2 px-3.5 py-2.5 text-left text-xs font-medium text-picobit-text hover:bg-picobit-surface-3"
     type="button"
     aria-expanded={$activeAccordion === 'armory'}
     onclick={() => activeAccordion.set('armory')}
   >
-    <span class="flex-1 font-mono text-xs text-picobit-text-3"
-      >Binary Armory</span
-    >
+    <span class="flex-1 font-mono text-xs text-picobit-text-3">Binary Armory</span>
     {#if $stagedBinaryName}
       <span
         class="inline-flex items-center rounded-md border border-picobit-text bg-picobit-text px-2 py-0.5 text-[11px] font-medium text-white dark:text-black"
@@ -112,12 +107,8 @@
         {#if selectedFile}
           <div class="pointer-events-none flex items-center gap-2">
             <FileTerminal />
-            <span class="font-mono text-xs font-medium text-picobit-text"
-              >{selectedFile.name}</span
-            >
-            <span class="text-[11px] text-picobit-text-3"
-              >{formatBytes(selectedFile.size)}</span
-            >
+            <span class="font-mono text-xs font-medium text-picobit-text">{selectedFile.name}</span>
+            <span class="text-[11px] text-picobit-text-3">{formatBytes(selectedFile.size)}</span>
           </div>
         {:else}
           <div class="pointer-events-none flex flex-col items-center gap-1.5">
@@ -126,8 +117,7 @@
               Drag &amp; drop or click to upload
             </p>
             <p class="m-0 text-[11px] text-picobit-text-4">
-              EXE, ELF, or Mach-O binaries only. Unix binaries may be
-              extensionless.
+              EXE, ELF, or Mach-O binaries only. Unix binaries may be extensionless.
             </p>
           </div>
         {/if}
@@ -195,9 +185,7 @@
         {#if hasAgentData($loot)}
           <LootViewer />
         {:else}
-          <div
-            class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3"
-          >
+          <div class="rounded-lg border border-picobit-border bg-picobit-surface-2 px-3.5 py-3">
             <p class="m-0 mb-1.5 text-[11px] text-picobit-text-3">USB stager:</p>
             <pre
               class="m-0 whitespace-pre-wrap break-all font-mono text-[11px] leading-relaxed text-picobit-text-2">Backend-generated at injection time for {$binaryTargetOs}. It opens the host shell, writes a temporary runner script, executes payload.{$binaryTargetOs ===
@@ -229,12 +217,7 @@
             <Download size={14} />
           </a>
         {:else}
-          <button
-            class={lootGhostButton}
-            type="button"
-            disabled
-            title="No loot to download"
-          >
+          <button class={lootGhostButton} type="button" disabled title="No loot to download">
             <Download size={14} />
           </button>
         {/if}

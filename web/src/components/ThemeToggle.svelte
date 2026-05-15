@@ -7,9 +7,7 @@
 <button
   class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2 py-1 text-[11px] font-medium text-[var(--text-3)] transition hover:text-[var(--text)] dark:border-white/15 dark:bg-white/10 dark:hover:bg-white/15"
   type="button"
-  aria-label={$theme === 'dark'
-    ? 'Switch to light mode'
-    : 'Switch to dark mode'}
+  aria-label={$theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
   aria-pressed={$theme === 'dark'}
   onclick={toggleTheme}
 >

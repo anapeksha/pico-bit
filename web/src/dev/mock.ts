@@ -185,9 +185,7 @@ if (shouldMock) {
     }
 
     if (url === '/api/loot' && method === 'GET') {
-      return loot
-        ? jsonResponse(loot)
-        : jsonResponse({ message: 'No loot collected yet.' }, 404);
+      return loot ? jsonResponse(loot) : jsonResponse({ message: 'No loot collected yet.' }, 404);
     }
 
     if (url === '/api/loot/import-usb' && method === 'POST') {
@@ -248,9 +246,7 @@ if (shouldMock) {
         for (const step of MOCK_EXECUTION_STEPS) {
           this._timers.push(
             setTimeout(() => {
-              this.dispatchEvent(
-                new MessageEvent('execution', { data: JSON.stringify(step) }),
-              );
+              this.dispatchEvent(new MessageEvent('execution', { data: JSON.stringify(step) }));
             }, delay),
           );
           delay += 500;

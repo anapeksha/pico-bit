@@ -118,7 +118,12 @@ describe('uploadBinaryFile', () => {
   };
 
   beforeEach(() => {
-    vi.stubGlobal('XMLHttpRequest', vi.fn(() => xhrMock));
+    vi.stubGlobal(
+      'XMLHttpRequest',
+      vi.fn(function () {
+        return xhrMock;
+      }),
+    );
     xhrMock.open.mockClear();
     xhrMock.setRequestHeader.mockClear();
     xhrMock.send.mockClear();

@@ -24,7 +24,7 @@ const WARN_DIAGNOSTIC = {
 };
 
 function makeValidation(
-  overrides: Partial<(typeof validation extends { set: (v: infer V) => void } ? V : never)> = {},
+  overrides: Partial<typeof validation extends { set: (v: infer V) => void } ? V : never> = {},
 ) {
   return {
     blocking: false,

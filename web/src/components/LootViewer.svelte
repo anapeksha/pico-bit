@@ -17,11 +17,9 @@
     const inner = '  '.repeat(depth + 1);
 
     if (val === null) return '<span class="j-null">null</span>';
-    if (typeof val === 'boolean')
-      return `<span class="j-bool">${val}</span>`;
+    if (typeof val === 'boolean') return `<span class="j-bool">${val}</span>`;
     if (typeof val === 'number') return `<span class="j-num">${val}</span>`;
-    if (typeof val === 'string')
-      return `<span class="j-str">&quot;${esc(val)}&quot;</span>`;
+    if (typeof val === 'string') return `<span class="j-str">&quot;${esc(val)}&quot;</span>`;
 
     if (Array.isArray(val)) {
       if (!val.length) return '[]';
@@ -76,7 +74,9 @@
         </button>
       </div>
 
-      <div class="loot-viewer min-h-0 overflow-auto rounded-lg border border-picobit-border bg-picobit-surface-2 p-3">
+      <div
+        class="loot-viewer min-h-0 overflow-auto rounded-lg border border-picobit-border bg-picobit-surface-2 p-3"
+      >
         <pre
           class="m-0 font-mono text-[11px] leading-relaxed text-picobit-text-2 whitespace-pre"
           aria-label="Loot JSON output">{@html colorize(data)}</pre>

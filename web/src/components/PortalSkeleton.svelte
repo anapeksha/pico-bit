@@ -10,7 +10,7 @@
 <div class="animate-pulse grid gap-4">
   <!-- TopSection: 4 stat cards matching TopSection.svelte layout -->
   <div class="flex flex-wrap justify-around gap-2">
-    {#each statCards as card}
+    {#each statCards as card, i (i)}
       <div
         class="min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 sm:basis-[calc(50%-0.25rem)] xl:basis-[calc(25%-0.375rem)]"
       >
@@ -84,14 +84,16 @@
       </div>
 
       <!-- BinaryArmory skeleton: header bar -->
-      <div class="flex items-center border-t border-picobit-border bg-picobit-surface-2 px-3.5 py-2.5">
+      <div
+        class="flex items-center border-t border-picobit-border bg-picobit-surface-2 px-3.5 py-2.5"
+      >
         <div class="h-2.5 w-24 rounded bg-picobit-border opacity-60"></div>
       </div>
     </div>
 
     <!-- Right: Layout + Recent Runs panels -->
     <div class="lg:order-2 xl:order-0">
-      <div class="flex flex-col gap-3.5 xl:w-[17rem]">
+      <div class="flex flex-col gap-3.5 xl:w-68">
         <!-- Layout panel -->
         <div class="rounded-xl border border-picobit-border bg-picobit-surface px-4 py-4">
           <div class="mb-3 h-3 w-12 rounded bg-picobit-border-strong opacity-60"></div>

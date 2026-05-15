@@ -10,8 +10,7 @@
   const statClass =
     'min-w-0 basis-full rounded-[10px] border border-picobit-border bg-picobit-surface px-3.5 py-3 sm:basis-[calc(50%-0.25rem)] xl:basis-[calc(25%-0.375rem)]';
   const labelClass = 'mb-1 text-[11px] font-medium text-picobit-text-3';
-  const valueClass =
-    'break-all text-[13px] font-medium leading-snug text-picobit-text';
+  const valueClass = 'break-all text-[13px] font-medium leading-snug text-picobit-text';
 </script>
 
 <div class="flex flex-wrap justify-around gap-2">

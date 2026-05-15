@@ -10,7 +10,7 @@
 
 {#if $validationModalOpen}
   <div
-    class="fixed inset-0 z-[1000] flex items-end justify-center p-0 sm:items-center sm:p-6"
+    class="fixed inset-0 z-1000 flex items-end justify-center p-0 sm:items-center sm:p-6"
     role="presentation"
     onkeydown={(event) => {
       if (event.key === 'Escape') close();
@@ -23,33 +23,25 @@
       onclick={close}
     ></button>
     <div
-      class="relative flex max-h-[70vh] w-full max-w-full flex-col overflow-hidden rounded-t-[14px] rounded-b-none border border-[var(--border)] bg-[var(--surface)] shadow-2xl sm:max-h-[80vh] sm:max-w-md sm:rounded-[14px] md:max-h-[32rem]"
+      class="relative flex max-h-[70vh] w-full max-w-full flex-col overflow-hidden rounded-t-[14px] rounded-b-none border border-(--border) bg-(--surface) shadow-2xl sm:max-h-[80vh] sm:max-w-md sm:rounded-[14px] md:max-h-128"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
       aria-describedby="modal-subtitle"
     >
       <div
-        class="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--border)] px-5 pt-4 pb-3"
+        class="flex shrink-0 items-start justify-between gap-4 border-b border-(--border) px-5 pt-4 pb-3"
       >
         <div class="grid min-w-0 gap-0.5">
-          <h3
-            class="m-0 text-sm font-semibold tracking-[-0.01em] text-[var(--text)]"
-            id="modal-title"
-          >
+          <h3 class="m-0 text-sm font-semibold tracking-[-0.01em] text-(--text)" id="modal-title">
             Validation issues
           </h3>
-          <p
-            class="m-0 text-xs leading-snug text-[var(--text-3)]"
-            id="modal-subtitle"
-          >
-            {$validation?.blocking
-              ? 'Errors found in the payload'
-              : 'Payload warnings'}
+          <p class="m-0 text-xs leading-snug text-(--text-3)" id="modal-subtitle">
+            {$validation?.blocking ? 'Errors found in the payload' : 'Payload warnings'}
           </p>
         </div>
         <button
-          class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-1.5 text-[var(--text-3)] hover:text-[var(--text)]"
+          class="inline-flex shrink-0 cursor-pointer items-center justify-center rounded-lg border border-(--border) bg-(--surface-2) p-1.5 text-(--text-3) hover:text-(--text)"
           type="button"
           aria-label="Close"
           onclick={close}
@@ -59,39 +51,33 @@
       </div>
       <div class="grid gap-2 overflow-y-auto px-5 py-4">
         {#if $validation?.diagnostics?.length}
-          {#each $validation.diagnostics as item}
+          {#each $validation.diagnostics as item (`${item.line}:${item.column}`)}
             <div
               class={`grid gap-1 rounded-lg border px-3.5 py-3 ${
                 item.severity === 'error'
-                  ? 'border-[var(--danger-border)] bg-[var(--danger-bg)]'
-                  : 'border-[var(--warning-border)] bg-[var(--warning-bg)]'
+                  ? 'border-(--danger-border) bg-(--danger-bg)'
+                  : 'border-(--warning-border) bg-(--warning-bg)'
               }`}
             >
               <p
                 class={`m-0 font-mono text-[11px] font-medium tracking-[0.04em] uppercase ${
-                  item.severity === 'error'
-                    ? 'text-[var(--danger)]'
-                    : 'text-[var(--warning)]'
+                  item.severity === 'error' ? 'text-(--danger)' : 'text-(--warning)'
                 }`}
               >
                 Line {item.line}, column {item.column}
               </p>
-              <p
-                class="m-0 text-[13px] font-medium leading-snug text-[var(--text)]"
-              >
+              <p class="m-0 text-[13px] font-medium leading-snug text-(--text)">
                 {item.message}
               </p>
               {#if item.hint}
-                <p class="m-0 text-xs leading-relaxed text-[var(--text-3)]">
+                <p class="m-0 text-xs leading-relaxed text-(--text-3)">
                   {item.hint}
                 </p>
               {/if}
             </div>
           {/each}
         {:else}
-          <p
-            class="m-0 py-6 text-center text-xs leading-relaxed text-[var(--text-3)]"
-          >
+          <p class="m-0 py-6 text-center text-xs leading-relaxed text-(--text-3)">
             No issues detected.
           </p>
         {/if}

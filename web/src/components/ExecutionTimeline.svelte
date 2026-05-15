@@ -36,14 +36,11 @@
 {/snippet}
 
 <ol class="flex w-full" aria-label="Binary injection execution timeline">
-  {#each steps as step, index}
+  {#each steps as step, index (step)}
     {@const state = ($executionMap.get(step) ?? 'idle') as ExecutionState}
     {@const isLast = index === steps.length - 1}
 
-    <li
-      class="relative w-full"
-      aria-label={`${index + 1}. ${step}, ${stateLabel(state)}`}
-    >
+    <li class="relative w-full" aria-label={`${index + 1}. ${step}, ${stateLabel(state)}`}>
       <div class="flex items-center">
         <div
           class="z-10 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-picobit-surface"
