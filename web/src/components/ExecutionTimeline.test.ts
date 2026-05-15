@@ -1,7 +1,7 @@
 import { cleanup, render, screen } from '@testing-library/svelte';
 import { tick } from 'svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { executionMap, resetExecution, updateExecutionMap } from '../stores/execution';
+import { resetExecution, updateExecutionMap } from '../stores/execution';
 import ExecutionTimeline from './ExecutionTimeline.svelte';
 
 const STEPS = ['Detect', 'Copy', 'Execute', 'Collect', 'Cleanup'];

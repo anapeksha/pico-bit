@@ -14,6 +14,12 @@ _WDT_TIMEOUT_MS = 8_000
 _LOOT_FILE = 'loot.json'
 _MAX_BINARY_SIZE = 2 * 1024 * 1024
 _FILE_CHUNK_SIZE = 4096
+_BASE_HEADERS = {'Connection': 'close', 'X-Content-Type-Options': 'nosniff'}
+_JSON_RESPONSE_HEADERS = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+}
+_EMPTY_HEADERS = {}
 
 
 def _esc(s):

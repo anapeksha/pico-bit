@@ -17,6 +17,12 @@ _FILE_CHUNK_SIZE = 4096
 _JSON_HEADERS = {'Content-Type': 'application/json; charset=utf-8'}
 _NO_STORE = {'Cache-Control': 'no-store'}
 _STATIC_CACHE = {'Cache-Control': 'public, max-age=86400'}
+_BASE_HEADERS: dict[str, str] = {'Connection': 'close', 'X-Content-Type-Options': 'nosniff'}
+_JSON_RESPONSE_HEADERS: dict[str, str] = {
+    'Content-Type': 'application/json; charset=utf-8',
+    'Cache-Control': 'no-store',
+}
+_EMPTY_HEADERS: dict[str, str] = {}
 
 
 def _esc(s: str) -> str:

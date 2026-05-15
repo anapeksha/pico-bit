@@ -40,10 +40,7 @@ export const uploadingBinary = writable(false);
 export const injectingBinary = writable(false);
 
 /** Target OS for the HID stager script, derived from the active keyboard OS selection. */
-export const binaryTargetOs = derived(
-  keyboard,
-  ($k) => OS_CODE_TO_TARGET[$k.os] ?? 'windows',
-);
+export const binaryTargetOs = derived(keyboard, ($k) => OS_CODE_TO_TARGET[$k.os] ?? 'windows');
 
 /** Section-local status notice shown inside Binary Armory. */
 export const armoryNotice = writable<{
@@ -70,16 +67,11 @@ export async function uploadBinary(file: File) {
   uploadProgress.set(0);
   setArmoryNotice('Uploading...', 'quiet');
   try {
-    const data = await uploadBinaryFile(file, (percent) =>
-      uploadProgress.set(percent),
-    );
+    const data = await uploadBinaryFile(file, (percent) => uploadProgress.set(percent));
     hasBinary.set(true);
     stagedBinaryName.set(data.filename || file.name);
     applyUsbAgent(data.usb_agent);
-    setArmoryNotice(
-      data.message || 'Upload complete.',
-      data.notice || 'success',
-    );
+    setArmoryNotice(data.message || 'Upload complete.', data.notice || 'success');
   } catch (error: any) {
     setArmoryNotice(error.message || 'Upload failed.', 'error');
   } finally {

@@ -23,11 +23,14 @@ const BOOTSTRAP_DATA = {
 describe('loadBootstrap', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
-    vi.stubGlobal('EventSource', vi.fn(() => ({
-      addEventListener: vi.fn(),
-      close: vi.fn(),
-      onerror: null,
-    })));
+    vi.stubGlobal(
+      'EventSource',
+      vi.fn(() => ({
+        addEventListener: vi.fn(),
+        close: vi.fn(),
+        onerror: null,
+      })),
+    );
   });
 
   afterEach(() => {

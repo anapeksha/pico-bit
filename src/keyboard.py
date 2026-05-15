@@ -466,9 +466,17 @@ def layout_label(code: str | None) -> str:
     return layout_option(code)['label']
 
 
+_layout_data_cache: tuple[str | None, LayoutData] | None = None
+
+
 def _layout_data(code: str | None) -> LayoutData:
+    global _layout_data_cache
+    if _layout_data_cache is not None and _layout_data_cache[0] == code:
+        return _layout_data_cache[1]
     normalized = normalize_layout_code(code)
-    return _LAYOUTS.get(normalized, _LAYOUTS[DEFAULT_LAYOUT_CODE])
+    result = _LAYOUTS.get(normalized, _LAYOUTS[DEFAULT_LAYOUT_CODE])
+    _layout_data_cache = (code, result)
+    return result
 
 
 def _step(encoded: int, *, altgr: bool) -> tuple[int, int] | None:
@@ -515,7 +523,8 @@ def lookup_char_steps(ch: str, layout_code: str | None = None) -> list[tuple[int
         rest = lookup_char_steps(second, layout_code)
         if first is None:
             return rest
-        return [first] + rest
+        rest.insert(0, first)
+        return rest
 
     return []
 
@@ -1080,7 +1089,7 @@ class HIDKeyboard:
                 self._xfer_busy = True
                 self._dev.submit_xfer(self._ep_in, self._report)
                 break
-            except OSError:
+            except Exception:  # noqa: BLE001
                 self._xfer_busy = False
                 await sleep_ms(3)
         else:

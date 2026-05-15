@@ -12,7 +12,7 @@ export async function requestJson<T = Record<string, any>>(
     },
   });
 
-  let data: Record<string, any> = {};
+  let data: Record<string, any>;
   try {
     data = await response.json();
   } catch {
@@ -46,7 +46,7 @@ export function uploadBinaryFile(
     });
 
     xhr.addEventListener('load', () => {
-      let data: Record<string, any> = {};
+      let data: Record<string, any>;
       try {
         data = JSON.parse(xhr.responseText);
       } catch {

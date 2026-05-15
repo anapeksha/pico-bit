@@ -2,15 +2,11 @@
   import { changeKeyboardTarget, keyboard } from '../stores/keyboard';
   import { runHistory } from '../stores/run';
 
-  const panelClass =
-    'rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4';
-  const titleClass =
-    'm-0 mb-2.5 text-[13px] font-semibold tracking-[-0.005em] text-[var(--text)]';
+  const panelClass = 'rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4';
+  const titleClass = 'm-0 mb-2.5 text-[13px] font-semibold tracking-[-0.005em] text-[var(--text)]';
   const labelClass = 'text-[11px] font-medium text-[var(--text-3)]';
   const selectClass =
     'w-full appearance-none rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-[13px] leading-none text-[var(--text)] outline-none focus:border-[var(--text)]';
-  const rowClass =
-    'flex items-center justify-between gap-2 border-t border-[var(--border)] py-2';
 </script>
 
 <div class="lg:order-2 xl:order-0">
@@ -32,7 +28,7 @@
                 os: (event.currentTarget as HTMLSelectElement).value,
               })}
           >
-            {#each $keyboard.oses as os}
+            {#each $keyboard.oses as os (os.code)}
               <option value={os.code}>{os.label}</option>
             {/each}
           </select>
@@ -49,7 +45,7 @@
                 os: $keyboard.os,
               })}
           >
-            {#each $keyboard.layouts as layout}
+            {#each $keyboard.layouts as layout (layout.code)}
               <option value={layout.code}>{layout.label}</option>
             {/each}
           </select>
@@ -64,7 +60,7 @@
       <p class={titleClass}>Recent runs</p>
       <div class="flex max-h-56 flex-col gap-1 overflow-y-auto" aria-live="polite">
         {#if $runHistory.length}
-          {#each $runHistory as item}
+          {#each $runHistory as item (item.sequence)}
             <div
               class="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1.5"
             >
@@ -86,9 +82,7 @@
             </div>
           {/each}
         {:else}
-          <p class="m-0 text-xs leading-relaxed text-[var(--text-3)]">
-            No payloads have run yet.
-          </p>
+          <p class="m-0 text-xs leading-relaxed text-[var(--text-3)]">No payloads have run yet.</p>
         {/if}
       </div>
     </div>

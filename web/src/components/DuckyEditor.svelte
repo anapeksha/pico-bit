@@ -56,16 +56,10 @@
     sample.style.visibility = 'hidden';
     document.body.appendChild(sample);
     metrics = {
-      charWidth:
-        sample.getBoundingClientRect().width / 10 ||
-        DEFAULT_EDITOR_METRICS.charWidth,
-      lineHeight:
-        Number.parseFloat(style.lineHeight) ||
-        DEFAULT_EDITOR_METRICS.lineHeight,
-      padLeft:
-        Number.parseFloat(style.paddingLeft) || DEFAULT_EDITOR_METRICS.padLeft,
-      padTop:
-        Number.parseFloat(style.paddingTop) || DEFAULT_EDITOR_METRICS.padTop,
+      charWidth: sample.getBoundingClientRect().width / 10 || DEFAULT_EDITOR_METRICS.charWidth,
+      lineHeight: Number.parseFloat(style.lineHeight) || DEFAULT_EDITOR_METRICS.lineHeight,
+      padLeft: Number.parseFloat(style.paddingLeft) || DEFAULT_EDITOR_METRICS.padLeft,
+      padTop: Number.parseFloat(style.paddingTop) || DEFAULT_EDITOR_METRICS.padTop,
     };
     sample.remove();
   }
@@ -79,9 +73,7 @@
   function queueValidation() {
     window.clearTimeout(validationTimer);
     validationTimer = window.setTimeout(() => {
-      validatePayloadDraft().catch((error) =>
-        showNotice(error.message, 'error'),
-      );
+      validatePayloadDraft().catch((error) => showNotice(error.message, 'error'));
     }, 260);
   }
 
@@ -100,19 +92,14 @@
   });
 </script>
 
-<section
-  class:flex-1={$activeAccordion === 'ducky'}
-  class="flex min-h-0 shrink-0 flex-col"
->
+<section class:flex-1={$activeAccordion === 'ducky'} class="flex min-h-0 shrink-0 flex-col">
   <button
     class="flex w-full cursor-pointer items-center gap-2 border-0 border-b border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2.5 text-left text-xs font-medium text-[var(--text)] hover:bg-[var(--surface-3)]"
     type="button"
     aria-expanded={$activeAccordion === 'ducky'}
     onclick={() => activeAccordion.set('ducky')}
   >
-    <span class="flex-1 font-mono text-xs text-[var(--text-3)]"
-      >Ducky Editor</span
-    >
+    <span class="flex-1 font-mono text-xs text-[var(--text-3)]">Ducky Editor</span>
     <span class={badgeClass($validation?.badge_tone)}
       >{$validation?.badge_label || $payloadState}</span
     >
@@ -128,9 +115,7 @@
       <div
         class="flex items-center gap-2.5 border-b border-[var(--border)] bg-[var(--surface-3)] px-3.5 py-2.5"
       >
-        <div class="flex-1 font-mono text-xs text-[var(--text-3)]">
-          payload.dd
-        </div>
+        <div class="flex-1 font-mono text-xs text-[var(--text-3)]">payload.dd</div>
       </div>
 
       <div class="grid min-h-[28rem] grid-cols-[3rem_minmax(0,1fr)]">
@@ -141,7 +126,7 @@
             class="relative py-[0.85rem] font-mono text-[13px] leading-[1.7]"
             style={`transform: translateY(${-scrollTop}px);`}
           >
-            {#each gutterLines($payload, $validation) as item}
+            {#each gutterLines($payload, $validation) as item (item.line)}
               <div
                 class={`flex h-[22.1px] items-center justify-end gap-1.5 px-2 text-[11px] ${
                   item.severity === 'error'
@@ -153,8 +138,7 @@
                 title={item.title || ''}
               >
                 {#if item.severity}
-                  <span class="size-1.5 shrink-0 rounded-full bg-current"
-                  ></span>
+                  <span class="size-1.5 shrink-0 rounded-full bg-current"></span>
                 {/if}
                 {item.line}
               </div>
@@ -164,12 +148,10 @@
 
         <div class="relative overflow-hidden bg-[var(--surface)]">
           <div class="pointer-events-none absolute inset-0">
-            {#each editorMarkers($validation, metrics, scrollLeft, scrollTop) as marker}
+            {#each editorMarkers($validation, metrics, scrollLeft, scrollTop) as marker (`${marker.line}-${marker.severity}`)}
               <div
                 class={`absolute h-0.5 rounded-full opacity-90 ${
-                  marker.severity === 'error'
-                    ? 'bg-[var(--danger)]'
-                    : 'bg-[var(--warning)]'
+                  marker.severity === 'error' ? 'bg-[var(--danger)]' : 'bg-[var(--warning)]'
                 }`}
                 style={marker.style}
                 title={marker.title}
@@ -181,6 +163,7 @@
             aria-hidden="true"
             style={`transform: translate(${-scrollLeft}px, ${-scrollTop}px);`}
           >
+            <!-- eslint-disable-next-line svelte/no-at-html-tags -->
             {@html highlightPayload($payload)}
           </div>
           <label for="payload" class="sr-only">Payload script</label>
@@ -204,13 +187,8 @@
       <div
         class="flex flex-col items-stretch justify-between gap-4 border-t border-[var(--border)] bg-[var(--surface-3)] px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center"
       >
-        <div
-          class="flex min-w-0 flex-1 items-center gap-2.5"
-          id="editor-status"
-        >
-          <span
-            class={badgeClass($validating ? 'quiet' : $validation?.badge_tone)}
-          >
+        <div class="flex min-w-0 flex-1 items-center gap-2.5" id="editor-status">
+          <span class={badgeClass($validating ? 'quiet' : $validation?.badge_tone)}>
             {$validating ? 'Checking...' : $validation?.badge_label || 'Ready'}
           </span>
           <span class="min-w-0 flex-1 truncate text-xs text-[var(--text-3)]">

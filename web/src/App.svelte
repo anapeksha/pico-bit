@@ -60,6 +60,7 @@
   });
 
   function handleBoundaryError(error: unknown) {
+    // eslint-disable-next-line no-console
     console.error('Portal render error:', error);
     showNotice((error as Error)?.message || 'An unexpected error occurred.', 'error');
   }
@@ -69,12 +70,16 @@
 
 {#if $globalError}
   <div
-    class="fixed inset-0 z-[9999] flex min-h-screen flex-col items-center justify-center bg-picobit-surface-3 p-6"
+    class="fixed inset-0 z-9999 flex min-h-screen flex-col items-center justify-center bg-picobit-surface-3 p-6"
     role="alert"
     aria-live="assertive"
   >
-    <div class="w-full max-w-lg rounded-[14px] border border-picobit-danger-border bg-picobit-surface p-8 shadow-xl">
-      <p class="mb-1 text-[11px] font-medium uppercase tracking-widest text-picobit-danger opacity-70">
+    <div
+      class="w-full max-w-lg rounded-[14px] border border-picobit-danger-border bg-picobit-surface p-8 shadow-xl"
+    >
+      <p
+        class="mb-1 text-[11px] font-medium uppercase tracking-widest text-picobit-danger opacity-70"
+      >
         Fatal Error
       </p>
       <h1 class="m-0 mb-4 text-[18px] font-semibold tracking-tight text-picobit-text">
@@ -86,8 +91,7 @@
       {#if import.meta.env.DEV && $globalError.stack}
         <pre
           class="mb-6 overflow-auto rounded-lg bg-picobit-surface-2 p-3.5 font-mono text-[11px] leading-relaxed text-picobit-text-3 whitespace-pre-wrap"
-          aria-label="Stack trace"
-        >{$globalError.stack}</pre>
+          aria-label="Stack trace">{$globalError.stack}</pre>
       {/if}
       <button
         class="inline-flex h-9 cursor-pointer items-center rounded-lg border border-picobit-text bg-picobit-text px-4 text-[13px] font-medium text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]"
@@ -99,21 +103,13 @@
     </div>
   </div>
 {:else if authState === 'login'}
-  <section
-    class="grid min-h-screen place-items-center bg-picobit-surface-3 p-6"
-  >
-    <div
-      class="w-full max-w-sm rounded-[14px] border border-picobit-border bg-picobit-surface p-8"
-    >
+  <section class="grid min-h-screen place-items-center bg-picobit-surface-3 p-6">
+    <div class="w-full max-w-sm rounded-[14px] border border-picobit-border bg-picobit-surface p-8">
       <div class="mb-5">
-        <h1
-          class="m-0 mb-1.5 text-[22px] font-semibold tracking-tight text-picobit-text"
-        >
+        <h1 class="m-0 mb-1.5 text-[22px] font-semibold tracking-tight text-picobit-text">
           Pico Bit
         </h1>
-        <p class="m-0 text-xs leading-relaxed text-picobit-text-3">
-          Sign in to unlock injector.
-        </p>
+        <p class="m-0 text-xs leading-relaxed text-picobit-text-3">Sign in to unlock injector.</p>
       </div>
 
       <form action="/login" method="post" class="grid gap-3">
@@ -131,10 +127,7 @@
         {/if}
 
         <div class="grid gap-1">
-          <label
-            class="text-[11px] font-medium text-picobit-text-3"
-            for="username"
-          >
+          <label class="text-[11px] font-medium text-picobit-text-3" for="username">
             Username
           </label>
           <input
@@ -147,10 +140,7 @@
           />
         </div>
         <div class="grid gap-1">
-          <label
-            class="text-[11px] font-medium text-picobit-text-3"
-            for="password"
-          >
+          <label class="text-[11px] font-medium text-picobit-text-3" for="password">
             Password
           </label>
           <input
@@ -194,11 +184,7 @@
     <nav
       class="fixed inset-x-0 top-0 z-50 flex h-12 items-center gap-3 border-b border-black/10 bg-white/80 px-6 backdrop-blur-xl dark:border-white/10 dark:bg-black/80"
     >
-      <div
-        class="text-[13px] font-semibold tracking-[-0.01em] text-picobit-text"
-      >
-        Pico Bit
-      </div>
+      <div class="text-[13px] font-semibold tracking-[-0.01em] text-picobit-text">Pico Bit</div>
       <div class="flex-1"></div>
       <ThemeToggle />
     </nav>

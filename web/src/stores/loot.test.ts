@@ -81,5 +81,4 @@ describe('loot store', () => {
     await importUsbLoot();
     expect(get(importingLoot)).toBe(false);
   });
-
 });
