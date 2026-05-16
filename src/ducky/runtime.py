@@ -398,7 +398,9 @@ class DuckyInterpreter:
                     continue
 
                 end = index + 1
-                while end < len(text) and (text[end].isalnum() or text[end] == '_'):
+                while end < len(text) and (
+                    text[end].isalpha() or text[end].isdigit() or text[end] == '_'
+                ):
                     end += 1
 
                 name = text[index + 1 : end]
@@ -475,8 +477,8 @@ class DuckyInterpreter:
         value = await self._eval_expr(expr, line_no)
         try:
             return int(value)
-        except Exception as exc:
-            raise DuckyRuntimeError(line_no, f'integer expected, got {value!r}') from exc
+        except Exception:
+            raise DuckyRuntimeError(line_no, f'integer expected, got {value!r}') from None
 
     async def _eval_expr(self, expr, line_no):
         translated = await self._translate_expr(expr.strip())
@@ -491,8 +493,8 @@ class DuckyInterpreter:
             raise
         except DuckyRuntimeError:
             raise
-        except Exception as exc:
-            raise DuckyRuntimeError(line_no, f'invalid expression: {expr}') from exc
+        except Exception:
+            raise DuckyRuntimeError(line_no, f'invalid expression: {expr}') from None
 
     def _make_function_placeholder(self, name):
         def caller():
@@ -542,8 +544,8 @@ class DuckyInterpreter:
         try:
             with open(filename) as f:
                 script = f.read()
-        except OSError as exc:
-            raise DuckyRuntimeError(line_no, f'INCLUDE: file not found: {filename}') from exc
+        except OSError:
+            raise DuckyRuntimeError(line_no, f'INCLUDE: file not found: {filename}') from None
         statements = parse_script(script)
         await self._execute_statements(statements)
 

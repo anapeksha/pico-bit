@@ -225,7 +225,7 @@ class _LootMixin:
             waiter = self._execution_stream.waiter()
             try:
                 await asyncio.wait_for(waiter.wait(), _EXECUTION_STREAM_HEARTBEAT_S)
-            except TimeoutError:
+            except asyncio.TimeoutError:  # noqa: UP041 — builtin TimeoutError != asyncio.TimeoutError in MicroPython
                 pass
 
             if not self._execution_stream.events_from(sent):
