@@ -159,7 +159,7 @@
             {/each}
           </div>
           <div
-            class="editor-highlight pointer-events-none absolute inset-0 overflow-hidden whitespace-pre break-all p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-(--text)"
+            class="editor-highlight pointer-events-none absolute inset-0 whitespace-pre p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-(--text)"
             aria-hidden="true"
             style={`transform: translate(${-scrollLeft}px, ${-scrollTop}px);`}
           >
