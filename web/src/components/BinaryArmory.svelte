@@ -174,7 +174,7 @@
         </div>
       </div>
 
-      <div class="relative">
+      <div class="relative min-w-0">
         {#if $importingLoot}
           <div
             class="absolute inset-0 z-10 flex items-center justify-center rounded-lg bg-picobit-surface/70 backdrop-blur-[2px]"

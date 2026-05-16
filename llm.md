@@ -15,9 +15,8 @@
 - **Exception chaining is dead code** — `raise X from exc` is parsed but the `from` clause is silently ignored. Use `raise X from None`; drop `as exc` to avoid ruff F841/B904.
 - **No `typing` module at module level** — function-signature annotations are safe (not evaluated), but `from typing import ...` at module level crashes. It was removed from `ducky/analysis.py`; keep it absent everywhere.
 - **~300 KB heap; no concurrent TCP connections** — the Pico W cannot reliably hold two simultaneous TCP connections under load. This drives the non-blocking `inject_binary` design.
-- **No async file I/O** — add `await asyncio.sleep(0)` before any `gc.collect()`, `analyze_script()`, file read/write, or crypto call. These yield points prevent event-loop stalls and are load-bearing on hardware.
-- **`encrypt`/`decrypt` are async coroutines** — always `await` them. They live in `server/loot_crypto.py`.
-- **`_keystream` yields every 8 SHA-256 rounds** — breaks a potential 160 ms CPU block into ~10 ms segments. Do not restructure the crypto loop.
+- **No async file I/O** — add `await asyncio.sleep(0)` before any `gc.collect()`, `analyze_script()`, or file read/write. These yield points prevent event-loop stalls and are load-bearing on hardware.
+- **`encrypt`/`decrypt` in `loot_crypto.py` are async — `await` them if re-wired** — not currently called; kept for future use. If wired back in, every call site must be in an async context and `_keystream` yields every 8 SHA-256 rounds to prevent ~160 ms CPU stalls.
 
 ### Server
 
@@ -26,7 +25,7 @@
 - **`_run_payload` catches `Exception` broadly** — `MemoryError`, `RuntimeError`, etc. are real on hardware. The `# noqa: BLE001` is intentional; do not narrow the catch.
 - **`POST /api/loot` is unauthenticated** — target machines have no session cookie. This is by design.
 - **No `/api/loot/stream` SSE route** — loot is fetched via a one-shot `GET /api/loot` snapshot triggered by the execution stream's `done` event. A persistent loot SSE stream would require two concurrent TCP connections; the Pico cannot sustain this.
-- **`loot.json` in the repo root is a static schema reference only** — the Pico writes encrypted binary (PCB1 format) to its own `loot.json` on LittleFS. Tests that call `_init_execution_loot` must monkeypatch `routes_loot._LOOT_FILE` to `tmp_path`.
+- **`loot.json` in the repo root is a static schema reference only** — the Pico writes plain UTF-8 JSON to its own `loot.json` on LittleFS. Tests that call `_init_execution_loot` must monkeypatch `routes_loot._LOOT_FILE` to `tmp_path`.
 - **No safe/unsafe mode** — `ALLOW_UNSAFE`, `_safe_mode_enabled()`, `/api/safe-mode`, and the UI toggle are all gone. Do not re-add them.
 - **LED calls**: `STATUS_LED.show(key)` plays a non-fatal pattern and returns; `STATUS_LED.halt(key)` loops a fatal pattern forever (requires power cycle). Every LED error call must be wrapped in its own `try/except Exception: pass` so a hardware LED failure does not mask the original error.
 
@@ -39,6 +38,7 @@
 
 ### Frontend
 
+- **Grid children containing wide content need `min-w-0`** — CSS grid items have `min-width: auto` by default, allowing them to grow wider than the grid column to fit content (e.g. `whitespace-pre` elements, long paths). Any grid child wrapping such content must carry `min-w-0`. The `<div class="relative min-w-0">` in `BinaryArmory.svelte` that wraps `LootViewer` is the canonical example.
 - **Tailwind v4 CSS variable shorthand** — use `bg-(--surface)`, not `bg-[var(--surface)]`. The IntelliSense rule `suggestCanonicalClasses` warns on the `[var(...)]` form. All `web/src/` Svelte files now use the short form.
 - **Z-index scale is continuous in Tailwind v4** — `z-9999`, `z-1100`, `z-1000` are all canonical. Do not wrap them in `z-[...]`.
 - **Svelte Attachments, not Actions** — drag/drop uses `{@attach fileDrop({ onFile: handler })}`. The old `use:fileDrop` syntax is gone; the `actions/` folder was renamed to `attachments/`.
@@ -128,19 +128,19 @@ scripts/
 
 ---
 
-## Encryption at rest
+## Crypto module (not currently active)
 
-`server/loot_crypto.py` — PCB1 format:
+`server/loot_crypto.py` exists but is **not wired in**. `loot.json` and `payload.dd` are currently plain text. The module is kept ready for future re-wiring:
 
 ```
 derive_key(ssid, password)  →  SHA-256(ssid + ':' + password)  →  32-byte key
 
-encrypt(plaintext, key)  →  b'PCB1' + 4-byte-nonce + XOR(deflate(plaintext))
-decrypt(data, key)       →  plaintext
+encrypt(plaintext, key)  →  b'PCB1' + 4-byte-nonce + XOR(deflate(plaintext))  [async]
+decrypt(data, key)       →  plaintext  [async]
                              (files without PCB1 magic treated as plain UTF-8)
 ```
 
-Both `payload.dd` and `loot.json` are encrypted at rest. All callers must `await`. Compression uses `deflate.ZLIB` on MicroPython, `zlib` on CPython, raw bytes as fallback.
+Compression: `deflate.ZLIB` on MicroPython, `zlib` on CPython, raw bytes as fallback. When re-wired, all call sites must `await` and file open modes must use `'rb'`/`'wb'`.
 
 ---
 
