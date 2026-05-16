@@ -84,7 +84,7 @@
   </button>
 
   {#if $activeAccordion === 'armory'}
-    <div class="grid gap-3 overflow-y-auto px-3.5 py-4">
+    <div class="grid gap-3 px-3.5 py-4">
       <div
         class="relative flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-[10px] border border-dashed border-picobit-border-strong bg-picobit-surface-2 px-4 py-6 transition hover:bg-picobit-surface-3"
         role="button"

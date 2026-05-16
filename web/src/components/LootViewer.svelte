@@ -59,7 +59,7 @@
 {#if $loot}
   {@const data = agentData($loot)}
   {#if Object.keys(data).length}
-    <div class="flex min-h-0 flex-col gap-2">
+    <div class="flex min-h-0 min-w-0 flex-col gap-2">
       <div class="flex items-center justify-between gap-2">
         <p class="m-0 text-[11px] font-medium text-picobit-text-3">loot.json</p>
         <button
@@ -75,7 +75,7 @@
       </div>
 
       <div
-        class="loot-viewer min-h-0 overflow-auto rounded-lg border border-picobit-border bg-picobit-surface-2 p-3"
+        class="loot-viewer max-h-80 overflow-auto rounded-lg border border-picobit-border bg-picobit-surface-2 p-3"
       >
         <pre
           class="m-0 font-mono text-[11px] leading-relaxed text-picobit-text-2 whitespace-pre"

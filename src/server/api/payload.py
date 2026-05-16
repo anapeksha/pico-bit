@@ -2,7 +2,7 @@ import asyncio
 import gc
 import json
 
-from device_config import AP_SSID
+from device_config import AP_PASSWORD, AP_SSID
 from ducky import (
     DEFAULT_PAYLOAD,
     PAYLOAD_FILE,
@@ -28,6 +28,9 @@ from status_led import STATUS_LED
 
 from .._http import _KEYBOARD_LAYOUT_FILE, _RUN_HISTORY_LIMIT, _ticks_ms
 from ..execution_stream import ExecutionStreamState
+from ..loot_crypto import decrypt, derive_key, encrypt
+
+_PAYLOAD_KEY = derive_key(AP_SSID, AP_PASSWORD)
 
 _BINARY_TARGET_OSES = {'windows', 'linux', 'macos'}
 
@@ -52,7 +55,7 @@ class _PayloadMixin:
     def _binary_target_notice(self, target_os: str) -> str: ...
     def _stager_script(self, target_os: str) -> str: ...
     def _usb_agent_state(self) -> dict[str, object]: ...
-    def _init_execution_loot(self, target_os: str) -> None: ...
+    async def _init_execution_loot(self, target_os: str) -> None: ...
     async def _handle_loot_get(self, request, writer) -> None: ...
     async def _handle_loot_download(self, request, writer) -> None: ...
     async def _handle_usb_loot_import(self, request, writer) -> None: ...
@@ -68,19 +71,23 @@ class _PayloadMixin:
             self._payload_seeded = True
         return payload_path
 
-    def _read_payload(self) -> str:
+    async def _read_payload(self) -> str:
         gc.collect()
         payload_path = self._seed_payload()
         try:
-            with open(payload_path) as f:
-                return f.read()
+            with open(payload_path, 'rb') as f:
+                data = f.read()
         except OSError:
             return DEFAULT_PAYLOAD
+        if not data:
+            return DEFAULT_PAYLOAD
+        return await decrypt(data, _PAYLOAD_KEY)
 
-    def _write_payload(self, content: str) -> str:
+    async def _write_payload(self, content: str) -> str:
         payload_path = find_payload() or PAYLOAD_FILE
-        with open(payload_path, 'w') as f:
-            f.write(content)
+        ciphertext = await encrypt(content, _PAYLOAD_KEY)
+        with open(payload_path, 'wb') as f:
+            f.write(ciphertext)
         self._payload_seeded = False
         return payload_path
 
@@ -194,12 +201,12 @@ class _PayloadMixin:
             except Exception:  # noqa: BLE001
                 pass
 
-    def _bootstrap_state(self) -> dict[str, object]:
+    async def _bootstrap_state(self) -> dict[str, object]:
         message = ''
         notice = 'quiet'
         if self._payload_seeded:
             message = 'payload.dd was seeded on this boot.'
-        payload = self._read_payload()
+        payload = await self._read_payload()
 
         state = {
             'ap_ip': self._ap_ip,
@@ -230,7 +237,7 @@ class _PayloadMixin:
 
         if request['method'] == 'GET' and request['path'] == '/api/bootstrap':
             await asyncio.sleep(0)
-            state = self._bootstrap_state()
+            state = await self._bootstrap_state()
             await self._send_json(writer, request, '200 OK', state)
             return
 
@@ -253,7 +260,7 @@ class _PayloadMixin:
                 return
 
             await asyncio.sleep(0)
-            self._write_payload(payload)
+            await self._write_payload(payload)
             await self._send_json(
                 writer,
                 request,
@@ -343,7 +350,10 @@ class _PayloadMixin:
         if request['method'] == 'POST' and request['path'] == '/api/run':
             data = json.loads(request['body'].decode('utf-8', 'ignore') or '{}')
             await asyncio.sleep(0)
-            payload = str(data.get('payload', self._read_payload())).replace('\r\n', '\n')
+            payload_raw = data.get('payload')
+            if payload_raw is None:
+                payload_raw = await self._read_payload()
+            payload = str(payload_raw).replace('\r\n', '\n')
             await asyncio.sleep(0)
             validation = self._validation_state(payload)
             if validation['blocking']:
@@ -361,7 +371,7 @@ class _PayloadMixin:
 
             if data.get('save', True):
                 await asyncio.sleep(0)
-                self._write_payload(payload)
+                await self._write_payload(payload)
             message, notice = await self._run_payload(payload)
             status = '200 OK' if notice == 'success' else '400 Bad Request'
             await self._send_json(
@@ -455,7 +465,7 @@ class _PayloadMixin:
                 return
 
             self._execution_stream.publish('Detect', 'success')
-            self._init_execution_loot(target_os)
+            await self._init_execution_loot(target_os)
             self._execution_stream.publish('Copy', 'loading')
 
             # Fire the HID stager in a background task so this HTTP response
