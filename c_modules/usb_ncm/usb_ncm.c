@@ -24,12 +24,12 @@
 #include "lwip/pbuf.h"
 #include "lwip/ip4_addr.h"
 #include "lwip/tcpip.h"
-#include "lwip/dhcp.h"
-#include "lwip/apps/dhcpd.h"    /* lwIP DHCP server — already compiled for CYW43 AP */
 #include "netif/ethernet.h"
+#include "shared/netutils/dhcpserver.h"  /* MicroPython DHCP server, compiled for CYW43 AP */
 
 /* ---- module state ---- */
 static struct netif _ncm_netif;
+static dhcp_server_t _ncm_dhcp_server;
 static bool _ncm_ready = false;
 static volatile bool _ncm_init_pending = false;
 
@@ -132,8 +132,8 @@ STATIC mp_obj_t py_usb_ncm_init(mp_obj_t ip_obj, mp_obj_t nm_obj, mp_obj_t gw_ob
               NULL, _ncm_netif_init, netif_input);
     netif_set_up(&_ncm_netif);
 
-    /* Start lwIP DHCP server (same one used by CYW43 AP mode) */
-    dhcpd_start(&_ncm_netif);
+    /* Start MicroPython DHCP server (same one used by CYW43 AP mode) */
+    dhcp_server_init(&_ncm_dhcp_server, &ip, &netmask);
 
     return mp_const_none;
 }
