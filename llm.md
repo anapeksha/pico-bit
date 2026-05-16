@@ -44,6 +44,7 @@
 - **Svelte Attachments, not Actions** — drag/drop uses `{@attach fileDrop({ onFile: handler })}`. The old `use:fileDrop` syntax is gone; the `actions/` folder was renamed to `attachments/`.
 - **`binaryTargetOs` is a derived store** — `derived(keyboard, ($k) => OS_CODE_TO_TARGET[$k.os] ?? 'windows')`. Never replace with a writable store; the OS selection is owned by the keyboard store.
 - **Global errors go to `globalError`; render errors go to `showNotice`** — `window.onerror` and `unhandledrejection` write to `globalError` (triggers the full-screen error wall). `<svelte:boundary>` render failures call `showNotice` (toast). Do not swap these.
+- **No action buttons in LootViewer** — `LootViewer` is display-only. Copy requires a secure context (HTTPS) unavailable on the plain-HTTP Pico portal. Download is handled by the button in `BinaryArmory` beside "Import USB". Do not add clipboard calls to any frontend component without confirming HTTPS availability.
 
 ### DuckyScript stager
 

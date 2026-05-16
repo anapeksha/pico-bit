@@ -213,6 +213,7 @@
             href="/api/loot/download"
             download="loot.json"
             title="Download loot.json"
+            aria-label="Download loot.json"
           >
             <Download size={14} />
           </a>
