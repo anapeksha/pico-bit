@@ -9,7 +9,7 @@
 <div
   class="lg:order-3 lg:col-span-full lg:grid lg:grid-cols-2 lg:gap-4 xl:order-0 xl:col-span-1 xl:block"
 >
-  <aside class="flex flex-col gap-3.5 xl:w-60">
+  <aside class="flex flex-col gap-3.5 xl:w-60" aria-label="About and status">
     <div class={panelClass}>
       <p class={titleClass}>About</p>
       <p class="m-0 mb-2.5 text-xs leading-relaxed text-(--text-3)">
@@ -32,16 +32,16 @@
       <p class={titleClass}>Status</p>
       <dl class="m-0 grid">
         <div class="flex items-center justify-between gap-2 border-b border-(--border) pb-2">
-          <span class="text-xs text-(--text-3)">Seeded this boot</span>
-          <span class="text-right text-xs font-medium text-(--text)">
+          <dt class="text-xs text-(--text-3)">Seeded this boot</dt>
+          <dd class="m-0 text-right text-xs font-medium text-(--text)">
             {$seededThisBoot ? 'Yes' : 'No'}
-          </span>
+          </dd>
         </div>
         <div class="flex items-center justify-between gap-2 py-2">
-          <span class="text-xs text-(--text-3)">Typing target</span>
-          <span class="text-right text-xs font-medium text-(--text)">
+          <dt class="text-xs text-(--text-3)">Typing target</dt>
+          <dd class="m-0 text-right text-xs font-medium text-(--text)">
             {$keyboard.targetLabel}
-          </span>
+          </dd>
         </div>
       </dl>
       <div class="my-3.5 h-px bg-(--border)"></div>

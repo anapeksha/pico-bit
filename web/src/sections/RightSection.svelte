@@ -10,7 +10,7 @@
 </script>
 
 <div class="lg:order-2 xl:order-0">
-  <aside class="flex flex-col gap-3.5 xl:w-68">
+  <aside class="flex flex-col gap-3.5 xl:w-68" aria-label="Layout and recent runs">
     <div class={panelClass}>
       <p class={titleClass}>Layout</p>
       <p class="m-0 mb-3 text-xs leading-relaxed text-(--text-3)">

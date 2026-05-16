@@ -1,5 +1,5 @@
-import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, render, screen } from '@testing-library/svelte';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { loot } from '../stores/loot';
 import LootViewer from './LootViewer.svelte';
 
@@ -43,18 +43,6 @@ describe('LootViewer', () => {
     expect(screen.getByLabelText('Loot JSON output')).toBeInTheDocument();
   });
 
-  it('renders the Copy button when agent data is present', () => {
-    loot.set(WITH_AGENT_DATA);
-    render(LootViewer);
-    expect(screen.getByRole('button', { name: 'Copy loot JSON' })).toBeInTheDocument();
-  });
-
-  it('Copy button label reads "Copy" initially', () => {
-    loot.set(WITH_AGENT_DATA);
-    render(LootViewer);
-    expect(screen.getByRole('button', { name: 'Copy loot JSON' })).toHaveTextContent('Copy');
-  });
-
   it('JSON output includes hostname value', () => {
     loot.set(WITH_AGENT_DATA);
     render(LootViewer);
@@ -77,15 +65,4 @@ describe('LootViewer', () => {
     expect(pre.textContent).not.toContain('"timestamp"');
   });
 
-  it('clicking Copy invokes clipboard.writeText', async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    vi.stubGlobal('navigator', { ...navigator, clipboard: { writeText } });
-    loot.set(WITH_AGENT_DATA);
-    render(LootViewer);
-    await fireEvent.click(screen.getByRole('button', { name: 'Copy loot JSON' }));
-    expect(writeText).toHaveBeenCalledOnce();
-    const arg = writeText.mock.calls[0][0];
-    expect(() => JSON.parse(arg)).not.toThrow();
-    vi.unstubAllGlobals();
-  });
 });

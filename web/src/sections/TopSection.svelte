@@ -14,19 +14,19 @@
 </script>
 
 <div class="flex flex-wrap justify-around gap-2">
-  <div class={statClass}>
-    <div class={labelClass}>Access point</div>
-    <div class={valueClass}>{$apSsid}</div>
-  </div>
+  <dl class={`${statClass} m-0`}>
+    <dt class={labelClass}>Access point</dt>
+    <dd class={`${valueClass} m-0`}>{$apSsid}</dd>
+  </dl>
 
-  <div class={statClass}>
-    <div class={labelClass}>AP password</div>
-    <div class="flex min-w-0 items-center gap-1.5">
-      <div class={`${valueClass} min-w-0 flex-1 truncate font-mono text-xs`}>
+  <dl class={`${statClass} m-0`}>
+    <dt class={labelClass}>AP password</dt>
+    <dd class="m-0 flex min-w-0 items-center gap-1.5">
+      <span class={`${valueClass} min-w-0 flex-1 truncate font-mono text-xs`}>
         {$apPassword === 'Open network' || revealPassword
           ? $apPassword
           : '•'.repeat($apPassword.length)}
-      </div>
+      </span>
       {#if $apPassword !== 'Open network'}
         <button
           class="flex shrink-0 items-center border-0 bg-transparent p-0 text-picobit-text-3 hover:text-picobit-text"
@@ -42,16 +42,16 @@
           {/if}
         </button>
       {/if}
-    </div>
-  </div>
+    </dd>
+  </dl>
 
-  <div class={statClass}>
-    <div class={labelClass}>Host HID</div>
-    <div class={valueClass} aria-live="polite">{$hidState}</div>
-  </div>
+  <dl class={`${statClass} m-0`}>
+    <dt class={labelClass}>Host HID</dt>
+    <dd class={`${valueClass} m-0`} aria-live="polite">{$hidState}</dd>
+  </dl>
 
-  <div
-    class={`${statClass} ${
+  <dl
+    class={`${statClass} m-0 ${
       $hostUsb.state === 'active' || $hostUsb.mounted
         ? 'border-picobit-success-border bg-picobit-success-bg'
         : $hostUsb.state === 'error' || !$hostUsb.available
@@ -59,9 +59,9 @@
           : ''
     }`}
   >
-    <div class={labelClass}>Host USB</div>
-    <div
-      class={`${valueClass} ${
+    <dt class={labelClass}>Host USB</dt>
+    <dd
+      class={`${valueClass} m-0 ${
         $hostUsb.state === 'active' || $hostUsb.mounted
           ? 'text-picobit-success'
           : $hostUsb.state === 'error' || !$hostUsb.available
@@ -71,6 +71,6 @@
       aria-live="polite"
     >
       {$usbStateLabel}
-    </div>
-  </div>
+    </dd>
+  </dl>
 </div>
