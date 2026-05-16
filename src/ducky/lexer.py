@@ -233,7 +233,9 @@ def tokenize_expression(expr, line_no):
             index += 1
             if index >= len(expr) or not (expr[index].isalpha() or expr[index] == '_'):
                 raise DuckyParseError(line_no, f'invalid variable reference at column {column}')
-            while index < len(expr) and (expr[index].isalnum() or expr[index] == '_'):
+            while index < len(expr) and (
+                expr[index].isalpha() or expr[index].isdigit() or expr[index] == '_'
+            ):
                 index += 1
             tokens.append(Token('VARIABLE', expr[start:index], line_no, column))
             continue
@@ -274,7 +276,9 @@ def tokenize_expression(expr, line_no):
         if ch.isalpha() or ch == '_':
             start = index
             index += 1
-            while index < len(expr) and (expr[index].isalnum() or expr[index] == '_'):
+            while index < len(expr) and (
+                expr[index].isalpha() or expr[index].isdigit() or expr[index] == '_'
+            ):
                 index += 1
             tokens.append(Token('IDENTIFIER', expr[start:index], line_no, column))
             continue
