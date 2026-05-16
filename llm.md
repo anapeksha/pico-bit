@@ -45,6 +45,9 @@
 - **`binaryTargetOs` is a derived store** — `derived(keyboard, ($k) => OS_CODE_TO_TARGET[$k.os] ?? 'windows')`. Never replace with a writable store; the OS selection is owned by the keyboard store.
 - **Global errors go to `globalError`; render errors go to `showNotice`** — `window.onerror` and `unhandledrejection` write to `globalError` (triggers the full-screen error wall). `<svelte:boundary>` render failures call `showNotice` (toast). Do not swap these.
 - **No action buttons in LootViewer** — `LootViewer` is display-only. Copy requires a secure context (HTTPS) unavailable on the plain-HTTP Pico portal. Download is handled by the button in `BinaryArmory` beside "Import USB". Do not add clipboard calls to any frontend component without confirming HTTPS availability.
+- **DuckyEditor highlight overlay must not have `overflow-hidden` or `break-all`** — the overlay div uses `transform: translate(-scrollLeft, -scrollTop)` to mirror the textarea's scroll position. `overflow-hidden` clips the overlay's content at its layout boundary *before* the transform is applied, making any text past the container width permanently invisible. `break-all` additionally wraps long lines differently from the textarea's `wrap="off"`, misaligning every character after a wrap. The parent `<div class="relative overflow-hidden">` handles clipping; the overlay itself must be `whitespace-pre` only.
+- **Key-value pairs use `<dl>/<dt>/<dd>`** — stat cards in `TopSection` and the status panel in `LeftSection` use `<dl>` with `<dt>` for the label and `<dd class="m-0">` for the value. Do not revert to `<div>/<div>` or `<span>/<span>` — `<dd>` has a browser default `margin-left` that must be reset with `m-0`.
+- **Multiple `<aside>` elements need `aria-label`** — `LeftSection` (`aria-label="About and status"`) and `RightSection` (`aria-label="Layout and recent runs"`) both render `<aside>`. Without distinguishing labels, landmark navigation announces both as "complementary" with no way to tell them apart.
 
 ### DuckyScript stager
 
@@ -193,7 +196,7 @@ npm --prefix web run check           # svelte-check
 
 # Tests
 uv run pytest                        # 104 backend tests
-npm --prefix web run test            # 102 frontend tests
+npm --prefix web run test            # 99 frontend tests
 
 # Verify generated asset sync
 uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_assets(check=True)"
@@ -221,7 +224,7 @@ PICOBIT_PROXY=http://192.168.4.1 npm --prefix web run dev  # proxy to hardware
 - `test_build.py` — bundle output, config overrides, `server/__init__.mpy` presence
 - `test_asset_pipeline.py` — web asset sync, route aliases, byte budget
 
-**Frontend** (`web/src/**/*.test.ts`, 102 tests):
+**Frontend** (`web/src/**/*.test.ts`, 99 tests):
 - `lib/api.test.ts`, `lib/binary.test.ts`, `lib/loot.test.ts`
 - `stores/loot.test.ts`, `stores/bootstrap.test.ts`
 - `components/LootViewer.test.ts`, `components/ValidationModal.test.ts`, `components/ExecutionTimeline.test.ts`, `components/ThemeToggle.test.ts`
