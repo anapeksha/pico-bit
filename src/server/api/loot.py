@@ -3,17 +3,14 @@ import gc
 import json
 import os
 
-from device_config import AP_PASSWORD, AP_SSID
 from status_led import STATUS_LED
 
 from .._http import _JSON_HEADERS, _LOOT_FILE, _NO_STORE, _merge_headers, _ticks_ms
 from ..execution_stream import ExecutionStreamState
-from ..loot_crypto import decrypt, derive_key, encrypt
 from ..sse import sse_comment, sse_event
 
 _EXECUTION_STREAM_HEARTBEAT_S = 15
 _USB_LOOT_FILE = 'loot-usb.json'
-_LOOT_KEY = derive_key(AP_SSID, AP_PASSWORD)
 
 
 class _LootMixin:
@@ -34,18 +31,16 @@ class _LootMixin:
         return json.dumps(record)
 
     async def _read_loot_text(self) -> str:
-        with open(_LOOT_FILE, 'rb') as f:
-            data = f.read()
-        return await decrypt(data, _LOOT_KEY)
+        with open(_LOOT_FILE) as f:
+            return f.read()
 
     async def _save_loot_data(self, data, *, source: str) -> dict[str, object]:
         record = self._normalize_loot_record(data)
         record['source'] = source
         text = self._serialize_loot_record(record)
         gc.collect()
-        ciphertext = await encrypt(text, _LOOT_KEY)
-        with open(_LOOT_FILE, 'wb') as f:
-            f.write(ciphertext)
+        with open(_LOOT_FILE, 'w') as f:
+            f.write(text)
         return record
 
     async def _init_execution_loot(self, target_os: str) -> None:
@@ -58,9 +53,8 @@ class _LootMixin:
             'source': 'binary:usb',
         }
         try:
-            ciphertext = await encrypt(json.dumps(record), _LOOT_KEY)
-            with open(_LOOT_FILE, 'wb') as f:
-                f.write(ciphertext)
+            with open(_LOOT_FILE, 'w') as f:
+                f.write(json.dumps(record))
         except (OSError, MemoryError):
             pass
 

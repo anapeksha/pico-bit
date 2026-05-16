@@ -2,7 +2,7 @@ import asyncio
 import gc
 import json
 
-from device_config import AP_PASSWORD, AP_SSID
+from device_config import AP_SSID
 from ducky import (
     DEFAULT_PAYLOAD,
     PAYLOAD_FILE,
@@ -28,9 +28,6 @@ from status_led import STATUS_LED
 
 from .._http import _KEYBOARD_LAYOUT_FILE, _RUN_HISTORY_LIMIT, _ticks_ms
 from ..execution_stream import ExecutionStreamState
-from ..loot_crypto import decrypt, derive_key, encrypt
-
-_PAYLOAD_KEY = derive_key(AP_SSID, AP_PASSWORD)
 
 _BINARY_TARGET_OSES = {'windows', 'linux', 'macos'}
 
@@ -75,19 +72,16 @@ class _PayloadMixin:
         gc.collect()
         payload_path = self._seed_payload()
         try:
-            with open(payload_path, 'rb') as f:
+            with open(payload_path) as f:
                 data = f.read()
         except OSError:
             return DEFAULT_PAYLOAD
-        if not data:
-            return DEFAULT_PAYLOAD
-        return await decrypt(data, _PAYLOAD_KEY)
+        return data or DEFAULT_PAYLOAD
 
     async def _write_payload(self, content: str) -> str:
         payload_path = find_payload() or PAYLOAD_FILE
-        ciphertext = await encrypt(content, _PAYLOAD_KEY)
-        with open(payload_path, 'wb') as f:
-            f.write(ciphertext)
+        with open(payload_path, 'w') as f:
+            f.write(content)
         self._payload_seeded = False
         return payload_path
 
