@@ -123,11 +123,15 @@ def test_bootstrap_state_exposes_keyboard_target_metadata() -> None:
     server = SetupServer()
     server._ap_ip = '192.168.4.1'
     server._ap_password_in_use = 'PicoBit24Net'
-    server._read_payload = lambda: 'STRING hi\n'  # type: ignore[method-assign]
+
+    async def _fake_read_payload() -> str:
+        return 'STRING hi\n'
+
+    server._read_payload = _fake_read_payload  # type: ignore[method-assign]
     server._has_binary = lambda: True  # type: ignore[method-assign]
     server._keyboard_ready = lambda: True  # type: ignore[method-assign]
 
-    state = server._bootstrap_state()
+    state = asyncio.run(server._bootstrap_state())
 
     assert state['payload'] == 'STRING hi\n'
     assert state['has_binary'] is True
@@ -277,7 +281,7 @@ def test_handle_loot_receive_persists_timestamp_and_publishes(tmp_path, monkeypa
     asyncio.run(server._handle_loot_receive(request, writer))
     status, payload = _json_response(writer)
 
-    saved = json.loads(loot_file.read_text())
+    saved = json.loads(asyncio.run(server._read_loot_text()))
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['message'] == 'Loot saved.'
@@ -350,7 +354,7 @@ def test_handle_usb_loot_import_promotes_usb_file_to_canonical_loot(tmp_path, mo
 
     asyncio.run(server._handle_api(request, writer))
     status, payload = _json_response(writer)
-    saved = json.loads(loot_file.read_text())
+    saved = json.loads(asyncio.run(server._read_loot_text()))
 
     assert status == 'HTTP/1.1 200 OK'
     assert payload['notice'] == 'success'

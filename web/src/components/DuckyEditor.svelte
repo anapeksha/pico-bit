@@ -33,12 +33,12 @@
   const badgeClass = (tone?: string) =>
     `inline-flex items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-[11px] font-medium ${
       tone === 'success'
-        ? 'border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]'
+        ? 'border-(--success-border) bg-(--success-bg) text-(--success)'
         : tone === 'error'
-          ? 'border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger)]'
+          ? 'border-(--danger-border) bg-(--danger-bg) text-(--danger)'
           : tone === 'warning' || tone === 'warn'
-            ? 'border-[var(--warning-border)] bg-[var(--warning-bg)] text-[var(--warning)]'
-            : 'border-[var(--border)] bg-[var(--surface)] text-[var(--text-3)]'
+            ? 'border-(--warning-border) bg-(--warning-bg) text-(--warning)'
+            : 'border-(--border) bg-(--surface) text-(--text-3)'
     }`;
 
   const buttonClass =
@@ -94,12 +94,12 @@
 
 <section class:flex-1={$activeAccordion === 'ducky'} class="flex min-h-0 shrink-0 flex-col">
   <button
-    class="flex w-full cursor-pointer items-center gap-2 border-0 border-b border-[var(--border)] bg-[var(--surface-2)] px-3.5 py-2.5 text-left text-xs font-medium text-[var(--text)] hover:bg-[var(--surface-3)]"
+    class="flex w-full cursor-pointer items-center gap-2 border-0 border-b border-(--border) bg-(--surface-2) px-3.5 py-2.5 text-left text-xs font-medium text-(--text) hover:bg-(--surface-3)"
     type="button"
     aria-expanded={$activeAccordion === 'ducky'}
     onclick={() => activeAccordion.set('ducky')}
   >
-    <span class="flex-1 font-mono text-xs text-[var(--text-3)]">Ducky Editor</span>
+    <span class="flex-1 font-mono text-xs text-(--text-3)">Ducky Editor</span>
     <span class={badgeClass($validation?.badge_tone)}
       >{$validation?.badge_label || $payloadState}</span
     >
@@ -113,14 +113,14 @@
   {#if $activeAccordion === 'ducky'}
     <div class="flex min-h-0 flex-1 flex-col">
       <div
-        class="flex items-center gap-2.5 border-b border-[var(--border)] bg-[var(--surface-3)] px-3.5 py-2.5"
+        class="flex items-center gap-2.5 border-b border-(--border) bg-(--surface-3) px-3.5 py-2.5"
       >
-        <div class="flex-1 font-mono text-xs text-[var(--text-3)]">payload.dd</div>
+        <div class="flex-1 font-mono text-xs text-(--text-3)">payload.dd</div>
       </div>
 
       <div class="grid min-h-[28rem] grid-cols-[3rem_minmax(0,1fr)]">
         <div
-          class="relative overflow-hidden border-r border-[var(--border)] bg-[var(--surface-2)] select-none"
+          class="relative overflow-hidden border-r border-(--border) bg-(--surface-2) select-none"
         >
           <div
             class="relative py-[0.85rem] font-mono text-[13px] leading-[1.7]"
@@ -130,10 +130,10 @@
               <div
                 class={`flex h-[22.1px] items-center justify-end gap-1.5 px-2 text-[11px] ${
                   item.severity === 'error'
-                    ? 'font-semibold text-[var(--danger)]'
+                    ? 'font-semibold text-(--danger)'
                     : item.severity === 'warning'
-                      ? 'font-semibold text-[var(--warning)]'
-                      : 'text-[var(--text-4)]'
+                      ? 'font-semibold text-(--warning)'
+                      : 'text-(--text-4)'
                 }`}
                 title={item.title || ''}
               >
@@ -146,12 +146,12 @@
           </div>
         </div>
 
-        <div class="relative overflow-hidden bg-[var(--surface)]">
+        <div class="relative overflow-hidden bg-(--surface)">
           <div class="pointer-events-none absolute inset-0">
             {#each editorMarkers($validation, metrics, scrollLeft, scrollTop) as marker (`${marker.line}-${marker.severity}`)}
               <div
                 class={`absolute h-0.5 rounded-full opacity-90 ${
-                  marker.severity === 'error' ? 'bg-[var(--danger)]' : 'bg-[var(--warning)]'
+                  marker.severity === 'error' ? 'bg-(--danger)' : 'bg-(--warning)'
                 }`}
                 style={marker.style}
                 title={marker.title}
@@ -159,7 +159,7 @@
             {/each}
           </div>
           <div
-            class="editor-highlight pointer-events-none absolute inset-0 overflow-hidden whitespace-pre break-all p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-[var(--text)]"
+            class="editor-highlight pointer-events-none absolute inset-0 overflow-hidden whitespace-pre break-all p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-(--text)"
             aria-hidden="true"
             style={`transform: translate(${-scrollLeft}px, ${-scrollTop}px);`}
           >
@@ -171,7 +171,7 @@
             bind:this={textarea}
             bind:value={$payload}
             id="payload"
-            class="relative z-10 block h-full min-h-[28rem] w-full resize-none overflow-auto whitespace-pre border-0 bg-transparent p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-transparent caret-[var(--text)] outline-none [tab-size:4]"
+            class="relative z-10 block h-full min-h-[28rem] w-full resize-none overflow-auto whitespace-pre border-0 bg-transparent p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-transparent caret-(--text) outline-none [tab-size:4]"
             spellcheck="false"
             autocapitalize="off"
             autocomplete="off"
@@ -185,18 +185,18 @@
       </div>
 
       <div
-        class="flex flex-col items-stretch justify-between gap-4 border-t border-[var(--border)] bg-[var(--surface-3)] px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center"
+        class="flex flex-col items-stretch justify-between gap-4 border-t border-(--border) bg-(--surface-3) px-4 py-3 sm:flex-row sm:flex-wrap sm:items-center"
       >
         <div class="flex min-w-0 flex-1 items-center gap-2.5" id="editor-status">
           <span class={badgeClass($validating ? 'quiet' : $validation?.badge_tone)}>
             {$validating ? 'Checking...' : $validation?.badge_label || 'Ready'}
           </span>
-          <span class="min-w-0 flex-1 truncate text-xs text-[var(--text-3)]">
+          <span class="min-w-0 flex-1 truncate text-xs text-(--text-3)">
             {$validation?.summary || 'Dry run runs before save and execution.'}
           </span>
           {#if $validation?.diagnostics?.length}
             <button
-              class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-[var(--danger-border)] bg-[var(--danger-bg)] px-2 py-1 text-[11px] font-medium text-[var(--danger)] hover:border-[var(--danger)]"
+              class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-(--danger-border) bg-(--danger-bg) px-2 py-1 text-[11px] font-medium text-(--danger) hover:border-(--danger)"
               type="button"
               aria-label="Show validation errors"
               onclick={() => validationModalOpen.set(true)}

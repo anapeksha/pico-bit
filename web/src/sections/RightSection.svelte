@@ -2,18 +2,18 @@
   import { changeKeyboardTarget, keyboard } from '../stores/keyboard';
   import { runHistory } from '../stores/run';
 
-  const panelClass = 'rounded-xl border border-[var(--border)] bg-[var(--surface)] px-4 py-4';
-  const titleClass = 'm-0 mb-2.5 text-[13px] font-semibold tracking-[-0.005em] text-[var(--text)]';
-  const labelClass = 'text-[11px] font-medium text-[var(--text-3)]';
+  const panelClass = 'rounded-xl border border-(--border) bg-(--surface) px-4 py-4';
+  const titleClass = 'm-0 mb-2.5 text-[13px] font-semibold tracking-[-0.005em] text-(--text)';
+  const labelClass = 'text-[11px] font-medium text-(--text-3)';
   const selectClass =
-    'w-full appearance-none rounded-lg border border-[var(--border-strong)] bg-[var(--surface)] px-3 py-2 text-[13px] leading-none text-[var(--text)] outline-none focus:border-[var(--text)]';
+    'w-full appearance-none rounded-lg border border-(--border-strong) bg-(--surface) px-3 py-2 text-[13px] leading-none text-(--text) outline-none focus:border-(--text)';
 </script>
 
 <div class="lg:order-2 xl:order-0">
-  <aside class="flex flex-col gap-3.5 xl:w-[17rem]">
+  <aside class="flex flex-col gap-3.5 xl:w-68">
     <div class={panelClass}>
       <p class={titleClass}>Layout</p>
-      <p class="m-0 mb-3 text-xs leading-relaxed text-[var(--text-3)]">
+      <p class="m-0 mb-3 text-xs leading-relaxed text-(--text-3)">
         Tell how the host interprets typed text.
       </p>
       <div class="flex flex-col gap-2">
@@ -51,7 +51,7 @@
           </select>
         </div>
       </div>
-      <p class="m-0 mt-3 text-[11px] leading-relaxed text-[var(--text-4)]">
+      <p class="m-0 mt-3 text-[11px] leading-relaxed text-(--text-4)">
         {$keyboard.hint}
       </p>
     </div>
@@ -62,12 +62,12 @@
         {#if $runHistory.length}
           {#each $runHistory as item (item.sequence)}
             <div
-              class="flex min-w-0 items-center gap-2 rounded-lg border border-[var(--border)] bg-[var(--surface-2)] px-2 py-1.5"
+              class="flex min-w-0 items-center gap-2 rounded-lg border border-(--border) bg-(--surface-2) px-2 py-1.5"
             >
-              <span class="shrink-0 font-mono text-[11px] font-semibold text-[var(--text-4)]">
+              <span class="shrink-0 font-mono text-[11px] font-semibold text-(--text-4)">
                 #{item.sequence}
               </span>
-              <span class="min-w-0 flex-1 truncate text-xs text-[var(--text-2)]">
+              <span class="min-w-0 flex-1 truncate text-xs text-(--text-2)">
                 {item.source ? `${item.source} · ` : ''}{item.notice !== 'success' && item.message
                   ? item.message
                   : item.preview || item.message}
@@ -75,8 +75,8 @@
               <span
                 class={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.04em] uppercase ${
                   item.notice === 'success'
-                    ? 'border-[var(--success-border)] bg-[var(--success-bg)] text-[var(--success)]'
-                    : 'border-[var(--danger-border)] bg-[var(--danger-bg)] text-[var(--danger)]'
+                    ? 'border-(--success-border) bg-(--success-bg) text-(--success)'
+                    : 'border-(--danger-border) bg-(--danger-bg) text-(--danger)'
                 }`}
               >
                 {item.notice === 'success' ? 'OK' : 'ERR'}
@@ -84,7 +84,7 @@
             </div>
           {/each}
         {:else}
-          <p class="m-0 text-xs leading-relaxed text-[var(--text-3)]">No payloads have run yet.</p>
+          <p class="m-0 text-xs leading-relaxed text-(--text-3)">No payloads have run yet.</p>
         {/if}
       </div>
     </div>

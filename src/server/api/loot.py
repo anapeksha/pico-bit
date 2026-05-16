@@ -3,14 +3,17 @@ import gc
 import json
 import os
 
+from device_config import AP_PASSWORD, AP_SSID
 from status_led import STATUS_LED
 
 from .._http import _JSON_HEADERS, _LOOT_FILE, _NO_STORE, _merge_headers, _ticks_ms
 from ..execution_stream import ExecutionStreamState
+from ..loot_crypto import decrypt, derive_key, encrypt
 from ..sse import sse_comment, sse_event
 
 _EXECUTION_STREAM_HEARTBEAT_S = 15
 _USB_LOOT_FILE = 'loot-usb.json'
+_LOOT_KEY = derive_key(AP_SSID, AP_PASSWORD)
 
 
 class _LootMixin:
@@ -30,20 +33,22 @@ class _LootMixin:
     def _serialize_loot_record(self, record: dict[str, object]) -> str:
         return json.dumps(record)
 
-    def _read_loot_text(self) -> str:
-        with open(_LOOT_FILE) as f:
-            return f.read()
+    async def _read_loot_text(self) -> str:
+        with open(_LOOT_FILE, 'rb') as f:
+            data = f.read()
+        return await decrypt(data, _LOOT_KEY)
 
-    def _save_loot_data(self, data, *, source: str) -> dict[str, object]:
+    async def _save_loot_data(self, data, *, source: str) -> dict[str, object]:
         record = self._normalize_loot_record(data)
         record['source'] = source
         text = self._serialize_loot_record(record)
         gc.collect()
-        with open(_LOOT_FILE, 'w') as f:
-            f.write(text)
+        ciphertext = await encrypt(text, _LOOT_KEY)
+        with open(_LOOT_FILE, 'wb') as f:
+            f.write(ciphertext)
         return record
 
-    def _init_execution_loot(self, target_os: str) -> None:
+    async def _init_execution_loot(self, target_os: str) -> None:
         record: dict[str, object] = {
             'execution_step': 'Detect',
             'execution_state': 'success',
@@ -53,8 +58,9 @@ class _LootMixin:
             'source': 'binary:usb',
         }
         try:
-            with open(_LOOT_FILE, 'w') as f:
-                f.write(json.dumps(record))
+            ciphertext = await encrypt(json.dumps(record), _LOOT_KEY)
+            with open(_LOOT_FILE, 'wb') as f:
+                f.write(ciphertext)
         except (OSError, MemoryError):
             pass
 
@@ -66,7 +72,7 @@ class _LootMixin:
             await self._send_json(writer, request, '400 Bad Request', {'message': 'Invalid JSON.'})
             return
         try:
-            record = self._save_loot_data(data, source='network')
+            record = await self._save_loot_data(data, source='network')
         except (OSError, MemoryError):
             try:
                 await STATUS_LED.show('binary_inject_failed')
@@ -111,7 +117,7 @@ class _LootMixin:
             return
 
         try:
-            record = self._save_loot_data(data, source='usb_drive')
+            record = await self._save_loot_data(data, source='usb_drive')
         except (OSError, MemoryError):
             try:
                 await STATUS_LED.show('binary_inject_failed')
@@ -147,7 +153,7 @@ class _LootMixin:
 
     async def _handle_loot_get(self, request, writer) -> None:
         try:
-            text = self._read_loot_text()
+            text = await self._read_loot_text()
         except OSError:
             await self._send_json(
                 writer,
@@ -166,7 +172,7 @@ class _LootMixin:
 
     async def _handle_loot_download(self, request, writer) -> None:
         try:
-            text = self._read_loot_text()
+            text = await self._read_loot_text()
         except OSError:
             await self._send_json(
                 writer,
