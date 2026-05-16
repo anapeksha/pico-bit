@@ -183,6 +183,17 @@ def write_usb_config_header(*, ncm: bool = False) -> Path:
     return header
 
 
+def _patch_tusb_config_for_ncm() -> None:
+    tusb_config = MICROPYTHON_DIR / 'shared' / 'tinyusb' / 'tusb_config.h'
+    if not tusb_config.exists():
+        return
+    content = tusb_config.read_text(encoding='utf-8')
+    old = '#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)'
+    new = '#ifndef USBD_EP_BUILTIN_MAX\n#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)\n#endif'
+    if old in content and new not in content:
+        tusb_config.write_text(content.replace(old, new), encoding='utf-8')
+
+
 def build_firmware(
     board: str,
     ref: str,
@@ -192,6 +203,8 @@ def build_firmware(
     ncm: bool = False,
 ) -> Path:
     usb_config_header = write_usb_config_header(ncm=ncm)
+    if ncm:
+        _patch_tusb_config_for_ncm()
 
     make_args = [
         'make',
