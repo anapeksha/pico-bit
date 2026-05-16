@@ -149,8 +149,7 @@ class _BinaryMixin:
                 'DELAY 1200',
                 'STRING Terminal',
                 'ENTER',
-                'DELAY 3500',
-                'DEFAULTCHARDELAY 10',
+                'DELAY 2000',
             ) + _ducky_type_line(cmd)
 
         cmd = (
@@ -164,8 +163,7 @@ class _BinaryMixin:
         return _ducky_script(
             'DELAY 700',
             'CTRL-ALT t',
-            'DELAY 2500',
-            'DEFAULTCHARDELAY 10',
+            'DELAY 2000',
         ) + _ducky_type_line(cmd)
 
     def _stager_script(self, target_os: str) -> str:

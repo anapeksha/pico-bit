@@ -68,7 +68,9 @@
                 #{item.sequence}
               </span>
               <span class="min-w-0 flex-1 truncate text-xs text-[var(--text-2)]">
-                {item.source ? `${item.source} · ` : ''}{item.preview || item.message}
+                {item.source ? `${item.source} · ` : ''}{item.notice !== 'success' && item.message
+                  ? item.message
+                  : item.preview || item.message}
               </span>
               <span
                 class={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.04em] uppercase ${
