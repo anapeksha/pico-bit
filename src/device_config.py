@@ -5,3 +5,7 @@ PORTAL_USERNAME: str = 'admin'
 PORTAL_PASSWORD: str = 'PicoBit24Admin'
 CORS_ALLOWED_ORIGIN: str = ''
 CORS_ALLOW_CREDENTIALS: bool = False
+USB_NCM_ENABLED: bool = False
+USB_NCM_IP: str = '10.0.0.1'
+USB_NCM_NETMASK: str = '255.255.255.0'
+USB_NCM_GATEWAY: str = '10.0.0.1'

@@ -102,6 +102,7 @@ class _BinaryMixin:
     # Methods provided by SetupServer / other mixins
     def _is_authorized(self, request) -> bool: ...
     async def _send_json(self, writer, request, status: str, data: dict[str, object]) -> None: ...
+    async def _send_headers(self, writer, request, status: str, headers=None) -> None: ...
 
     def _has_binary(self) -> bool:
         return bool(staged_binary_path())
@@ -308,3 +309,46 @@ class _BinaryMixin:
 
     def _staged_binary_name(self) -> str:
         return staged_binary_name()
+
+    async def _handle_binary_download(self, request, writer) -> None:
+        """Serve the staged binary over HTTP — unauthenticated, for NCM stager use.
+
+        Target servers have no session cookie, mirroring the POST /api/loot design.
+        Streams in chunks to stay within the 300 KB heap limit.
+        """
+        path = staged_binary_path()
+        if not path:
+            await self._send_json(
+                writer, request, '404 Not Found', {'message': 'No binary staged.'}
+            )
+            return
+        try:
+            stat = os.stat(path)
+            file_size = stat[6]
+        except OSError:
+            await self._send_json(
+                writer, request, '404 Not Found', {'message': 'No binary staged.'}
+            )
+            return
+        fname = _basename(path)
+        await self._send_headers(
+            writer,
+            request,
+            '200 OK',
+            headers={
+                'Content-Type': 'application/octet-stream',
+                'Content-Length': str(file_size),
+                'Content-Disposition': f'attachment; filename="{fname}"',
+                'Cache-Control': 'no-store',
+            },
+        )
+        try:
+            with open(path, 'rb') as f:
+                while True:
+                    chunk = f.read(_FILE_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    writer.write(chunk)
+                    await writer.drain()
+        except OSError:
+            pass

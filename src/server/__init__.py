@@ -301,6 +301,10 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             await self._handle_loot_receive(request, writer)
             return
 
+        if request['method'] == 'GET' and request['path'] == '/api/binary':
+            await self._handle_binary_download(request, writer)
+            return
+
         if request['path'].startswith('/api/'):
             await self._handle_api(request, writer)
             return

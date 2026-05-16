@@ -1,7 +1,7 @@
 import asyncio
 
-from helpers import wait_forever
 from status_led import STATUS_LED
+from usb import poll_ncm
 
 _INITIAL_DELAY_MS: int = 10000
 
@@ -77,7 +77,9 @@ async def run() -> None:
     if error_name is not None:
         await STATUS_LED.halt(error_name)
         return
-    await wait_forever()
+    while True:
+        poll_ncm()
+        await asyncio.sleep_ms(10)
 
 
 try:

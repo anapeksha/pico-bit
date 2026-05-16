@@ -96,6 +96,14 @@ jobs:
             --board RPI_PICO2_W \
             --release-version "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
 
+      - name: Build NCM firmware
+        run: |
+          uv run python release.py build-uf2 \
+            --micropython-ref v1.28.0 \
+            --board RPI_PICO2_W \
+            --usb-ncm \
+            --release-version "${{ github.event_name == 'workflow_dispatch' && inputs.release_tag || github.ref_name }}"
+
       - name: Upload workflow artifacts
         uses: actions/upload-artifact@v7
         with:

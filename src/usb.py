@@ -252,6 +252,57 @@ class USBService:
 USB = USBService()
 
 
+class NCMService:
+    def __init__(self) -> None:
+        self._initialized: bool = False
+        self._ready: bool = False
+
+    def initialize(self) -> bool:
+        try:
+            from device_config import (  # noqa: PLC0415
+                USB_NCM_ENABLED,
+                USB_NCM_GATEWAY,
+                USB_NCM_IP,
+                USB_NCM_NETMASK,
+            )
+            if not USB_NCM_ENABLED:
+                return False
+            import usb_ncm  # noqa: PLC0415 — C module only present in NCM firmware
+            usb_ncm.init(USB_NCM_IP, USB_NCM_NETMASK, USB_NCM_GATEWAY)
+            self._initialized = True
+            return True
+        except (ImportError, OSError):
+            return False
+
+    def poll(self) -> None:
+        if not self._initialized:
+            return
+        try:
+            import usb_ncm  # noqa: PLC0415
+            usb_ncm.poll()
+            self._ready = bool(usb_ncm.is_ready())
+        except Exception:
+            pass
+
+    def ready(self) -> bool:
+        return self._ready
+
+
+NCM = NCMService()
+
+
+def initialize_ncm() -> bool:
+    return NCM.initialize()
+
+
+def poll_ncm() -> None:
+    NCM.poll()
+
+
+def ncm_ready() -> bool:
+    return NCM.ready()
+
+
 def initialize_usb():
     return USB.initialize()
 
