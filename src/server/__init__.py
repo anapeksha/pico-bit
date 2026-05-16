@@ -221,6 +221,7 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             gc.collect()
             keyboard = await self._ensure_keyboard()
             await STATUS_LED.show('payload_running')
+            gc.collect()
             await run_script(keyboard, script, default_layout=self._keyboard_layout)
 
     async def _prepare_server(self) -> None:
@@ -258,8 +259,8 @@ class SetupServer(_AuthMixin, _BinaryMixin, _LootMixin, _UsbAgentMixin, _Payload
             message, notice = f'Error: {exc}', 'error'
         except OSError as exc:
             message, notice = f'USB error: {exc}', 'error'
-        except Exception as exc:  # noqa: BLE001
-            message, notice = f'Runtime error: {type(exc).__name__}', 'error'
+        except Exception as exc:
+            message, notice = f'Runtime error: {type(exc).__name__}: {exc}', 'error'
         self._record_run(script, message, notice, source=source)
         if notice != 'success':
             try:
