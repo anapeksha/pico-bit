@@ -1,3 +1,6 @@
+#include "tusb_option.h"
+#if CFG_TUD_NCM
+
 /*
  * usb_ncm — MicroPython C module for USB CDC-NCM Ethernet.
  *
@@ -166,3 +169,5 @@ const mp_obj_module_t usb_ncm_module = {
 };
 
 MP_REGISTER_MODULE(MP_QSTR_usb_ncm, usb_ncm_module);
+
+#endif /* CFG_TUD_NCM */

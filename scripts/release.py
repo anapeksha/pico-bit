@@ -183,15 +183,41 @@ def write_usb_config_header(*, ncm: bool = False) -> Path:
     return header
 
 
-def _patch_tusb_config_for_ncm() -> None:
+def _patch_micropython_for_ncm() -> None:
+    # 1. Guard USBD_EP_BUILTIN_MAX in tusb_config.h so our -include header
+    #    can override it without triggering -Werror=macro-redefined.
     tusb_config = MICROPYTHON_DIR / 'shared' / 'tinyusb' / 'tusb_config.h'
-    if not tusb_config.exists():
+    if tusb_config.exists():
+        content = tusb_config.read_text(encoding='utf-8')
+        old = '#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)'
+        new = '#ifndef USBD_EP_BUILTIN_MAX\n#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)\n#endif'
+        if old in content and new not in content:
+            tusb_config.write_text(content.replace(old, new), encoding='utf-8')
+
+    # 2. Add NCM C sources directly to ports/rp2/CMakeLists.txt.
+    #    CMakeLists.txt is a tracked cmake input, so any edit to it causes
+    #    cmake to automatically re-run before the next build — this is more
+    #    reliable than USER_C_MODULES discovery, which depends on cmake cache
+    #    state from prior build directory reuse.
+    cmakelists = MICROPYTHON_DIR / 'ports' / 'rp2' / 'CMakeLists.txt'
+    if not cmakelists.exists():
         return
-    content = tusb_config.read_text(encoding='utf-8')
-    old = '#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)'
-    new = '#ifndef USBD_EP_BUILTIN_MAX\n#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)\n#endif'
-    if old in content and new not in content:
-        tusb_config.write_text(content.replace(old, new), encoding='utf-8')
+    sentinel = '# pico-bit-ncm-sources'
+    content = cmakelists.read_text(encoding='utf-8')
+    if sentinel in content:
+        return
+    ncm_src = ROOT / 'c_modules' / 'usb_ncm'
+    addition = f"""
+{sentinel}
+if(TARGET firmware)
+    target_sources(firmware PRIVATE
+        "{ncm_src / 'usb_ncm.c'}"
+        "{ncm_src / 'usb_ncm_descriptors.c'}"
+    )
+    target_include_directories(firmware PRIVATE "{ncm_src}")
+endif()
+"""
+    cmakelists.write_text(content + addition, encoding='utf-8')
 
 
 def build_firmware(
@@ -204,13 +230,19 @@ def build_firmware(
 ) -> Path:
     usb_config_header = write_usb_config_header(ncm=ncm)
     if ncm:
-        _patch_tusb_config_for_ncm()
+        _patch_micropython_for_ncm()
+
+    # NCM uses a separate build directory so cmake always runs fresh.
+    # Reusing build-{board} would skip cmake re-config when the standard
+    # build has already created that directory's Makefile.
+    build_dir = f'build-{board}' + ('-ncm' if ncm else '')
 
     make_args = [
         'make',
         '-C',
         'ports/rp2',
         f'BOARD={board}',
+        f'BUILD={build_dir}',
         f'FROZEN_MANIFEST={MANIFEST}',
         'MICROPY_PY_BLUETOOTH=0',
         'MICROPY_BLUETOOTH_NIMBLE=0',
@@ -221,12 +253,10 @@ def build_firmware(
             f'-include {usb_config_header}'
         ),
     ]
-    if ncm:
-        make_args.append(f'USER_C_MODULES={ROOT / "c_modules"}')
 
     _run(make_args, cwd=MICROPYTHON_DIR)
 
-    firmware = MICROPYTHON_DIR / 'ports' / 'rp2' / f'build-{board}' / 'firmware.uf2'
+    firmware = MICROPYTHON_DIR / 'ports' / 'rp2' / build_dir / 'firmware.uf2'
     if not firmware.exists():
         raise FileNotFoundError(f'Expected firmware at {firmware}')
 

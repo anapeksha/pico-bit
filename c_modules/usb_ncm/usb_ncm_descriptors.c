@@ -1,3 +1,6 @@
+#include "tusb_option.h"
+#if CFG_TUD_NCM
+
 /*
  * USB composite descriptor: HID keyboard + MSC + CDC-NCM.
  *
@@ -164,3 +167,5 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
     _desc_str[0] = (uint16_t)((TUSB_DESC_STRING << 8) | (2 * chr_count + 2));
     return _desc_str;
 }
+
+#endif /* CFG_TUD_NCM */
