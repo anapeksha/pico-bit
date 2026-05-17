@@ -196,8 +196,10 @@ def test_resolve_usb_profile_returns_default_for_none_or_blank() -> None:
 
 
 def test_resolve_usb_profile_is_case_insensitive() -> None:
-    assert RELEASE.resolve_usb_profile('Generic-Composite') is \
-        RELEASE.USB_IDENTITY_PROFILES['generic-composite']
+    assert (
+        RELEASE.resolve_usb_profile('Generic-Composite')
+        is RELEASE.USB_IDENTITY_PROFILES['generic-composite']
+    )
 
 
 def test_resolve_usb_profile_rejects_unknown_name() -> None:
@@ -208,7 +210,8 @@ def test_resolve_usb_profile_rejects_unknown_name() -> None:
 
 
 def test_write_usb_config_header_default_profile_keeps_pico_bit_branding(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ) -> None:
     monkeypatch.setattr(RELEASE, 'ROOT', tmp_path)
     header = RELEASE.write_usb_config_header()
@@ -223,7 +226,8 @@ def test_write_usb_config_header_default_profile_keeps_pico_bit_branding(
 
 
 def test_write_usb_config_header_generic_composite_strips_branding(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ) -> None:
     monkeypatch.setattr(RELEASE, 'ROOT', tmp_path)
     header = RELEASE.write_usb_config_header('generic-composite')
@@ -237,7 +241,8 @@ def test_write_usb_config_header_generic_composite_strips_branding(
 
 
 def test_write_usb_config_header_hobbyist_emits_vid_pid_overrides(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ) -> None:
     monkeypatch.setattr(RELEASE, 'ROOT', tmp_path)
     header = RELEASE.write_usb_config_header('hobbyist')
@@ -248,7 +253,8 @@ def test_write_usb_config_header_hobbyist_emits_vid_pid_overrides(
 
 
 def test_build_firmware_records_chosen_usb_profile_in_metadata(
-    tmp_path, monkeypatch,
+    tmp_path,
+    monkeypatch,
 ) -> None:
     micropython = tmp_path / 'micropython'
     firmware = micropython / 'ports' / 'rp2' / 'build-RPI_PICO2_W' / 'firmware.uf2'
@@ -269,7 +275,11 @@ def test_build_firmware_records_chosen_usb_profile_in_metadata(
     monkeypatch.setattr(RELEASE, '_run', lambda *a, **k: None)
 
     RELEASE.build_firmware(
-        'RPI_PICO2_W', 'v1.28.0', {}, 'v0.0.1', usb_profile='hobbyist',
+        'RPI_PICO2_W',
+        'v1.28.0',
+        {},
+        'v0.0.1',
+        usb_profile='hobbyist',
     )
     metadata = json.loads(release_json.read_text(encoding='utf-8'))
     assert metadata['usb_profile'] == 'hobbyist'

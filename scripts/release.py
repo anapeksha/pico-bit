@@ -194,8 +194,7 @@ def resolve_usb_profile(name: str | None) -> dict[str, object]:
     key = (name or DEFAULT_USB_PROFILE).strip().lower()
     if key not in USB_IDENTITY_PROFILES:
         raise ValueError(
-            f'unknown USB profile {name!r}; choose from '
-            f'{", ".join(sorted(USB_IDENTITY_PROFILES))}'
+            f'unknown USB profile {name!r}; choose from {", ".join(sorted(USB_IDENTITY_PROFILES))}'
         )
     return USB_IDENTITY_PROFILES[key]
 

@@ -35,15 +35,42 @@ def test_supported_platforms_and_filtered_layouts_are_exposed() -> None:
     mac_codes = [item['code'] for item in supported_layouts('MAC')]
     lnx_codes = [item['code'] for item in supported_layouts('LNX')]
     assert win_codes == [
-        'US', 'UK', 'DE', 'FR', 'ES', 'IT',
-        'SE', 'NO', 'DK', 'FI', 'PL', 'CZ', 'HU',
-        'ES_LATAM', 'PT_BR', 'JP', 'RU', 'KR',
+        'US',
+        'UK',
+        'DE',
+        'FR',
+        'ES',
+        'IT',
+        'SE',
+        'NO',
+        'DK',
+        'FI',
+        'PL',
+        'CZ',
+        'HU',
+        'ES_LATAM',
+        'PT_BR',
+        'JP',
+        'RU',
+        'KR',
     ]
     assert lnx_codes == win_codes
     # macOS has all but UK and IT (which historically aliased to WIN).
     assert mac_codes == [
-        'US', 'FR', 'SE', 'NO', 'DK', 'FI', 'PL', 'CZ', 'HU',
-        'ES_LATAM', 'PT_BR', 'JP', 'RU', 'KR',
+        'US',
+        'FR',
+        'SE',
+        'NO',
+        'DK',
+        'FI',
+        'PL',
+        'CZ',
+        'HU',
+        'ES_LATAM',
+        'PT_BR',
+        'JP',
+        'RU',
+        'KR',
     ]
 
 
@@ -56,6 +83,7 @@ def test_linux_profiles_split_into_platform_and_layout_codes() -> None:
 
 
 # --- New layouts: shell-critical ASCII positions + one accented sample each ---
+
 
 def test_swedish_layout_pipe_uses_altgr_iso_key() -> None:
     # On Swedish ISO, `|` is AltGr+`<` (the non-US-ISO key, HID 0x64).
@@ -149,5 +177,4 @@ def test_lnx_aliases_match_their_win_sources() -> None:
     # their Windows sources (X11/Wayland use the same per-layout keycode tables).
     for suffix in ('SE', 'NO', 'DK', 'FI', 'PL', 'CZ', 'HU', 'PT_BR'):
         for ch in ('|', '\\', '@', '$'):
-            assert lookup_char_steps(ch, f'LNX_{suffix}') == \
-                lookup_char_steps(ch, f'WIN_{suffix}')
+            assert lookup_char_steps(ch, f'LNX_{suffix}') == lookup_char_steps(ch, f'WIN_{suffix}')
