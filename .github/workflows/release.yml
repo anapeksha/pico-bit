@@ -49,7 +49,7 @@ jobs:
           esac
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.build_ref || github.ref }}
 
