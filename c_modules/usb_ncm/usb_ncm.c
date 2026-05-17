@@ -1,6 +1,3 @@
-#include "tusb_option.h"
-#if CFG_TUD_NCM
-
 /*
  * usb_ncm — MicroPython C module for USB CDC-NCM Ethernet.
  *
@@ -14,11 +11,31 @@
  *   - the network RX/TX callbacks that bridge frames into lwIP
  *   - the lwIP netif registration + DHCP server bring-up
  *
- * Python API:
- *   usb_ncm.init(ip, netmask, gateway)  — register netif, start DHCP server
- *   usb_ncm.poll()                      — drive tud_task() + complete NCM init
- *   usb_ncm.is_ready()                  — True once the host has opened NCM
+ * CFG_TUD_NCM gating
+ * ------------------
+ * The whole file is guarded by `#if CFG_TUD_NCM` so it collapses to empty in
+ * the standard (non-NCM) firmware build, where the user module is still
+ * compiled but does nothing. CFG_TUD_NCM itself is supplied by
+ * pico_bit_usb_config.h, which the build force-includes via CFLAGS_EXTRA
+ * (`-include …/pico_bit_usb_config.h`) only when `--usb-ncm` is set —
+ * see write_usb_config_header in scripts/release.py.
+ *
+ * Importantly we do NOT `#include "tusb_option.h"` to obtain the macro:
+ * that header lives at lib/tinyusb/src/tusb_option.h, which is NOT on the
+ * include path used by MicroPython's QSTR preprocessor pass. Relying on the
+ * -include flag side-steps the missing-header error there.
+ *
+ * NO_QSTR wrap
+ * ------------
+ * TinyUSB-only headers (tusb.h, class/net/net_device.h) live in
+ * lib/tinyusb/src/ and would also fail to resolve during the QSTR pass.
+ * MicroPython defines NO_QSTR during that pass; wrapping the TinyUSB
+ * includes in `#ifndef NO_QSTR` skips them then. The QSTR pass only needs
+ * to *preprocess* the file looking for MP_QSTR_* tokens, not to typecheck
+ * it — so TinyUSB function call sites in our body are harmless.
  */
+
+#if CFG_TUD_NCM
 
 #include <stdlib.h>
 #include <string.h>
@@ -26,17 +43,21 @@
 #include "py/runtime.h"
 #include "py/obj.h"
 
-#include "tusb.h"
 #include "lwip/netif.h"
 #include "lwip/etharp.h"
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"
 #include "lwip/tcpip.h"
 #include "netif/ethernet.h"
-#include "shared/netutils/dhcpserver.h"  /* MicroPython DHCP server (same one CYW43 AP uses) */
+#include "shared/netutils/dhcpserver.h"  /* same DHCP server CYW43 AP mode uses */
 
-/* TinyUSB's NCM driver references this symbol externally.  Lower 6 bytes of
-   the RP2350 board UID, locally-administered bit set, multicast bit cleared.
+#ifndef NO_QSTR
+#include "tusb.h"
+#include "class/net/net_device.h"
+#endif
+
+/* TinyUSB's NCM driver references this externally.  Lower 6 bytes of the
+   RP2350 board UID, locally-administered bit set, multicast bit cleared.
    Filled by _derive_mac() before netif_add. */
 uint8_t tud_network_mac_address[6] = {0x02, 0x00, 0x00, 0x00, 0x00, 0x01};
 
@@ -61,7 +82,6 @@ static void _derive_mac(void) {
 static err_t _ncm_netif_linkoutput(struct netif *netif, struct pbuf *p) {
     (void)netif;
     if (!tud_ready()) return ERR_IF;
-    /* tud_network_xmit queues the pbuf; tud_network_xmit_cb copies on demand. */
     while (!tud_network_can_xmit(p->tot_len)) {
         tud_task();
     }
