@@ -363,6 +363,7 @@ def test_prepare_source_tree_applies_module_overrides(tmp_path, monkeypatch) -> 
             'device_config': {'AP_SSID': 'Studio Pico'},
             'ducky.constants': {'DEFAULT_PAYLOAD': 'STRING seeded\n'},
         },
+        minify_python=False,
     )
 
     assert "AP_SSID: str = 'Studio Pico'" in (configured / 'device_config.py').read_text(
@@ -371,6 +372,40 @@ def test_prepare_source_tree_applies_module_overrides(tmp_path, monkeypatch) -> 
     assert "DEFAULT_PAYLOAD = 'STRING seeded\\n'" in (
         configured / 'ducky' / 'constants.py'
     ).read_text(encoding='utf-8')
+
+
+def test_prepare_source_tree_minifies_staged_python_sources(tmp_path, monkeypatch) -> None:
+    src_dir = tmp_path / 'repo-src'
+    src_dir.mkdir(parents=True, exist_ok=True)
+    (src_dir / 'sample.py').write_text(
+        """
+def greet(name: str) -> str:
+    note = "hello " + name
+    return note
+""".lstrip(),
+        encoding='utf-8',
+    )
+    monkeypatch.setattr(BUILD_PIPELINE, 'sync_web_assets', lambda: None)
+
+    plain = BUILD_PIPELINE.prepare_source_tree(
+        build_dir=tmp_path / 'plain-build',
+        root_src_dir=src_dir,
+        minify_python=False,
+    )
+    minified = BUILD_PIPELINE.prepare_source_tree(
+        build_dir=tmp_path / 'min-build',
+        root_src_dir=src_dir,
+        minify_python=True,
+    )
+
+    plain_source = (plain / 'sample.py').read_text(encoding='utf-8')
+    minified_source = (minified / 'sample.py').read_text(encoding='utf-8')
+
+    assert 'name: str' in plain_source
+    assert '-> str' in plain_source
+    assert 'name: str' not in minified_source
+    assert '-> str' not in minified_source
+    assert len(minified_source) < len(plain_source)
 
 
 def test_build_mpy_tree_embeds_relative_source_names(tmp_path, monkeypatch) -> None:

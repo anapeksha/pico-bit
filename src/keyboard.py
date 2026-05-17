@@ -41,12 +41,12 @@ _LAYOUT_LABELS = {
     'HU': 'Hungarian (HU)',
     'ES_LATAM': 'Spanish (LATAM)',
     'PT_BR': 'Portuguese (BR)',
-    'JP': 'Japanese (JP, ASCII)',
+    'JP': 'Japanese (JP)',
     'RU': 'Russian (RU, Latin)',
     'KR': 'Korean (KR, ASCII)',
 }
 
-_LAYOUTS = {
+_BASE_LAYOUTS = {
     'WIN_US': {
         'label': 'English (US)',
         'ascii': b'\x00\x00\x00\x00\x00\x00\x00\x00*+(\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00)\x00\x00\x00\x00,\x9e\xb4\xa0\xa1\xa2\xa44\xa6\xa7\xa5\xae6-78\'\x1e\x1f !"#$%&\xb33\xb6.\xb7\xb8\x9f\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d/10\xa3\xad5\x04\x05\x06\x07\x08\t\n\x0b\x0c\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\xaf\xb1\xb0\xb5L',
@@ -564,33 +564,29 @@ _LAYOUTS = {
             255: 12409,
         },
     },
-    # Polish Programmer (kbdpl1.dll) layout: ASCII keys identical to US,
-    # AltGr layer adds the nine Polish accented letters. This is the default
-    # Polish keyboard on Windows ("Polish Programmer") and the choice red-team
-    # tooling overwhelmingly assumes (US-compatible shell command typing).
     'WIN_PL': {
         'label': 'Polish (PL, Programmer)',
         'ascii': b'\x00\x00\x00\x00\x00\x00\x00\x00*+(\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00)\x00\x00\x00\x00,\x9e\xb4\xa0\xa1\xa2\xa44\xa6\xa7\xa5\xae6-78\'\x1e\x1f !"#$%&\xb33\xb6.\xb7\xb8\x9f\x84\x85\x86\x87\x88\x89\x8a\x8b\x8c\x8d\x8e\x8f\x90\x91\x92\x93\x94\x95\x96\x97\x98\x99\x9a\x9b\x9c\x9d/10\xa3\xad5\x04\x05\x06\x07\x08\t\n\x0b\x0c\r\x0e\x0f\x10\x11\x12\x13\x14\x15\x16\x17\x18\x19\x1a\x1b\x1c\x1d\xaf\xb1\xb0\xb5L',
         'need_altgr': 'ąćęłńóśźżĄĆĘŁŃÓŚŹŻ',
         'higher': {
-            211: 0x92,  # Ó = Shift+AltGr+o
-            243: 0x12,  # ó = AltGr+o
-            260: 0x84,  # Ą = Shift+AltGr+a
-            261: 0x04,  # ą = AltGr+a
-            262: 0x86,  # Ć = Shift+AltGr+c
-            263: 0x06,  # ć = AltGr+c
-            280: 0x88,  # Ę = Shift+AltGr+e
-            281: 0x08,  # ę = AltGr+e
-            321: 0x8F,  # Ł = Shift+AltGr+l
-            322: 0x0F,  # ł = AltGr+l
-            323: 0x91,  # Ń = Shift+AltGr+n
-            324: 0x11,  # ń = AltGr+n
-            346: 0x96,  # Ś = Shift+AltGr+s
-            347: 0x16,  # ś = AltGr+s
-            377: 0x9B,  # Ź = Shift+AltGr+x
-            378: 0x1B,  # ź = AltGr+x
-            379: 0x9D,  # Ż = Shift+AltGr+z
-            380: 0x1D,  # ż = AltGr+z
+            211: 0x92,
+            243: 0x12,
+            260: 0x84,
+            261: 0x04,
+            262: 0x86,
+            263: 0x06,
+            280: 0x88,
+            281: 0x08,
+            321: 0x8F,
+            322: 0x0F,
+            323: 0x91,
+            324: 0x11,
+            346: 0x96,
+            347: 0x16,
+            377: 0x9B,
+            378: 0x1B,
+            379: 0x9D,
+            380: 0x1D,
         },
         'combined': {},
     },
@@ -952,6 +948,46 @@ _LAYOUTS = {
     },
 }
 
+_JP_ASCII_REPLACEMENTS = {
+    ord('"'): 0x9F,
+    ord('&'): 0xA3,
+    ord("'"): 0xA4,
+    ord('('): 0xA5,
+    ord(')'): 0xA6,
+    ord('*'): 0xB4,
+    ord('+'): 0xB3,
+    ord(':'): 0x34,
+    ord('='): 0xAD,
+    ord('@'): 0x2F,
+    ord('['): 0x30,
+    ord(']'): 0x32,
+    ord('^'): 0x2E,
+    ord('`'): 0xAF,
+    ord('{'): 0xB0,
+    ord('}'): 0xB2,
+    ord('~'): 0xAE,
+    ord('\\'): 0x00,
+    ord('_'): 0x00,
+    ord('|'): 0x00,
+}
+
+_JP_DIRECT = {
+    ord('\\'): (MOD_NONE, 0x87),
+    ord('_'): (MOD_SHIFT, 0x87),
+    ord('|'): (MOD_SHIFT, 0x89),
+    ord('¥'): (MOD_NONE, 0x89),
+}
+
+
+def _clone_ascii_layout(
+    layouts: dict[str, LayoutData], base_code: str, replacements: dict[int, int]
+) -> bytes:
+    ascii_table = bytearray(layouts[base_code]['ascii'])
+    for char_ord, encoded in replacements.items():
+        ascii_table[char_ord] = encoded
+    return bytes(ascii_table)
+
+
 _ALIASES = {
     'MAC_US': 'WIN_US',
     'LNX_US': 'WIN_US',
@@ -960,8 +996,6 @@ _ALIASES = {
     'LNX_FR': 'WIN_FR',
     'LNX_ES': 'WIN_ES',
     'LNX_IT': 'WIN_IT',
-    # Tier 1 Linux aliases (Linux X11/Wayland follow the same scancode→char
-    # mapping as Windows for these layouts).
     'LNX_SE': 'WIN_SE',
     'LNX_NO': 'WIN_NO',
     'LNX_DK': 'WIN_DK',
@@ -969,32 +1003,15 @@ _ALIASES = {
     'LNX_CZ': 'WIN_CZ',
     'LNX_HU': 'WIN_HU',
     'LNX_PT_BR': 'WIN_PT_BR',
-    # Finnish keyboard is physically identical to Swedish ISO.
     'WIN_FI': 'WIN_SE',
     'LNX_FI': 'WIN_SE',
-    # Spanish (LATAM) overlaps with Spanish (Spain) for shell-critical ASCII;
-    # the differences (peso sign, some accent dead-key positions) are out of
-    # scope for the initial roll-out. Tracked as Phase-2 follow-on.
     'WIN_ES_LATAM': 'WIN_ES',
     'LNX_ES_LATAM': 'WIN_ES',
-    # Tier 2/3 stubs — JIS / Russian / Korean physical scancode layouts differ
-    # from US in several positions, but for the ASCII subset typed by Ducky-
-    # Script attack commands, mapping through the US table works on most
-    # targets because the host OS already reinterprets scancodes per its
-    # configured locale. Real native encodings are tracked as follow-on work
-    # (JIS in particular needs ASCII repositioning; Cyrillic and Hangul
-    # typing both require OS IME interaction and are explicitly out of scope).
-    'WIN_JP': 'WIN_US',
-    'LNX_JP': 'WIN_US',
+    'LNX_JP': 'WIN_JP',
     'WIN_RU': 'WIN_US',
     'LNX_RU': 'WIN_US',
     'WIN_KR': 'WIN_US',
     'LNX_KR': 'WIN_US',
-    # macOS aliases. MAC_FR is the only entry with a distinct Mac layout in
-    # the existing table; the new layouts ship aliased to their WIN_* sources
-    # since macOS Nordic/Polish/etc. differ from Windows mostly in dead-key
-    # Option-layer positions (not in shell-critical ASCII positions).
-    # Per-layout MAC_* native variants are Phase-2 follow-on.
     'MAC_SE': 'WIN_SE',
     'MAC_NO': 'WIN_NO',
     'MAC_DK': 'WIN_DK',
@@ -1009,8 +1026,27 @@ _ALIASES = {
     'MAC_KR': 'WIN_US',
 }
 
-for _alias, _source in _ALIASES.items():
-    _LAYOUTS[_alias] = dict(_LAYOUTS[_source])
+
+def _build_japanese_layout(layouts: dict[str, LayoutData]) -> LayoutData:
+    return {
+        'label': _LAYOUT_LABELS['JP'],
+        'ascii': _clone_ascii_layout(layouts, 'WIN_US', _JP_ASCII_REPLACEMENTS),
+        'direct': dict(_JP_DIRECT),
+        'need_altgr': '',
+        'higher': {},
+        'combined': {},
+    }
+
+
+def _build_layouts() -> dict[str, LayoutData]:
+    layouts = {name: dict(data) for name, data in _BASE_LAYOUTS.items()}
+    layouts['WIN_JP'] = _build_japanese_layout(layouts)
+    for alias, source in _ALIASES.items():
+        layouts[alias] = dict(layouts[source])
+    return layouts
+
+
+_LAYOUTS = _build_layouts()
 
 _SUPPORTED_LAYOUTS = {
     'WIN': (
@@ -1213,16 +1249,41 @@ def _step(encoded: int, *, altgr: bool) -> tuple[int, int] | None:
     return modifier, keycode
 
 
+def _direct_step(entry, *, altgr: bool) -> tuple[int, int] | None:
+    if isinstance(entry, tuple) and len(entry) == 2:
+        modifier = int(entry[0])
+        keycode = int(entry[1])
+        if keycode <= 0:
+            return None
+        if altgr:
+            modifier |= MOD_ALTGR
+        return modifier, keycode
+    if isinstance(entry, list) and len(entry) == 2:
+        modifier = int(entry[0])
+        keycode = int(entry[1])
+        if keycode <= 0:
+            return None
+        if altgr:
+            modifier |= MOD_ALTGR
+        return modifier, keycode
+    if isinstance(entry, int):
+        return _step(entry, altgr=altgr)
+    return None
+
+
 def lookup_char_steps(ch: str, layout_code: str | None = None) -> list[tuple[int, int]]:
     data = _layout_data(layout_code)
     need_altgr = str(data.get('need_altgr', ''))
     ascii_table = data.get('ascii', b'')
+    direct = data.get('direct', {})
     higher = data.get('higher', {})
     combined = data.get('combined', {})
     char_ord = ord(ch)
 
     if not isinstance(ascii_table, bytes):
         ascii_table = b''
+    if not isinstance(direct, dict):
+        direct = {}
     if not isinstance(higher, dict):
         higher = {}
     if not isinstance(combined, dict):
@@ -1232,6 +1293,10 @@ def lookup_char_steps(ch: str, layout_code: str | None = None) -> list[tuple[int
         step = _step(ascii_table[char_ord], altgr=ch in need_altgr)
         if step is not None:
             return [step]
+
+    direct_step = _direct_step(direct.get(char_ord), altgr=ch in need_altgr)
+    if direct_step is not None:
+        return [direct_step]
 
     encoded = higher.get(char_ord, 0)
     if encoded:
@@ -1266,11 +1331,11 @@ _MOD_RIGHT_GUI = 0xE7
 
 _KEYBOARD_SINGLETON = None
 
-# Canonical HID Boot Keyboard descriptor — matches MicroPython's official
-# usb.device.keyboard exactly (Logical/Usage Max = 101, the highest valid
-# keycode in Usage Page 0x07). Earlier versions used 255 which required
-# 16-bit encoding; macOS occasionally rejects nonstandard variants, so we
-# match upstream byte-for-byte.
+# Compact HID keyboard descriptor. It keeps the standard 8-byte boot-style
+# report shape, but raises the usage maximum far enough to include the JIS
+# keys Pico Bit needs for proper Japanese layout support:
+# INT1/RO (0x87), INT2/KANA (0x88), INT3/YEN (0x89), INT4/HENKAN (0x8A),
+# and INT5/MUHENKAN (0x8B).
 _REPORT_DESC = bytes(
     [
         0x05,
@@ -1326,13 +1391,13 @@ _REPORT_DESC = bytes(
         0x15,
         0x00,
         0x25,
-        0x65,
+        0x8B,
         0x05,
         0x07,
         0x19,
         0x00,
         0x29,
-        0x65,
+        0x8B,
         0x81,
         0x00,
         0xC0,
@@ -1614,6 +1679,7 @@ KEY_ALIASES = {
     'PRTSC': 0x46,
     'QUOTE': 0x34,
     'RETURN': KEY_ENTER,
+    'RO': 0x87,
     'RIGHT': 0x4F,
     'RIGHTARROW': 0x4F,
     'RIGHTBRACE': 0x30,
@@ -1625,6 +1691,7 @@ KEY_ALIASES = {
     'TAB': 0x2B,
     'UP': 0x52,
     'UPARROW': 0x52,
+    'YEN': 0x89,
 }
 
 for _ch in 'ABCDEFGHIJKLMNOPQRSTUVWXYZ':

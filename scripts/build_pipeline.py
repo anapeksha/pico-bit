@@ -9,6 +9,8 @@ import tempfile
 from pathlib import Path
 from typing import TypeAlias
 
+import python_minifier
+
 from .asset_pipeline import sync_web_assets
 
 OverrideValue: TypeAlias = object
@@ -23,6 +25,39 @@ OVERRIDE_ENV = {
     'PORTAL_PASSWORD': 'PICO_BIT_PORTAL_PASSWORD',
     'PORTAL_USERNAME': 'PICO_BIT_PORTAL_USERNAME',
 }
+MINIFY_PYTHON_SOURCES = True
+
+
+def minify_module_source(source: str, *, filename: str) -> str:
+    """Minify staged Python source with conservative, MicroPython-safe settings.
+
+    We intentionally keep global names and local names stable. That still trims
+    type annotations, redundant syntax, and constant expressions without making
+    traceback/debugging or any name-sensitive runtime behavior harder to reason
+    about.
+    """
+
+    return (
+        python_minifier.minify(
+            source,
+            filename=filename,
+            preserve_shebang=True,
+            rename_globals=False,
+            rename_locals=False,
+        )
+        + '\n'
+    )
+
+
+def minify_source_tree(source_root: Path) -> None:
+    for path in sorted(source_root.rglob('*.py')):
+        if '__pycache__' in path.parts:
+            continue
+        source = path.read_text(encoding='utf-8')
+        path.write_text(
+            minify_module_source(source, filename=path.as_posix()),
+            encoding='utf-8',
+        )
 
 
 class OverrideInjector(ast.NodeTransformer):
@@ -174,6 +209,7 @@ def prepare_source_tree(
     build_dir: Path,
     root_src_dir: Path,
     overrides_by_module: ModuleOverrides | None = None,
+    minify_python: bool = MINIFY_PYTHON_SOURCES,
 ) -> Path:
     build_dir.mkdir(exist_ok=True)
     sync_web_assets()
@@ -189,6 +225,9 @@ def prepare_source_tree(
                 render_module_source(source, overrides),
                 encoding='utf-8',
             )
+
+    if minify_python:
+        minify_source_tree(configured_src)
 
     return configured_src
 

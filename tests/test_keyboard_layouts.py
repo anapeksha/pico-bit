@@ -165,16 +165,35 @@ def test_es_latam_aliases_to_spanish() -> None:
 def test_jp_ru_kr_stubs_alias_to_us_ascii() -> None:
     # Tier 2/3 stubs route through WIN_US for the ASCII subset DuckyScript
     # uses. Verify that critical shell chars match US output exactly.
-    for layout in ('WIN_JP', 'WIN_RU', 'WIN_KR'):
+    for layout in ('WIN_RU', 'WIN_KR'):
         for ch in ('@', '|', '\\', '$', '/', '"', "'"):
             assert lookup_char_steps(ch, layout) == lookup_char_steps(ch, 'WIN_US'), (
                 f'{layout} {ch!r} diverges from WIN_US'
             )
 
 
+def test_japanese_jis_layout_uses_real_ascii_positions() -> None:
+    assert lookup_char_steps('@', 'WIN_JP') == [(MOD_NONE, 0x2F)]
+    assert lookup_char_steps('`', 'WIN_JP') == [(MOD_SHIFT, 0x2F)]
+    assert lookup_char_steps('[', 'WIN_JP') == [(MOD_NONE, 0x30)]
+    assert lookup_char_steps('{', 'WIN_JP') == [(MOD_SHIFT, 0x30)]
+    assert lookup_char_steps(']', 'WIN_JP') == [(MOD_NONE, 0x32)]
+    assert lookup_char_steps('}', 'WIN_JP') == [(MOD_SHIFT, 0x32)]
+    assert lookup_char_steps('\\', 'WIN_JP') == [(MOD_NONE, 0x87)]
+    assert lookup_char_steps('_', 'WIN_JP') == [(MOD_SHIFT, 0x87)]
+    assert lookup_char_steps('|', 'WIN_JP') == [(MOD_SHIFT, 0x89)]
+    assert lookup_char_steps('^', 'WIN_JP') == [(MOD_NONE, 0x2E)]
+    assert lookup_char_steps('~', 'WIN_JP') == [(MOD_SHIFT, 0x2E)]
+
+
+def test_linux_japanese_layout_aliases_to_win_jis() -> None:
+    for ch in ('@', '`', '[', ']', '\\', '_', '|', '^', '~'):
+        assert lookup_char_steps(ch, 'LNX_JP') == lookup_char_steps(ch, 'WIN_JP')
+
+
 def test_lnx_aliases_match_their_win_sources() -> None:
     # Linux variants of the new layouts must produce identical scancodes to
     # their Windows sources (X11/Wayland use the same per-layout keycode tables).
-    for suffix in ('SE', 'NO', 'DK', 'FI', 'PL', 'CZ', 'HU', 'PT_BR'):
+    for suffix in ('SE', 'NO', 'DK', 'FI', 'PL', 'CZ', 'HU', 'PT_BR', 'JP'):
         for ch in ('|', '\\', '@', '$'):
             assert lookup_char_steps(ch, f'LNX_{suffix}') == lookup_char_steps(ch, f'WIN_{suffix}')

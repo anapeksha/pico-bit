@@ -24,7 +24,8 @@ dev = [
     "mpy-cross>=1.28.0rc0.post2,<2",
     "pytest>=8.4,<10.0",
     "pyright>=1.1.405,<2",
-    "ruff>=0.14.0,<=0.15.12",
+    "ruff>=0.14.0,<=0.15.13",
+    "python-minifier>=3.2.0",
 ]
 
 [tool.uv]
