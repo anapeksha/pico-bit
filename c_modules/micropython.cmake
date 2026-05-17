@@ -1,25 +1,22 @@
 if(NOT TARGET usermod_usb_ncm)
-    # OBJECT library: sources compile to direct .o linker inputs, NOT into an
-    # archive. This ensures tud_network_recv_cb and the other TinyUSB NCM
-    # callbacks are unconditionally visible at link time, regardless of the
-    # order in which TinyUSB's ncm_device.c archive is scanned.
-    add_library(usermod_usb_ncm OBJECT
+    # INTERFACE library — sources are propagated into firmware AND scanned for
+    # QSTRs via MicroPython's usermod pipeline. MICROPY_DIR is set by the rp2
+    # port's top-level CMakeLists.txt and resolves to the micropython checkout
+    # under .build/micropython.
+    add_library(usermod_usb_ncm INTERFACE)
+
+    target_sources(usermod_usb_ncm INTERFACE
         ${CMAKE_CURRENT_LIST_DIR}/usb_ncm/usb_ncm.c
-        ${CMAKE_CURRENT_LIST_DIR}/usb_ncm/usb_ncm_descriptors.c
+        # TinyUSB's NCM class driver isn't in MicroPython's TinyUSB compile list
+        # (which only includes CDC/HID/MSC). Pull it in here so the linker can
+        # resolve ncmd_init / ncmd_open / ncmd_xfer_cb that tusb.c references
+        # once CFG_TUD_NCM=1 enters the class driver table.
+        ${MICROPY_DIR}/lib/tinyusb/src/class/net/ncm_device.c
     )
 
-    # Inherit MicroPython/TinyUSB/lwIP include paths from usermod at build
-    # time via generator expression (evaluated during make, not cmake).
-    target_include_directories(usermod_usb_ncm PRIVATE
-        $<TARGET_PROPERTY:usermod,INTERFACE_INCLUDE_DIRECTORIES>
+    target_include_directories(usermod_usb_ncm INTERFACE
         ${CMAKE_CURRENT_LIST_DIR}/usb_ncm
     )
 
-    # Add the compiled object files directly to any target that links usermod.
-    target_link_libraries(usermod INTERFACE
-        $<TARGET_OBJECTS:usermod_usb_ncm>
-    )
-    target_include_directories(usermod INTERFACE
-        ${CMAKE_CURRENT_LIST_DIR}/usb_ncm
-    )
+    target_link_libraries(usermod INTERFACE usermod_usb_ncm)
 endif()

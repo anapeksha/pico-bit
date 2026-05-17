@@ -169,11 +169,12 @@ def write_usb_config_header(*, ncm: bool = False) -> Path:
 """.lstrip()
 
     ncm_additions = """
-/* CDC-NCM additions: fence EP3/EP4 away from machine.USBDevice runtime allocator
-   so the NCM C module can claim them before HID enumeration. */
-#undef  USBD_EP_BUILTIN_MAX
-#define USBD_EP_BUILTIN_MAX     (5)
-
+/* Enable TinyUSB CDC-NCM class. The NCM interfaces are composited into
+   MicroPython's static descriptor by patches applied in
+   _patch_micropython_for_ncm() — see scripts/release.py. machine.USBDevice
+   continues to manage runtime HID on top of MSC + NCM (its interface/EP
+   allocator starts above USBD_ITF_BUILTIN_MAX / USBD_EP_BUILTIN_MAX, which
+   the patch bumps to include the NCM interfaces and endpoints). */
 #define CFG_TUD_NCM             (1)
 #define CFG_TUD_NCM_EP_BUFSIZE  (64)
 #define CFG_TUD_NCM_NTBSIZE     (3200)
@@ -183,41 +184,141 @@ def write_usb_config_header(*, ncm: bool = False) -> Path:
     return header
 
 
-def _patch_micropython_for_ncm() -> None:
-    # 1. Guard USBD_EP_BUILTIN_MAX in tusb_config.h so our -include header
-    #    can override it without triggering -Werror=macro-redefined.
-    tusb_config = MICROPYTHON_DIR / 'shared' / 'tinyusb' / 'tusb_config.h'
-    if tusb_config.exists():
-        content = tusb_config.read_text(encoding='utf-8')
-        old = '#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)'
-        new = '#ifndef USBD_EP_BUILTIN_MAX\n#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)\n#endif'
-        if old in content and new not in content:
-            tusb_config.write_text(content.replace(old, new), encoding='utf-8')
+_NCM_TUSB_CONFIG_OLD = """\
+/* Limits of builtin USB interfaces, endpoints, strings */
+#if CFG_TUD_MSC
+#define USBD_ITF_BUILTIN_MAX (USBD_ITF_MSC + 1)
+#define USBD_STR_BUILTIN_MAX (USBD_STR_MSC + 1)
+#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)"""
 
-    # 2. Add NCM C sources directly to ports/rp2/CMakeLists.txt.
-    #    CMakeLists.txt is a tracked cmake input, so any edit to it causes
-    #    cmake to automatically re-run before the next build — this is more
-    #    reliable than USER_C_MODULES discovery, which depends on cmake cache
-    #    state from prior build directory reuse.
-    cmakelists = MICROPYTHON_DIR / 'ports' / 'rp2' / 'CMakeLists.txt'
-    if not cmakelists.exists():
-        return
-    sentinel = '# pico-bit-ncm-sources'
-    content = cmakelists.read_text(encoding='utf-8')
-    if sentinel in content:
-        return
-    ncm_src = ROOT / 'c_modules' / 'usb_ncm'
-    addition = f"""
-{sentinel}
-if(TARGET firmware)
-    target_sources(firmware PRIVATE
-        "{ncm_src / 'usb_ncm.c'}"
-        "{ncm_src / 'usb_ncm_descriptors.c'}"
+_NCM_TUSB_CONFIG_NEW = """\
+/* pico-bit: NCM composited statically alongside MSC. NCM uses 2 interfaces
+   (CDC comm + CDC data), 3 endpoints (notification + bulk in/out), 2 strings
+   (interface label + MAC address). machine.USBDevice runtime HID slots into
+   the next free interface/endpoint above BUILTIN_MAX. */
+#if CFG_TUD_NCM
+#define USBD_STR_NCM (USBD_STR_MSC + 1)
+#define USBD_STR_NCM_MAC (USBD_STR_NCM + 1)
+#define USBD_ITF_NCM_COMM (USBD_ITF_MSC + 1)
+#define USBD_ITF_NCM_DATA (USBD_ITF_NCM_COMM + 1)
+#define EPNUM_NCM_NOTIF (0x82)
+#define EPNUM_NCM_OUT   (0x03)
+#define EPNUM_NCM_IN    (0x83)
+#endif
+
+/* Limits of builtin USB interfaces, endpoints, strings */
+#if CFG_TUD_MSC && CFG_TUD_NCM
+#define USBD_ITF_BUILTIN_MAX (USBD_ITF_NCM_DATA + 1)
+#define USBD_STR_BUILTIN_MAX (USBD_STR_NCM_MAC + 1)
+#define USBD_EP_BUILTIN_MAX  (EPNUM_NCM_OUT + 1)
+#elif CFG_TUD_MSC
+#define USBD_ITF_BUILTIN_MAX (USBD_ITF_MSC + 1)
+#define USBD_STR_BUILTIN_MAX (USBD_STR_MSC + 1)
+#define USBD_EP_BUILTIN_MAX (EPNUM_MSC_OUT + 1)"""
+
+_NCM_DESC_LEN_OLD = """\
+#define MP_USBD_BUILTIN_DESC_CFG_LEN (TUD_CONFIG_DESC_LEN +                     \\
+    (CFG_TUD_CDC ? (TUD_CDC_DESC_LEN) : 0) +  \\
+    (CFG_TUD_MSC ? (TUD_MSC_DESC_LEN) : 0)    \\
+    )"""
+
+_NCM_DESC_LEN_NEW = """\
+#define MP_USBD_BUILTIN_DESC_CFG_LEN (TUD_CONFIG_DESC_LEN +                     \\
+    (CFG_TUD_CDC ? (TUD_CDC_DESC_LEN) : 0) +  \\
+    (CFG_TUD_MSC ? (TUD_MSC_DESC_LEN) : 0) +  \\
+    (CFG_TUD_NCM ? (TUD_CDC_NCM_DESC_LEN) : 0) \\
+    )"""
+
+# Anchor strings must match MicroPython source verbatim — don't reflow.
+_NCM_DESC_ARRAY_OLD = """\
+    #if CFG_TUD_MSC
+    TUD_MSC_DESCRIPTOR(USBD_ITF_MSC, USBD_STR_MSC, EPNUM_MSC_OUT, EPNUM_MSC_IN, USBD_MSC_IN_OUT_MAX_SIZE),
+    #endif
+};"""  # noqa: E501
+
+_NCM_DESC_ARRAY_NEW = """\
+    #if CFG_TUD_MSC
+    TUD_MSC_DESCRIPTOR(USBD_ITF_MSC, USBD_STR_MSC, EPNUM_MSC_OUT, EPNUM_MSC_IN, USBD_MSC_IN_OUT_MAX_SIZE),
+    #endif
+    #if CFG_TUD_NCM
+    TUD_CDC_NCM_DESCRIPTOR(USBD_ITF_NCM_COMM, USBD_STR_NCM, USBD_STR_NCM_MAC,
+        EPNUM_NCM_NOTIF, 8, EPNUM_NCM_OUT, EPNUM_NCM_IN, 64, CFG_TUD_NCM_NTBSIZE),
+    #endif
+};"""  # noqa: E501
+
+_NCM_STR_OLD = """\
+            #if CFG_TUD_MSC
+            case USBD_STR_MSC:
+                desc_str = MICROPY_HW_USB_MSC_INTERFACE_STRING;
+                break;
+            #endif"""
+
+_NCM_STR_NEW = """\
+            #if CFG_TUD_MSC
+            case USBD_STR_MSC:
+                desc_str = MICROPY_HW_USB_MSC_INTERFACE_STRING;
+                break;
+            #endif
+            #if CFG_TUD_NCM
+            case USBD_STR_NCM:
+                desc_str = "Pico Bit NCM";
+                break;
+            case USBD_STR_NCM_MAC: {
+                extern uint8_t tud_network_mac_address[6];
+                static char _ncm_mac_str[13];
+                static const char _hex[] = "0123456789ABCDEF";
+                for (int i = 0; i < 6; i++) {
+                    _ncm_mac_str[i * 2] = _hex[(tud_network_mac_address[i] >> 4) & 0xF];
+                    _ncm_mac_str[i * 2 + 1] = _hex[tud_network_mac_address[i] & 0xF];
+                }
+                _ncm_mac_str[12] = 0;
+                desc_str = _ncm_mac_str;
+                break;
+            }
+            #endif"""
+
+
+def _patch_micropython_for_ncm() -> None:
+    """Patch MicroPython's static USB descriptor to include CDC-NCM alongside MSC.
+
+    Three files are touched:
+      * shared/tinyusb/tusb_config.h     — NCM interface/endpoint/string defines
+                                            and BUILTIN_MAX expansion.
+      * shared/tinyusb/mp_usbd.h         — descriptor length macro extension.
+      * shared/tinyusb/mp_usbd_descriptor.c — NCM descriptor entry + MAC string.
+
+    Each patch is idempotent: the new content is only written if the old form
+    is still present in the file. This keeps standard builds (CFG_TUD_NCM=0)
+    behaviorally unchanged because every patched section is wrapped in
+    `#if CFG_TUD_NCM`.
+    """
+    _replace_once(
+        MICROPYTHON_DIR / 'shared' / 'tinyusb' / 'tusb_config.h',
+        _NCM_TUSB_CONFIG_OLD,
+        _NCM_TUSB_CONFIG_NEW,
     )
-    target_include_directories(firmware PRIVATE "{ncm_src}")
-endif()
-"""
-    cmakelists.write_text(content + addition, encoding='utf-8')
+    _replace_once(
+        MICROPYTHON_DIR / 'shared' / 'tinyusb' / 'mp_usbd.h',
+        _NCM_DESC_LEN_OLD,
+        _NCM_DESC_LEN_NEW,
+    )
+    descriptor = MICROPYTHON_DIR / 'shared' / 'tinyusb' / 'mp_usbd_descriptor.c'
+    _replace_once(descriptor, _NCM_DESC_ARRAY_OLD, _NCM_DESC_ARRAY_NEW)
+    _replace_once(descriptor, _NCM_STR_OLD, _NCM_STR_NEW)
+
+
+def _replace_once(path: Path, old: str, new: str) -> None:
+    if not path.exists():
+        raise FileNotFoundError(f'expected file for NCM patch: {path}')
+    content = path.read_text(encoding='utf-8')
+    if new in content:
+        return
+    if old not in content:
+        raise RuntimeError(
+            f'NCM patch anchor missing in {path.relative_to(MICROPYTHON_DIR)} — '
+            'MicroPython source may have changed shape; update _NCM_*_OLD constants.'
+        )
+    path.write_text(content.replace(old, new, 1), encoding='utf-8')
 
 
 def build_firmware(
@@ -232,9 +333,10 @@ def build_firmware(
     if ncm:
         _patch_micropython_for_ncm()
 
-    # NCM uses a separate build directory so cmake always runs fresh.
-    # Reusing build-{board} would skip cmake re-config when the standard
-    # build has already created that directory's Makefile.
+    # NCM uses a separate build directory so cmake re-runs fresh and picks up
+    # USER_C_MODULES. Reusing build-{board} would skip cmake re-config when the
+    # standard build has already created that directory's Makefile, and the
+    # NCM sources would never get compiled into firmware.
     build_dir = f'build-{board}' + ('-ncm' if ncm else '')
 
     make_args = [
@@ -253,6 +355,8 @@ def build_firmware(
             f'-include {usb_config_header}'
         ),
     ]
+    if ncm:
+        make_args.append(f'USER_C_MODULES={ROOT / "c_modules" / "micropython.cmake"}')
 
     _run(make_args, cwd=MICROPYTHON_DIR)
 
