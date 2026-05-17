@@ -47,7 +47,6 @@
 #include "lwip/etharp.h"
 #include "lwip/pbuf.h"
 #include "lwip/ip_addr.h"
-#include "lwip/tcpip.h"
 #include "netif/ethernet.h"
 #include "shared/netutils/dhcpserver.h"  /* same DHCP server CYW43 AP mode uses */
 
@@ -108,13 +107,15 @@ void tud_network_init_cb(void) {
 }
 
 bool tud_network_recv_cb(const uint8_t *src, uint16_t size) {
-    /* MicroPython's lwIP runs with NO_SYS=0 on a separate tcpip thread.
-       tcpip_input() is the only ISR-safe way to inject frames — it queues
-       the pbuf via the tcpip mailbox instead of running lwIP code here. */
+    /* MicroPython's rp2 lwIP runs NO_SYS=1 (cooperative, single-threaded —
+       extmod/lwip-include/lwipopts_common.h). netif->input is set to
+       ethernet_input by netif_add() below, so invoking it via the function
+       pointer is correct and matches what upstream's network_usbd_ncm.c
+       (micropython PR #16459) does. */
     struct pbuf *p = pbuf_alloc(PBUF_RAW, size, PBUF_POOL);
     if (p) {
         pbuf_take(p, src, size);
-        if (tcpip_input(p, &_ncm_netif) != ERR_OK) {
+        if (_ncm_netif.input(p, &_ncm_netif) != ERR_OK) {
             pbuf_free(p);
         }
     }
@@ -159,7 +160,7 @@ static mp_obj_t py_usb_ncm_init(mp_obj_t ip_obj, mp_obj_t nm_obj, mp_obj_t gw_ob
     _derive_mac();
 
     netif_add(&_ncm_netif, ip_2_ip4(&ip), ip_2_ip4(&netmask), ip_2_ip4(&gateway),
-              NULL, _ncm_netif_init, tcpip_input);
+              NULL, _ncm_netif_init, ethernet_input);
     netif_set_up(&_ncm_netif);
 
     dhcp_server_init(&_ncm_dhcp_server, &ip, &netmask);
