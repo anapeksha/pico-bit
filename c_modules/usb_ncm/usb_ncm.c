@@ -18,6 +18,9 @@
  *   - poll() is non-blocking; called from the asyncio loop every 10 ms
  */
 
+#include <stdlib.h>
+#include <string.h>
+
 #include "py/runtime.h"
 #include "py/obj.h"
 
@@ -117,7 +120,7 @@ static void _complete_ncm_init(void) {
 
 /* ---- Python API ---- */
 
-STATIC mp_obj_t py_usb_ncm_init(mp_obj_t ip_obj, mp_obj_t nm_obj, mp_obj_t gw_obj) {
+static mp_obj_t py_usb_ncm_init(mp_obj_t ip_obj, mp_obj_t nm_obj, mp_obj_t gw_obj) {
     const char *ip_str = mp_obj_str_get_str(ip_obj);
     const char *nm_str = mp_obj_str_get_str(nm_obj);
     const char *gw_str = mp_obj_str_get_str(gw_obj);
@@ -140,28 +143,28 @@ STATIC mp_obj_t py_usb_ncm_init(mp_obj_t ip_obj, mp_obj_t nm_obj, mp_obj_t gw_ob
 
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_3(py_usb_ncm_init_obj, py_usb_ncm_init);
+static MP_DEFINE_CONST_FUN_OBJ_3(py_usb_ncm_init_obj, py_usb_ncm_init);
 
-STATIC mp_obj_t py_usb_ncm_poll(void) {
+static mp_obj_t py_usb_ncm_poll(void) {
     tud_task();
     _complete_ncm_init();
     return mp_const_none;
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_0(py_usb_ncm_poll_obj, py_usb_ncm_poll);
+static MP_DEFINE_CONST_FUN_OBJ_0(py_usb_ncm_poll_obj, py_usb_ncm_poll);
 
-STATIC mp_obj_t py_usb_ncm_is_ready(void) {
+static mp_obj_t py_usb_ncm_is_ready(void) {
     return mp_obj_new_bool(_ncm_ready);
 }
-STATIC MP_DEFINE_CONST_FUN_OBJ_0(py_usb_ncm_is_ready_obj, py_usb_ncm_is_ready);
+static MP_DEFINE_CONST_FUN_OBJ_0(py_usb_ncm_is_ready_obj, py_usb_ncm_is_ready);
 
 /* ---- module table ---- */
-STATIC const mp_rom_map_elem_t usb_ncm_module_globals_table[] = {
+static const mp_rom_map_elem_t usb_ncm_module_globals_table[] = {
     { MP_ROM_QSTR(MP_QSTR___name__), MP_ROM_QSTR(MP_QSTR_usb_ncm) },
     { MP_ROM_QSTR(MP_QSTR_init),     MP_ROM_PTR(&py_usb_ncm_init_obj) },
     { MP_ROM_QSTR(MP_QSTR_poll),     MP_ROM_PTR(&py_usb_ncm_poll_obj) },
     { MP_ROM_QSTR(MP_QSTR_is_ready), MP_ROM_PTR(&py_usb_ncm_is_ready_obj) },
 };
-STATIC MP_DEFINE_CONST_DICT(usb_ncm_module_globals, usb_ncm_module_globals_table);
+static MP_DEFINE_CONST_DICT(usb_ncm_module_globals, usb_ncm_module_globals_table);
 
 const mp_obj_module_t usb_ncm_module = {
     .base    = { &mp_type_module },
