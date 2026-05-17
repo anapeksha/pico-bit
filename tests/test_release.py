@@ -187,6 +187,112 @@ def test_build_firmware_enables_usb_msc_and_records_metadata(tmp_path, monkeypat
     metadata = json.loads(release_json.read_text(encoding='utf-8'))
     assert metadata['usb_msc_enabled'] is True
     assert metadata['firmware'] == output.name
+    assert metadata['usb_profile'] == 'default'
+
+
+def test_resolve_usb_profile_returns_default_for_none_or_blank() -> None:
+    assert RELEASE.resolve_usb_profile(None) is RELEASE.USB_IDENTITY_PROFILES['default']
+    assert RELEASE.resolve_usb_profile('') is RELEASE.USB_IDENTITY_PROFILES['default']
+
+
+def test_resolve_usb_profile_is_case_insensitive() -> None:
+    assert RELEASE.resolve_usb_profile('Generic-Composite') is \
+        RELEASE.USB_IDENTITY_PROFILES['generic-composite']
+
+
+def test_resolve_usb_profile_rejects_unknown_name() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match='unknown USB profile'):
+        RELEASE.resolve_usb_profile('logitech-impersonator')
+
+
+def test_write_usb_config_header_default_profile_keeps_pico_bit_branding(
+    tmp_path, monkeypatch,
+) -> None:
+    monkeypatch.setattr(RELEASE, 'ROOT', tmp_path)
+    header = RELEASE.write_usb_config_header()
+    content = header.read_text(encoding='utf-8')
+    assert '#define MICROPY_HW_USB_MANUFACTURER_STRING "Pico Bit"' in content
+    assert '#define MICROPY_HW_USB_PRODUCT_FS_STRING "Pico Bit"' in content
+    assert '#define MICROPY_HW_FLASH_FS_LABEL "PICO-BIT"' in content
+    # Default profile must NOT override VID/PID — keeps the chip's real
+    # Raspberry Pi VID to avoid Windows driver re-install on first plug.
+    assert 'MICROPY_HW_USB_VID' not in content
+    assert 'MICROPY_HW_USB_PID' not in content
+
+
+def test_write_usb_config_header_generic_composite_strips_branding(
+    tmp_path, monkeypatch,
+) -> None:
+    monkeypatch.setattr(RELEASE, 'ROOT', tmp_path)
+    header = RELEASE.write_usb_config_header('generic-composite')
+    content = header.read_text(encoding='utf-8')
+    assert '"Pico Bit"' not in content
+    assert '"PICOBIT"' not in content
+    assert '#define MICROPY_HW_USB_MANUFACTURER_STRING "USB"' in content
+    assert '#define MICROPY_HW_USB_PRODUCT_FS_STRING "USB Composite Device"' in content
+    assert '#define MICROPY_HW_FLASH_FS_LABEL "USB-DRIVE"' in content
+    assert 'MICROPY_HW_USB_VID' not in content
+
+
+def test_write_usb_config_header_hobbyist_emits_vid_pid_overrides(
+    tmp_path, monkeypatch,
+) -> None:
+    monkeypatch.setattr(RELEASE, 'ROOT', tmp_path)
+    header = RELEASE.write_usb_config_header('hobbyist')
+    content = header.read_text(encoding='utf-8')
+    # V-USB shared range: 0x16C0 / 0x05DC.
+    assert '#define MICROPY_HW_USB_VID (0x16c0)' in content
+    assert '#define MICROPY_HW_USB_PID (0x05dc)' in content
+
+
+def test_build_firmware_records_chosen_usb_profile_in_metadata(
+    tmp_path, monkeypatch,
+) -> None:
+    micropython = tmp_path / 'micropython'
+    firmware = micropython / 'ports' / 'rp2' / 'build-RPI_PICO2_W' / 'firmware.uf2'
+    firmware.parent.mkdir(parents=True)
+    firmware.write_bytes(b'uf2')
+    mpy_dir = tmp_path / 'mpy'
+    mpy_dir.mkdir()
+    (mpy_dir / 'boot.mpy').write_bytes(b'mpy')
+    dist_dir = tmp_path / 'dist'
+    release_json = dist_dir / 'release.json'
+
+    monkeypatch.setattr(RELEASE, 'ROOT', tmp_path)
+    monkeypatch.setattr(RELEASE, 'MICROPYTHON_DIR', micropython)
+    monkeypatch.setattr(RELEASE, 'DIST_DIR', dist_dir)
+    monkeypatch.setattr(RELEASE, 'RELEASE_JSON', release_json)
+    monkeypatch.setattr(RELEASE, 'MPY_DIR', mpy_dir)
+    monkeypatch.setattr(RELEASE, 'MANIFEST', tmp_path / 'manifest.py')
+    monkeypatch.setattr(RELEASE, '_run', lambda *a, **k: None)
+
+    RELEASE.build_firmware(
+        'RPI_PICO2_W', 'v1.28.0', {}, 'v0.0.1', usb_profile='hobbyist',
+    )
+    metadata = json.loads(release_json.read_text(encoding='utf-8'))
+    assert metadata['usb_profile'] == 'hobbyist'
+
+
+def test_cli_accepts_usb_profile_flag() -> None:
+    parser = RELEASE._build_parser()
+    args = parser.parse_args(['build-uf2', '--usb-profile', 'generic-keyboard'])
+    assert args.usb_profile == 'generic-keyboard'
+
+
+def test_cli_rejects_unknown_usb_profile() -> None:
+    import pytest
+
+    parser = RELEASE._build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(['build-uf2', '--usb-profile', 'logitech'])
+
+
+def test_cli_defaults_usb_profile_to_default() -> None:
+    parser = RELEASE._build_parser()
+    args = parser.parse_args(['build-uf2'])
+    assert args.usb_profile == 'default'
 
 
 def test_render_device_config_keeps_portal_password_independent() -> None:
