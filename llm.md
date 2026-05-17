@@ -27,6 +27,7 @@
 - **No `/api/loot/stream` SSE route** — loot is fetched via a one-shot `GET /api/loot` snapshot triggered by the execution stream's `done` event. A persistent loot SSE stream would require two concurrent TCP connections; the Pico cannot sustain this.
 - **`loot.json` in the repo root is a static schema reference only** — the Pico writes plain UTF-8 JSON to its own `loot.json` on LittleFS. Tests that call `_init_execution_loot` must monkeypatch `routes_loot._LOOT_FILE` to `tmp_path`.
 - **No safe/unsafe mode** — `ALLOW_UNSAFE`, `_safe_mode_enabled()`, `/api/safe-mode`, and the UI toggle are all gone. Do not re-add them.
+- **Keyboard layout coverage is wider now** — platform families are `WIN`, `MAC`, and `LNX`. `WIN`/`LNX` support `US`, `UK`, `DE`, `FR`, `ES`, `IT`, `SE`, `NO`, `DK`, `FI`, `PL`, `CZ`, `HU`, `ES_LATAM`, `PT_BR`, `JP`, `RU`, `KR`; `MAC` supports the same except `UK` and `IT`. `JP`/`RU`/`KR` are currently ASCII-focused compatibility profiles, and `MAC_FR` is the only distinct Mac-native mapping at the moment.
 - **LED calls**: `STATUS_LED.show(key)` plays a non-fatal pattern and returns; `STATUS_LED.halt(key)` loops a fatal pattern forever (requires power cycle). Every LED error call must be wrapped in its own `try/except Exception: pass` so a hardware LED failure does not mask the original error.
 
 ### Build
@@ -35,6 +36,7 @@
 - **`mpy-cross -s` flag** — always pass `<relative-module-path>` (e.g. `server/__init__.py`, `ducky/parser.py`). Without it, temp paths containing `-` produce invalid C identifiers in the frozen firmware.
 - **AST bundler order** — block visitors in `scripts/build_pipeline.py` call `generic_visit` before filtering. Reversing this causes empty try/if bodies when conditional imports are the only body statement.
 - **Web asset budget** — raw embedded bytes must stay under ~115 KB (currently ~111 KB). Keep new UI dependencies minimal.
+- **Release USB identity is configurable** — `scripts/release.py` supports `--usb-profile` with `default`, `generic-composite`, `generic-keyboard`, and `hobbyist`. This changes host-visible USB strings and optionally VID/PID for lab builds; it is separate from `--usb-ncm`.
 
 ### Frontend
 

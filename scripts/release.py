@@ -32,6 +32,57 @@ PYPROJECT = ROOT / 'pyproject.toml'
 RELEASE_JSON = DIST_DIR / 'release.json'
 ASSET_PATTERNS = ('*.uf2', 'payloads-*.zip')
 
+# USB device identity profiles. Each profile sets the OS-visible strings
+# (iManufacturer, iProduct, MSC SCSI inquiry, filesystem label) to control
+# what name shows up in Device Manager / System Information / `lsusb`. The
+# "default" profile keeps pico-bit branding for development. Other profiles
+# strip the branding to a neutral identity without impersonating a registered
+# vendor (USB-IF agreement violation territory).
+#
+# VID/PID stay at the chip's legitimate Raspberry Pi default for every
+# profile except `hobbyist`, which switches to Objective Development's
+# V-USB shared VID/PID range — licensed by OD for non-commercial use, see
+# https://www.obdev.at/products/vusb/license.html. Overriding VID/PID on
+# Windows forces a fresh driver install on first plug, so most engagements
+# stick with the default VID and only override the strings.
+USB_IDENTITY_PROFILES: dict[str, dict[str, object]] = {
+    'default': {
+        'manufacturer': 'Pico Bit',
+        'product': 'Pico Bit',
+        'msc_interface': 'Pico Bit MSC',
+        'msc_vendor': 'PICOBIT',
+        'msc_product': 'PICO-BIT',
+        'fs_label': 'PICO-BIT',
+    },
+    'generic-composite': {
+        'manufacturer': 'USB',
+        'product': 'USB Composite Device',
+        'msc_interface': 'USB Mass Storage',
+        'msc_vendor': 'USB',
+        'msc_product': 'Mass Storage',
+        'fs_label': 'USB-DRIVE',
+    },
+    'generic-keyboard': {
+        'manufacturer': 'USB',
+        'product': 'USB Keyboard',
+        'msc_interface': 'Keyboard Storage',
+        'msc_vendor': 'USB',
+        'msc_product': 'Keyboard FS',
+        'fs_label': 'KBD-FS',
+    },
+    'hobbyist': {
+        'vid': 0x16C0,
+        'pid': 0x05DC,
+        'manufacturer': 'Generic',
+        'product': 'HID Composite Device',
+        'msc_interface': 'HID Storage',
+        'msc_vendor': 'Generic',
+        'msc_product': 'HID Storage',
+        'fs_label': 'HID-DRIVE',
+    },
+}
+DEFAULT_USB_PROFILE = 'default'
+
 
 def _run(cmd: list[str], cwd: Path | None = None) -> None:
     subprocess.run(cmd, cwd=cwd or ROOT, check=True)
@@ -138,38 +189,53 @@ def refresh_release_metadata(release_json: Path = RELEASE_JSON) -> dict[str, obj
     return metadata
 
 
-def write_usb_config_header() -> Path:
+def resolve_usb_profile(name: str | None) -> dict[str, object]:
+    """Look up a USB identity profile by name. Raises ValueError on unknown."""
+    key = (name or DEFAULT_USB_PROFILE).strip().lower()
+    if key not in USB_IDENTITY_PROFILES:
+        raise ValueError(
+            f'unknown USB profile {name!r}; choose from {", ".join(sorted(USB_IDENTITY_PROFILES))}'
+        )
+    return USB_IDENTITY_PROFILES[key]
+
+
+def write_usb_config_header(profile_name: str = DEFAULT_USB_PROFILE) -> Path:
+    """Render .build/pico_bit_usb_config.h with the chosen identity profile.
+
+    The header is force-included into MicroPython's compilation via
+    CFLAGS_EXTRA in build_firmware, so the macros land before tusb_config.h
+    and mp_usbd_descriptor.c can see them.
+    """
+    profile = resolve_usb_profile(profile_name)
     header = ROOT / '.build' / 'pico_bit_usb_config.h'
     header.parent.mkdir(parents=True, exist_ok=True)
 
-    header.write_text(
-        """
-#pragma once
-
-#undef MICROPY_HW_FLASH_FS_LABEL
-#define MICROPY_HW_FLASH_FS_LABEL "PICO-BIT"
-
-#undef MICROPY_HW_USB_MANUFACTURER_STRING
-#define MICROPY_HW_USB_MANUFACTURER_STRING "Pico Bit"
-
-#undef MICROPY_HW_USB_PRODUCT_FS_STRING
-#define MICROPY_HW_USB_PRODUCT_FS_STRING "Pico Bit"
-
-#undef MICROPY_HW_USB_MSC_INTERFACE_STRING
-#define MICROPY_HW_USB_MSC_INTERFACE_STRING "Pico Bit MSC"
-
-#undef MICROPY_HW_USB_MSC_INQUIRY_VENDOR_STRING
-#define MICROPY_HW_USB_MSC_INQUIRY_VENDOR_STRING "PICOBIT"
-
-#undef MICROPY_HW_USB_MSC_INQUIRY_PRODUCT_STRING
-#define MICROPY_HW_USB_MSC_INQUIRY_PRODUCT_STRING "PICO-BIT"
-
-#undef MICROPY_HW_USB_MSC_INQUIRY_REVISION_STRING
-#define MICROPY_HW_USB_MSC_INQUIRY_REVISION_STRING "1.0"
-""".lstrip(),
-        encoding='utf-8',
+    lines = ['#pragma once', '']
+    string_defines = (
+        ('MICROPY_HW_FLASH_FS_LABEL', profile['fs_label']),
+        ('MICROPY_HW_USB_MANUFACTURER_STRING', profile['manufacturer']),
+        ('MICROPY_HW_USB_PRODUCT_FS_STRING', profile['product']),
+        ('MICROPY_HW_USB_MSC_INTERFACE_STRING', profile['msc_interface']),
+        ('MICROPY_HW_USB_MSC_INQUIRY_VENDOR_STRING', profile['msc_vendor']),
+        ('MICROPY_HW_USB_MSC_INQUIRY_PRODUCT_STRING', profile['msc_product']),
+        ('MICROPY_HW_USB_MSC_INQUIRY_REVISION_STRING', '1.0'),
     )
+    for macro, value in string_defines:
+        lines.append(f'#undef {macro}')
+        lines.append(f'#define {macro} "{value}"')
+        lines.append('')
 
+    # VID/PID overrides only emitted when the profile sets them — otherwise the
+    # board's MicroPython default (Raspberry Pi VID 0x2E8A + board-specific PID)
+    # is used, which avoids Windows driver re-install on first plug.
+    if 'vid' in profile:
+        lines.append('#undef MICROPY_HW_USB_VID')
+        lines.append(f'#define MICROPY_HW_USB_VID ({profile["vid"]:#06x})')
+        lines.append('#undef MICROPY_HW_USB_PID')
+        lines.append(f'#define MICROPY_HW_USB_PID ({profile["pid"]:#06x})')
+        lines.append('')
+
+    header.write_text('\n'.join(lines), encoding='utf-8')
     return header
 
 
@@ -178,8 +244,10 @@ def build_firmware(
     ref: str,
     overrides: dict[str, OverrideValue],
     artifact_version: str | None,
+    *,
+    usb_profile: str = DEFAULT_USB_PROFILE,
 ) -> Path:
-    usb_config_header = write_usb_config_header()
+    usb_config_header = write_usb_config_header(usb_profile)
 
     _run(
         [
@@ -217,6 +285,7 @@ def build_firmware(
         'micropython_ref': ref,
         'module_count': len(list(MPY_DIR.rglob('*.mpy'))),
         'usb_msc_enabled': True,
+        'usb_profile': usb_profile,
     }
     RELEASE_JSON.write_text(json.dumps(metadata, indent=2), encoding='utf-8')
     refresh_release_metadata(RELEASE_JSON)
@@ -242,6 +311,17 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument('--cors-allowed-origin')
     parser.add_argument('--cors-allow-credentials')
     parser.add_argument('--release-version')
+    parser.add_argument(
+        '--usb-profile',
+        default=DEFAULT_USB_PROFILE,
+        choices=sorted(USB_IDENTITY_PROFILES),
+        help=(
+            'USB device identity profile. "default" keeps Pico Bit branding for '
+            'development; "generic-composite" / "generic-keyboard" strip branding '
+            'without impersonating a registered vendor; "hobbyist" additionally '
+            'switches VID/PID to the V-USB shared range (non-commercial use only).'
+        ),
+    )
     return parser
 
 
@@ -280,5 +360,11 @@ def run_release(argv: list[str] | None = None) -> int:
         source_dir=source_dir,
         cwd=ROOT,
     )
-    build_firmware(args.board, args.micropython_ref, overrides, artifact_version)
+    build_firmware(
+        args.board,
+        args.micropython_ref,
+        overrides,
+        artifact_version,
+        usb_profile=args.usb_profile,
+    )
     return 0

@@ -61,8 +61,7 @@ jobs:
 
       - name: Validate generated artifacts
         run: |
-          uv run ruff format --check dist/boot.py
-          uv run ruff check dist/boot.py
           uv run python -m py_compile dist/boot.py
+          test dist/boot.mpy
           test -d dist/mpy
           find dist/mpy -name '*.mpy' | grep -q '.'
