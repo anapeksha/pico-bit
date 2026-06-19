@@ -40,5 +40,4 @@ static_cell = "2.1.1"
 leasehund = { version = "0.5.1", features = ["defmt"] }
 cyw43-pio = { version = "0.10.0", features = ["defmt"] }
 cyw43 = { version = "0.7.0", features = ["defmt"] }
-nanofish = { version = "0.12.0", features = ["defmt"] }
 picoserve = { version = "0.18.0", features = ["defmt", "embassy"] }

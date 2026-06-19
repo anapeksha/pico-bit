@@ -1072,19 +1072,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "88904434abc2901f197fe8cc55f0445e7ded921dba5911dad2e2b39b48e663c4"
 
 [[package]]
-name = "nanofish"
-version = "0.12.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "64561a5505e2f5e9f44b8c18bd7cb867284ddd50185ec1eca23bb60029f80b68"
-dependencies = [
- "defmt 1.1.0",
- "embassy-net",
- "embassy-time",
- "embedded-io-async 0.7.0",
- "heapless 0.9.3",
-]
-
-[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1223,7 +1210,6 @@ dependencies = [
  "embassy-usb",
  "heapless 0.9.3",
  "leasehund",
- "nanofish",
  "panic-probe",
  "picoserve",
  "static_cell",
