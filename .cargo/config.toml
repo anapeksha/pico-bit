@@ -1,0 +1,19 @@
+[env]
+# Sets the default logging level for your terminal output
+DEFMT_LOG = "debug,cyw43=info,embassy_net=info"
+
+[build]
+# Forces Cargo to compile for the Cortex-M33 in the RP2350 by default
+target = "thumbv8m.main-none-eabihf"
+
+[target.thumbv8m.main-none-eabihf]
+# Specifies the modern probe-rs runner for flashing and debugging
+runner = "probe-rs run --chip rp235x"
+
+# MANDATORY: These flags tell the compiler how to physically pack the hardware binary
+rustflags = [
+  "-C", "link-arg=--nmagic",   # Disables section page alignment to save valuable flash space
+  "-C", "link-arg=-Tlink.x",   # Loads the core memory layout script (requires a memory.x file)
+  "-C", "link-arg=-Tdefmt.x",  # Mandated by defmt_rtt to structure your live diagnostic logs
+  "-C", "target-cpu=cortex-m33" # Enables hardware-level optimizations for the RP2350 core
+]

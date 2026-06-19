@@ -1,0 +1,8 @@
+[
+  {
+    "label": "Start DAP Server",
+    "command": "probe-rs",
+    "args": ["dap-server", "--port", "50000"],
+    "use_new_terminal": true,
+  },
+]
