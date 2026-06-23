@@ -68,6 +68,7 @@ async fn stream_css() -> impl IntoResponse {
     ChunkedResponse::new(CssAsset)
         .into_response()
         .with_header("Content-Encoding", "gzip")
+        .with_header("Vary", "Accept-Encoding")
         .with_status_code(StatusCode::OK)
 }
 
@@ -75,6 +76,7 @@ async fn stream_js() -> impl IntoResponse {
     ChunkedResponse::new(JsAsset)
         .into_response()
         .with_header("Content-Encoding", "gzip")
+        .with_header("Vary", "Accept-Encoding")
         .with_status_code(StatusCode::OK)
 }
 

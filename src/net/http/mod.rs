@@ -1,3 +1,5 @@
+// src/net/http/mod.rs
+
 mod api;
 mod assets;
 
@@ -10,9 +12,8 @@ impl AppRouter {
     pub fn build(&self) -> Router<impl PathRouter, ()> {
         let router = Router::<_, ()>::new();
 
-        let router = api::build(router);
-        let router = assets::build(router);
-
-        router
+        let router = api::status::build(router);
+        let router = api::payload::build(router); // Type matches () state perfectly now
+        assets::build(router)
     }
 }

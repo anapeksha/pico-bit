@@ -1,5 +1,6 @@
 [package]
 name = "pico-bit"
+resolver = "2"
 version = "0.2.0"
 edition = "2024"
 
@@ -28,6 +29,7 @@ embassy-rp = { version = "0.10.0", features = [
 embassy-usb = "0.6.0"
 embassy-net = { version = "0.9.1", features = ["defmt", "proto-ipv4", "dhcpv4", "medium-ethernet", "tcp", "udp"] }
 embassy-futures = { version = "0.1.2", features = ["defmt"] }
+embassy-sync = { version = "0.8.0", features = ["defmt"] }
 
 # Defmt Logging
 defmt = "1.0.1"
@@ -40,4 +42,6 @@ static_cell = "2.1.1"
 leasehund = { version = "0.5.1", features = ["defmt"] }
 cyw43-pio = { version = "0.10.0", features = ["defmt"] }
 cyw43 = { version = "0.7.0", features = ["defmt"] }
-picoserve = { version = "0.18.0", features = ["defmt", "embassy"] }
+picoserve = { version = "0.18.0", features = ["defmt", "embassy", "json"] }
+serde = { version = "1.0.228", default-features = false, features = ["derive"] }
+littlefs2 = "0.7.2"

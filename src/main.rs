@@ -1,39 +1,55 @@
 #![no_std]
 #![no_main]
 
+mod ducky;
 mod net;
 mod pio;
 mod runners;
+mod storage;
 mod usb;
 
+use core::sync::atomic::Ordering;
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::block::ImageDef;
 use embassy_rp::dma::InterruptHandler as DmaInterruptHandler;
-use embassy_rp::peripherals::{DMA_CH0, PIO0, USB};
+use embassy_rp::flash::Flash;
+use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0, USB};
 use embassy_rp::pio::InterruptHandler as PioInterruptHandler;
 use embassy_rp::usb::InterruptHandler as UsbInterruptHandler;
 use embassy_rp::{self as hal, bind_interrupts};
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex;
+
+use littlefs2::fs::Allocation;
 
 // Panic Handler
 use panic_probe as _;
 // Defmt Logging
 use defmt_rtt as _;
+
 use net::{init_usb_dhcp, init_usb_network};
 use pio::PioManager;
 use runners::{dhcp_task, hid_task, ncm_task, net_task, usb_task, wifi_task};
+use static_cell::StaticCell;
+use storage::{FlashDriver, StorageManager};
 use usb::UsbManager;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
     PIO0_IRQ_0 => PioInterruptHandler<PIO0>;
-    DMA_IRQ_0 => DmaInterruptHandler<DMA_CH0>;
+    DMA_IRQ_0 => DmaInterruptHandler<DMA_CH0>, DmaInterruptHandler<DMA_CH1>;
 });
 
 /// Tell the Boot ROM about our application
 #[unsafe(link_section = ".start_block")]
 #[used]
 pub static IMAGE_DEF: ImageDef = hal::block::ImageDef::secure_exe();
+
+static LFS_ALLOCATION: StaticCell<Allocation<FlashDriver>> = StaticCell::new();
+static LFS_DRIVER: StaticCell<FlashDriver> = StaticCell::new();
+static STORAGE_MANAGER: StaticCell<Mutex<CriticalSectionRawMutex, StorageManager>> =
+    StaticCell::new();
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
@@ -51,15 +67,31 @@ async fn main(spawner: Spawner) {
         pio_driver, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, Irqs,
     );
 
+    // LFS Driver
+    let flash = Flash::new(p.FLASH, p.DMA_CH1, Irqs);
+    let lfs_alloc = LFS_ALLOCATION.init(Allocation::new());
+    let lfs_driver = LFS_DRIVER.init(FlashDriver { flash });
+    let storage_manager =
+        STORAGE_MANAGER.init(Mutex::new(StorageManager::new(lfs_driver, lfs_alloc)));
+
+    storage::GLOBAL_STORAGE.store(storage_manager as *mut _, Ordering::Release);
+
     info!("Spawning services...");
 
     spawner
-        .spawn(wifi_task(pio_manager.spi, pio_manager.pwr, spawner))
+        .spawn(wifi_task(
+            pio_manager.spi,
+            pio_manager.pwr,
+            spawner,
+            storage_manager,
+        ))
         .unwrap();
     spawner.spawn(usb_task(usb_manager.device)).unwrap();
     spawner.spawn(ncm_task(usb_manager.net_runner)).unwrap();
     spawner.spawn(net_task(usb_net_runner)).unwrap();
-    spawner.spawn(hid_task(usb_manager.hid)).unwrap();
+    spawner
+        .spawn(hid_task(usb_manager.hid, storage_manager))
+        .unwrap();
     spawner
         .spawn(dhcp_task(usb_dhcp_server, usb_net_stack))
         .unwrap();
