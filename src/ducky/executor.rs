@@ -55,20 +55,8 @@ impl<'a> DuckyExecutor<'a> {
                     BinaryOp::Add => Ok(l_val + r_val),
                     BinaryOp::Sub => Ok(l_val - r_val),
                     BinaryOp::Mul => Ok(l_val * r_val),
-                    BinaryOp::Div => {
-                        if r_val == 0 {
-                            Err(DuckyError::InvalidInteger)
-                        } else {
-                            Ok(l_val / r_val)
-                        }
-                    }
-                    BinaryOp::Mod => {
-                        if r_val == 0 {
-                            Err(DuckyError::InvalidInteger)
-                        } else {
-                            Ok(l_val % r_val)
-                        }
-                    }
+                    BinaryOp::Div => l_val.checked_div(r_val).ok_or(DuckyError::InvalidInteger),
+                    BinaryOp::Mod => l_val.checked_rem(r_val).ok_or(DuckyError::InvalidInteger),
                     BinaryOp::Equal => Ok(if l_val == r_val { 1 } else { 0 }),
                     BinaryOp::NotEqual => Ok(if l_val != r_val { 1 } else { 0 }),
                     BinaryOp::LessThan => Ok(if l_val < r_val { 1 } else { 0 }),
@@ -83,8 +71,8 @@ impl<'a> DuckyExecutor<'a> {
     }
 
     fn resolve_operand(&self, item: &str) -> Result<u32, DuckyError> {
-        if item.starts_with('$') {
-            self.get_variable(&item[1..])
+        if let Some(var_name) = item.strip_prefix('$') {
+            self.get_variable(var_name)
         } else {
             item.parse::<u32>().map_err(|_| DuckyError::InvalidInteger)
         }
@@ -141,15 +129,17 @@ impl<'a> DuckyExecutor<'a> {
         let mut actively_skipping = false;
         if self.if_top > 0
             && let Some(state) = self.if_stack[self.if_top - 1]
-                && state == ConditionalState::Bypassing {
-                    actively_skipping = true;
-                }
+            && state == ConditionalState::Bypassing
+        {
+            actively_skipping = true;
+        }
 
         match &command {
             DuckyCommand::ElseIfBlock { .. } | DuckyCommand::ElseBlock | DuckyCommand::EndIf => {}
             DuckyCommand::EndWhile => {
                 if self.loop_top > 0
-                    && let Some(_start_line) = self.loop_stack[self.loop_top - 1] {}
+                    && let Some(_start_line) = self.loop_stack[self.loop_top - 1]
+                {}
                 return Ok(None);
             }
             _ => {

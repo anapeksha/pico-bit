@@ -147,8 +147,8 @@ impl DuckyParser {
             }
         }
 
-        if trimmed.starts_with('$') {
-            Ok(Expression::Variable(&trimmed[1..]))
+        if let Some(var_name) = trimmed.strip_prefix('$') {
+            Ok(Expression::Variable(var_name))
         } else if let Ok(val) = trimmed.parse::<u32>() {
             Ok(Expression::Literal(val))
         } else {
@@ -160,9 +160,9 @@ impl DuckyParser {
         let mut is_declaration = false;
         let mut target = statement;
 
-        if statement.starts_with("VAR ") {
+        if let Some(stripped) = statement.strip_prefix("VAR ") {
             is_declaration = true;
-            target = statement["VAR ".len()..].trim();
+            target = stripped.trim();
         }
 
         let operators = [
