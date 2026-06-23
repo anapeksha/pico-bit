@@ -179,8 +179,8 @@ async fn save_payload(
         let mut line_num = 1;
         for line in valid_str.lines() {
             let trimmed = line.trim();
-            if !trimmed.is_empty() {
-                if let Err(ducky_err) = DuckyParser::parse_line(trimmed) {
+            if !trimmed.is_empty()
+                && let Err(ducky_err) = DuckyParser::parse_line(trimmed) {
                     let diagnostic = ErrorDiagnostic::new(line_num, ducky_err, line);
                     diagnostic.log_diagnostic();
 
@@ -190,7 +190,6 @@ async fn save_payload(
                     ));
                     return;
                 }
-            }
             line_num += 1;
         }
     });

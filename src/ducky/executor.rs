@@ -139,20 +139,17 @@ impl<'a> DuckyExecutor<'a> {
         W: StatefulWriter,
     {
         let mut actively_skipping = false;
-        if self.if_top > 0 {
-            if let Some(state) = self.if_stack[self.if_top - 1] {
-                if state == ConditionalState::Bypassing {
+        if self.if_top > 0
+            && let Some(state) = self.if_stack[self.if_top - 1]
+                && state == ConditionalState::Bypassing {
                     actively_skipping = true;
                 }
-            }
-        }
 
         match &command {
             DuckyCommand::ElseIfBlock { .. } | DuckyCommand::ElseBlock | DuckyCommand::EndIf => {}
             DuckyCommand::EndWhile => {
-                if self.loop_top > 0 {
-                    if let Some(_start_line) = self.loop_stack[self.loop_top - 1] {}
-                }
+                if self.loop_top > 0
+                    && let Some(_start_line) = self.loop_stack[self.loop_top - 1] {}
                 return Ok(None);
             }
             _ => {
