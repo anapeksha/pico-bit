@@ -1,4 +1,5 @@
 use picoserve::Router;
+use picoserve::io::Write;
 use picoserve::response::chunked::{ChunkWriter, ChunkedResponse, Chunks, ChunksWritten};
 use picoserve::response::{IntoResponse, StatusCode};
 use picoserve::routing::{PathRouter, get};
@@ -14,7 +15,7 @@ impl Chunks for CssAsset {
         "text/css"
     }
 
-    async fn write_chunks<W: picoserve::io::Write>(
+    async fn write_chunks<W: Write>(
         self,
         mut writer: ChunkWriter<W>,
     ) -> Result<ChunksWritten, W::Error> {
@@ -33,7 +34,7 @@ impl Chunks for JsAsset {
     }
 
     // FIX: Changed `&self` to `self`
-    async fn write_chunks<W: picoserve::io::Write>(
+    async fn write_chunks<W: Write>(
         self,
         mut writer: ChunkWriter<W>,
     ) -> Result<ChunksWritten, W::Error> {
@@ -52,7 +53,7 @@ impl Chunks for HtmlAsset {
     }
 
     // FIX: Changed `&self` to `self`
-    async fn write_chunks<W: picoserve::io::Write>(
+    async fn write_chunks<W: Write>(
         self,
         mut writer: ChunkWriter<W>,
     ) -> Result<ChunksWritten, W::Error> {
@@ -67,6 +68,7 @@ async fn stream_css() -> impl IntoResponse {
     ChunkedResponse::new(CssAsset)
         .into_response()
         .with_header("Content-Encoding", "gzip")
+        .with_header("Vary", "Accept-Encoding")
         .with_status_code(StatusCode::OK)
 }
 
@@ -74,6 +76,7 @@ async fn stream_js() -> impl IntoResponse {
     ChunkedResponse::new(JsAsset)
         .into_response()
         .with_header("Content-Encoding", "gzip")
+        .with_header("Vary", "Accept-Encoding")
         .with_status_code(StatusCode::OK)
 }
 
@@ -83,13 +86,9 @@ async fn stream_html() -> impl IntoResponse {
         .with_status_code(StatusCode::OK)
 }
 
-pub struct AppRouter;
-
-impl AppRouter {
-    pub fn build(&self) -> Router<impl PathRouter, ()> {
-        Router::<_, ()>::new()
-            .route("/assets/index.css", get(stream_css))
-            .route("/assets/index.js", get(stream_js))
-            .route("/", get(stream_html))
-    }
+pub fn build<R: PathRouter>(router: Router<R, ()>) -> Router<impl PathRouter, ()> {
+    router
+        .route("/assets/index.css", get(stream_css))
+        .route("/assets/index.js", get(stream_js))
+        .route("/", get(stream_html))
 }

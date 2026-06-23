@@ -7,6 +7,9 @@ DEFMT_LOG = "debug,cyw43=info,embassy_net=info"
 target = "thumbv8m.main-none-eabihf"
 
 [target.thumbv8m.main-none-eabihf]
+# Route binary generation through flip-link before it hits the runner
+linker = "flip-link"
+
 # Specifies the modern probe-rs runner for flashing and debugging
 runner = "probe-rs run --chip rp235x"
 
@@ -15,5 +18,6 @@ rustflags = [
   "-C", "link-arg=--nmagic",   # Disables section page alignment to save valuable flash space
   "-C", "link-arg=-Tlink.x",   # Loads the core memory layout script (requires a memory.x file)
   "-C", "link-arg=-Tdefmt.x",  # Mandated by defmt_rtt to structure your live diagnostic logs
-  "-C", "target-cpu=cortex-m33" # Enables hardware-level optimizations for the RP2350 core
+  "-C", "target-cpu=cortex-m33", # Enables hardware-level optimizations for the RP2350 core
+  "-C", "link-arg=--defsym=_stack_size=32K"
 ]
