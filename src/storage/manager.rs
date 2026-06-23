@@ -45,7 +45,7 @@ impl StorageManager {
         let p = Path::from_str_with_nul(core::str::from_utf8(&path_buf[..=bytes.len()]).unwrap())
             .unwrap();
 
-        f(&p)
+        f(p)
     }
 
     pub fn read<'a>(&self, path: &str, buffer: &'a mut [u8]) -> Result<&'a [u8]> {

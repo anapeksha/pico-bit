@@ -164,7 +164,7 @@ pub async fn wifi_task(
     let router = ROUTER.init(AppRouter);
 
     // 4. Load the configuration blocks
-    control.init(&CLM_BUF).await;
+    control.init(CLM_BUF).await;
     control.set_power_management(Performance).await;
 
     // 5. Initialize the access point stack
