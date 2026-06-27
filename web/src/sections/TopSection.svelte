@@ -3,7 +3,7 @@
   import EyeClosed from '@lucide/svelte/icons/eye-closed';
   import { apPassword, apSsid } from '../stores/ap';
   import { hidState } from '../stores/keyboard';
-  import { hostUsb, usbStateLabel } from '../stores/usb';
+  import { ncmLink, ncmLinkLabel } from '../stores/usb';
 
   let revealPassword = $state(false);
 
@@ -52,25 +52,25 @@
 
   <dl
     class={`${statClass} m-0 ${
-      $hostUsb.state === 'active' || $hostUsb.mounted
+      $ncmLink.state === 'active' || $ncmLink.active
         ? 'border-picobit-success-border bg-picobit-success-bg'
-        : $hostUsb.state === 'error' || !$hostUsb.available
+        : $ncmLink.state === 'error' || !$ncmLink.available
           ? 'border-picobit-danger-border bg-picobit-danger-bg'
           : ''
     }`}
   >
-    <dt class={labelClass}>Host USB</dt>
+    <dt class={labelClass}>NCM Link</dt>
     <dd
       class={`${valueClass} m-0 ${
-        $hostUsb.state === 'active' || $hostUsb.mounted
+        $ncmLink.state === 'active' || $ncmLink.active
           ? 'text-picobit-success'
-          : $hostUsb.state === 'error' || !$hostUsb.available
+          : $ncmLink.state === 'error' || !$ncmLink.available
             ? 'text-picobit-danger'
             : ''
       }`}
       aria-live="polite"
     >
-      {$usbStateLabel}
+      {$ncmLinkLabel}
     </dd>
   </dl>
 </div>

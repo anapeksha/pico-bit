@@ -11,16 +11,8 @@ if (import.meta.env.DEV) {
 const target = document.getElementById('app');
 
 if (target) {
-  const authState = target.dataset.authState === 'login' ? 'login' : 'portal';
-
   mount(App, {
     target,
-    props: {
-      authState,
-      message: target.dataset.message || '',
-      messageClass: target.dataset.messageClass || 'notice--hidden',
-      username: target.dataset.username || '',
-    },
   });
 
   document.getElementById('app-loading')?.remove();

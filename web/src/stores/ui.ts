@@ -10,7 +10,7 @@ export type GlobalError = { message: string; stack?: string };
 /** Fatal uncaught error — when set, the full-screen error wall is shown. */
 export const globalError = writable<GlobalError | null>(null);
 
-import type { NoticeTone } from '../lib/types';
+import type { NoticeTone } from '../api/contracts';
 
 let noticeTimer = 0;
 

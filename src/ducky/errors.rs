@@ -33,3 +33,17 @@ impl<'a> ErrorDiagnostic<'a> {
         );
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{DuckyError, ErrorDiagnostic};
+
+    #[test]
+    fn diagnostic_preserves_line_error_and_raw_text() {
+        let diagnostic = ErrorDiagnostic::new(7, DuckyError::InvalidKey, "CTRL NOT_A_KEY");
+
+        assert_eq!(diagnostic.line_number, 7);
+        assert_eq!(diagnostic.error, DuckyError::InvalidKey);
+        assert_eq!(diagnostic.raw_line, "CTRL NOT_A_KEY");
+    }
+}

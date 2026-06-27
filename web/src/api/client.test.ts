@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { requestJson, uploadBinaryFile } from './api';
-import type { RequestFailure } from './types';
+import { deleteBinaryFile, requestJson, uploadBinaryFile } from './client';
+import type { RequestFailure } from './contracts';
 
 function okResponse(body: unknown): Response {
   return {
@@ -187,7 +187,7 @@ describe('uploadBinaryFile', () => {
     expect(onProgress).toHaveBeenCalledWith(50);
   });
 
-  it('opens POST to /api/upload_binary with correct headers', async () => {
+  it('opens POST to filename-scoped armory upload route with correct headers', async () => {
     xhrMock.addEventListener.mockImplementation((event: string, cb: () => void) => {
       if (event === 'load') cb();
     });
@@ -196,11 +196,31 @@ describe('uploadBinaryFile', () => {
 
     const file = new File(['data'], 'agent.elf');
     await uploadBinaryFile(file, vi.fn());
-    expect(xhrMock.open).toHaveBeenCalledWith('POST', '/api/upload_binary', true);
-    expect(xhrMock.setRequestHeader).toHaveBeenCalledWith('X-Filename', 'agent.elf');
+    expect(xhrMock.open).toHaveBeenCalledWith('POST', '/api/armory/upload/agent.elf', true);
     expect(xhrMock.setRequestHeader).toHaveBeenCalledWith(
       'Content-Type',
       'application/octet-stream',
     );
+  });
+});
+
+describe('deleteBinaryFile', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends DELETE to the filename-scoped armory route', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(okResponse({ message: 'deleted' }));
+
+    await deleteBinaryFile('agent.elf');
+
+    expect(fetch).toHaveBeenCalledWith('/api/armory/agent.elf', {
+      headers: { 'Content-Type': 'application/json' },
+      method: 'DELETE',
+    });
   });
 });

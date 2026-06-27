@@ -4,46 +4,7 @@ use picoserve::response::chunked::{ChunkWriter, ChunkedResponse, Chunks, ChunksW
 use picoserve::response::{IntoResponse, StatusCode};
 use picoserve::routing::{PathRouter, get};
 
-static INDEX_HTML: &[u8] = include_bytes!("../../../dist/index.html");
-static INDEX_JS: &[u8] = include_bytes!("../../../dist/assets/index.js");
-static INDEX_CSS: &[u8] = include_bytes!("../../../dist/assets/index.css");
-
-#[derive(Copy, Clone)]
-struct CssAsset;
-impl Chunks for CssAsset {
-    fn content_type(&self) -> &'static str {
-        "text/css"
-    }
-
-    async fn write_chunks<W: Write>(
-        self,
-        mut writer: ChunkWriter<W>,
-    ) -> Result<ChunksWritten, W::Error> {
-        for chunk in INDEX_CSS.chunks(2048) {
-            writer.write_chunk(chunk).await?;
-        }
-        writer.finalize().await
-    }
-}
-
-#[derive(Copy, Clone)]
-struct JsAsset;
-impl Chunks for JsAsset {
-    fn content_type(&self) -> &'static str {
-        "application/javascript"
-    }
-
-    // FIX: Changed `&self` to `self`
-    async fn write_chunks<W: Write>(
-        self,
-        mut writer: ChunkWriter<W>,
-    ) -> Result<ChunksWritten, W::Error> {
-        for chunk in INDEX_JS.chunks(2048) {
-            writer.write_chunk(chunk).await?;
-        }
-        writer.finalize().await
-    }
-}
+static INDEX_HTML: &[u8] = include_bytes!("../../../dist/index.html.gz");
 
 #[derive(Copy, Clone)]
 struct HtmlAsset;
@@ -52,7 +13,6 @@ impl Chunks for HtmlAsset {
         "text/html"
     }
 
-    // FIX: Changed `&self` to `self`
     async fn write_chunks<W: Write>(
         self,
         mut writer: ChunkWriter<W>,
@@ -64,31 +24,14 @@ impl Chunks for HtmlAsset {
     }
 }
 
-async fn stream_css() -> impl IntoResponse {
-    ChunkedResponse::new(CssAsset)
-        .into_response()
-        .with_header("Content-Encoding", "gzip")
-        .with_header("Vary", "Accept-Encoding")
-        .with_status_code(StatusCode::OK)
-}
-
-async fn stream_js() -> impl IntoResponse {
-    ChunkedResponse::new(JsAsset)
-        .into_response()
-        .with_header("Content-Encoding", "gzip")
-        .with_header("Vary", "Accept-Encoding")
-        .with_status_code(StatusCode::OK)
-}
-
 async fn stream_html() -> impl IntoResponse {
     ChunkedResponse::new(HtmlAsset)
         .into_response()
+        .with_header("Content-Encoding", "gzip")
+        .with_header("Vary", "Accept-Encoding")
         .with_status_code(StatusCode::OK)
 }
 
 pub fn build<R: PathRouter>(router: Router<R, ()>) -> Router<impl PathRouter, ()> {
-    router
-        .route("/assets/index.css", get(stream_css))
-        .route("/assets/index.js", get(stream_js))
-        .route("/", get(stream_html))
+    router.route("/", get(stream_html))
 }

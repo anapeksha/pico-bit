@@ -1,19 +1,21 @@
 /**
- * DuckyScript editor state: payload text, live validation, and save/run actions.
+ * DuckyScript editor state: payload text, explicit validation, and save actions.
  *
- * Validation is intentionally async and cancellable — concurrent requests are
- * tracked by a monotonic `validationRequest` counter so only the response to
- * the most recent request is applied.  The component is responsible for
- * debouncing calls to `validatePayloadDraft`.
+ * Validation is intentionally async and cancellable. It is only invoked by
+ * explicit actions such as save or a manual validation control, not on typing.
  *
- * `canSave` and `canRun` are derived read-only stores — do not write to them.
+ * `canSave` is a derived read-only store — do not write to it.
  */
 import { derived, get, writable } from 'svelte/store';
 
-import { requestJson } from '../lib/api';
-import type { ValidationState } from '../lib/types';
-import { runHistory } from './run';
-import { showNotice } from './ui';
+import {
+  runPayload as runPayloadApi,
+  savePayload as savePayloadApi,
+  validatePayload,
+} from '../api/client';
+import type { PayloadMutationResponse, RequestFailure, ValidationState } from '../api/contracts';
+import { refreshBootstrapSource } from './bootstrapCache';
+import { showNotice, validationModalOpen } from './ui';
 
 let validationRequest = 0;
 
@@ -32,25 +34,40 @@ export const validating = writable(false);
 /** `true` while a save request is in flight. */
 export const saving = writable(false);
 
-/** `true` while a run request is in flight. */
-export const running = writable(false);
+/** `true` when a save request can be submitted. Save performs validation server-side. */
+export const canSave = derived(saving, ($saving) => !$saving);
 
-/** `true` when the payload can be saved (valid, not currently saving or validating). */
-export const canSave = derived(
-  [validation, validating, saving],
-  ([$validation, $validating, $saving]) =>
-    !$validating && !$saving && Boolean($validation?.can_save),
-);
+function validationFromFirmware(data: PayloadMutationResponse): ValidationState {
+  if (data.validation) return data.validation;
 
-/** `true` when the payload can be executed (valid, not currently running or validating). */
-export const canRun = derived(
-  [validation, validating, running],
-  ([$validation, $validating, $running]) =>
-    !$validating && !$running && Boolean($validation?.can_run),
-);
+  const message = data.message || (data.success ? 'Script is valid.' : 'Syntax validation failed.');
+  return {
+    badge_label: data.success ? 'Ready' : 'Errors',
+    badge_tone: data.success ? 'success' : 'error',
+    blocking: !data.success,
+    can_run: data.success,
+    can_save: data.success,
+    diagnostics:
+      !data.success && data.error_line
+        ? [
+            {
+              column: 1,
+              line: data.error_line,
+              message,
+              severity: 'error',
+            },
+          ]
+        : [],
+    error_count: data.success ? 0 : 1,
+    line_count: get(payload).split('\n').length,
+    notice: data.success ? 'success' : 'error',
+    summary: message,
+    warning_count: 0,
+  };
+}
 
 /**
- * POST the given script (defaults to the current `payload`) to `/api/validate`
+ * POST the given script (defaults to the current `payload`) to `/api/payload/validate`
  * and update `validation`.  Stale responses from superseded requests are
  * silently dropped.
  */
@@ -58,54 +75,40 @@ export async function validatePayloadDraft(script = get(payload)) {
   const requestId = ++validationRequest;
   validating.set(true);
   try {
-    const data = await requestJson<{ validation: ValidationState }>('/api/validate', {
-      method: 'POST',
-      body: JSON.stringify({ payload: script }),
-    });
+    const data = await validatePayload({ code: script });
     if (requestId === validationRequest) {
-      validation.set(data.validation);
+      validation.set(validationFromFirmware(data));
     }
   } finally {
     if (requestId === validationRequest) validating.set(false);
   }
 }
 
-/** Save the current payload to the device and update `validation` from the response. */
+/** Save the current payload. If firmware validation passes, immediately trigger execution. */
 export async function savePayload() {
   saving.set(true);
   try {
-    const data = await requestJson<Record<string, any>>('/api/payload', {
-      method: 'POST',
-      body: JSON.stringify({ payload: get(payload) }),
-    });
-    if (data.validation) validation.set(data.validation);
+    const draft = get(payload);
+    const data = await savePayloadApi({ code: draft });
+    const nextValidation = validationFromFirmware(data);
+    validation.set(nextValidation);
+
+    if (!data.success) {
+      validationModalOpen.set(true);
+      showNotice(data.message || 'Syntax validation failed.', 'error');
+      return;
+    }
+
+    validation.set(null);
     payloadState.set('Saved on device');
-    showNotice(data.message || 'payload.dd saved.', data.notice || 'success');
-  } catch (error: any) {
-    if (error.data?.validation) validation.set(error.data.validation);
-    showNotice(error.message, 'error');
+    const run = await runPayloadApi();
+    await refreshBootstrapSource();
+    showNotice(run.message || data.message || 'Payload saved and run.', 'success');
+  } catch (error: unknown) {
+    const failure = error as RequestFailure;
+    if (failure.data?.validation) validation.set(failure.data.validation as ValidationState);
+    showNotice(error instanceof Error ? error.message : 'Save failed.', 'error');
   } finally {
     saving.set(false);
-  }
-}
-
-/** Save and immediately execute the current payload on the device. */
-export async function runPayload() {
-  running.set(true);
-  try {
-    const data = await requestJson<Record<string, any>>('/api/run', {
-      method: 'POST',
-      body: JSON.stringify({ payload: get(payload), save: true }),
-    });
-    payloadState.set('Saved on device');
-    if (data.validation) validation.set(data.validation);
-    runHistory.set(data.run_history || []);
-    showNotice(data.message || 'Payload executed.', data.notice || 'success');
-  } catch (error: any) {
-    if (error.data?.validation) validation.set(error.data.validation);
-    if (error.data?.run_history) runHistory.set(error.data.run_history);
-    showNotice(error.message, 'error');
-  } finally {
-    running.set(false);
   }
 }

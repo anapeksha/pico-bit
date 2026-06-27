@@ -41,12 +41,12 @@ describe('validateArmoryFile', () => {
     expect(err).not.toBe('');
   });
 
-  it('rejects a file larger than 1 MB', async () => {
-    const file = new File([new Uint8Array(1024 * 1024 + 1)], 'payload.exe', {
+  it('rejects a file larger than 500 KB', async () => {
+    const file = new File([new Uint8Array(500 * 1024 + 1)], 'payload.exe', {
       type: 'application/octet-stream',
     });
     const err = await validateArmoryFile(file);
-    expect(err).toBe('Binary too large (max 1 MB).');
+    expect(err).toBe('Binary too large (max 500.0 KB).');
   });
 
   it('accepts a valid ELF binary with no extension', async () => {

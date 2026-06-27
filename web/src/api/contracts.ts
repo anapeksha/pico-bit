@@ -31,18 +31,25 @@ export type ValidationState = {
   warning_count?: number;
 };
 
-export type UsbAgentState = {
+export type NcmLinkState = {
+  address?: string;
   active?: boolean;
   available?: boolean;
-  can_mount?: boolean;
-  can_unmount?: boolean;
   filename?: string;
+  gateway?: string;
   has_binary?: boolean;
+  interface?: string;
   message?: string;
-  mounted?: boolean;
+  root_url?: string;
   state?: string;
-  volume_label?: string;
-  volume_note?: string;
+  transport?: string;
+};
+
+export type HostHidState = {
+  active?: boolean;
+  available?: boolean;
+  message?: string;
+  state?: string;
 };
 
 export type RunHistoryItem = {
@@ -64,11 +71,69 @@ export type KeyboardState = {
   targetLabel: string;
 };
 
+export type LittleFsFile = {
+  kind: string;
+  name: string;
+  path: string;
+  size: number;
+};
+
+export type ArmoryFile = {
+  kind?: string;
+  name: string;
+  path?: string;
+  size: number;
+  url: string;
+};
+
+export type ArmoryListResponse = {
+  files: ArmoryFile[];
+  has_binary: boolean;
+  max_upload_bytes?: number;
+  message: string;
+  notice: NoticeTone;
+};
+
+export type ArmoryMutationResponse = {
+  filename: string;
+  has_binary: boolean;
+  max_upload_bytes?: number;
+  message: string;
+  notice: NoticeTone;
+};
+
+export type KeyboardTargetRequest = {
+  layout?: string;
+  os?: string;
+};
+
+export type PayloadReadResponse = {
+  code: string;
+};
+
+export type PayloadWriteRequest = {
+  code: string;
+};
+
+export type PayloadMutationResponse = {
+  error_line: number | null;
+  message: string | null;
+  notice?: NoticeTone;
+  success: boolean;
+  validation?: ValidationState;
+};
+
+export type PayloadRunResponse = {
+  message: string;
+  success: boolean;
+};
+
 export type BootstrapState = {
   ap_password?: string;
   ap_ssid?: string;
-  auth_enabled?: boolean;
+  files?: LittleFsFile[];
   has_binary?: boolean;
+  host_hid?: HostHidState;
   keyboard_layout?: string;
   keyboard_layout_hint?: string;
   keyboard_layout_label?: string;
@@ -76,20 +141,18 @@ export type BootstrapState = {
   keyboard_os?: string;
   keyboard_os_label?: string;
   keyboard_oses?: SelectOption[];
-  keyboard_ready?: boolean;
   keyboard_target_label?: string;
+  max_upload_bytes?: number;
   message?: string;
   notice?: NoticeTone;
   payload?: string;
+  payload_file?: string;
   run_history?: RunHistoryItem[];
   seeded?: boolean;
-  usb_agent?: UsbAgentState;
-  validation?: ValidationState;
+  ncm_link?: NcmLinkState;
 };
 
-export type LootRecord = Record<string, any>;
-
 export type RequestFailure = Error & {
-  data?: Record<string, any>;
+  data?: Record<string, unknown>;
   status?: number;
 };

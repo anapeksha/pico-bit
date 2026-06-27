@@ -7,8 +7,5 @@ import { writable } from 'svelte/store';
 /** SSID broadcast by the Pico's built-in access point. */
 export const apSsid = writable('PicoBit');
 
-/** WPA2 password for the access point, or `'Open network'` when auth is disabled. */
+/** WPA2 password for the access point, or `'Open network'` when the AP is open. */
 export const apPassword = writable('Open network');
-
-/** Whether HTTP basic-auth is enforced on the portal. */
-export const authEnabled = writable(false);

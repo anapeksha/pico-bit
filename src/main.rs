@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![recursion_limit = "256"]
 
 mod ducky;
 mod net;
@@ -7,6 +8,7 @@ mod pio;
 mod runners;
 mod storage;
 mod usb;
+mod utils;
 
 use core::sync::atomic::Ordering;
 use defmt::info;
@@ -50,6 +52,26 @@ static LFS_ALLOCATION: StaticCell<Allocation<FlashDriver>> = StaticCell::new();
 static LFS_DRIVER: StaticCell<FlashDriver> = StaticCell::new();
 static STORAGE_MANAGER: StaticCell<Mutex<CriticalSectionRawMutex, StorageManager>> =
     StaticCell::new();
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn strcpy(dest: *mut u8, src: *const u8) -> *mut u8 {
+    let mut offset = 0;
+
+    loop {
+        let byte = unsafe { src.add(offset).read() };
+        unsafe {
+            dest.add(offset).write(byte);
+        }
+
+        if byte == 0 {
+            break;
+        }
+
+        offset += 1;
+    }
+
+    dest
+}
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {

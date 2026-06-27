@@ -58,7 +58,7 @@
       </div>
     </div>
 
-    <!-- Middle: DuckyEditor + BinaryArmory -->
+    <!-- Middle: editor and armory workspace -->
     <div
       class="flex min-h-0 flex-col overflow-hidden rounded-xl border border-picobit-border bg-picobit-surface lg:order-1 xl:order-0"
     >
@@ -83,7 +83,7 @@
         </div>
       </div>
 
-      <!-- BinaryArmory skeleton: header bar -->
+      <!-- Armory skeleton: header bar -->
       <div
         class="flex items-center border-t border-picobit-border bg-picobit-surface-2 px-3.5 py-2.5"
       >

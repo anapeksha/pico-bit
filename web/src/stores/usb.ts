@@ -1,32 +1,32 @@
 /**
- * Host USB agent state as reported by the device.
+ * NCM link state as reported by the device.
  *
- * `hostUsb` mirrors the raw `UsbAgentState` object from the server.
- * `usbStateLabel` derives a single human-readable summary string for display.
- * `applyUsbAgent` is called by bootstrap and binary-injection responses
- * whenever the server returns an updated agent snapshot.
+ * `ncmLink` mirrors the raw `NcmLinkState` object from the server.
+ * `ncmLinkLabel` derives a single human-readable summary string for display.
+ * `applyNcmLink` is called by bootstrap or another integration layer whenever
+ * the server returns an updated transport snapshot.
  */
 import { derived, writable } from 'svelte/store';
 
-import type { UsbAgentState } from '../lib/types';
+import type { NcmLinkState } from '../api/contracts';
 
-/** Raw USB agent state from the device. */
-export const hostUsb = writable<UsbAgentState>({
+/** Raw NCM link state from the device. */
+export const ncmLink = writable<NcmLinkState>({
   available: false,
   message: 'Waiting',
-  mounted: false,
   state: 'inactive',
+  transport: 'ncm',
 });
 
-/** Human-readable USB agent status derived from `hostUsb`. */
-export const usbStateLabel = derived(hostUsb, ($usb) => {
-  if (!$usb.available) return 'Unavailable';
-  if ($usb.mounted || $usb.active || $usb.state === 'active') return 'Active';
-  if ($usb.state === 'error') return 'Error';
+/** Human-readable NCM status derived from `ncmLink`. */
+export const ncmLinkLabel = derived(ncmLink, ($ncm) => {
+  if (!$ncm.available) return 'Unavailable';
+  if ($ncm.active || $ncm.state === 'active') return 'Active';
+  if ($ncm.state === 'error') return 'Error';
   return 'Inactive';
 });
 
-/** Overwrite `hostUsb` with a fresh snapshot; a no-op when `state` is undefined. */
-export function applyUsbAgent(state?: UsbAgentState) {
-  if (state) hostUsb.set(state);
+/** Overwrite `ncmLink` with a fresh snapshot; a no-op when `state` is undefined. */
+export function applyNcmLink(state?: NcmLinkState) {
+  if (state) ncmLink.set(state);
 }

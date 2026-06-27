@@ -1,4 +1,4 @@
-import type { Diagnostic, ValidationState } from './types';
+import type { Diagnostic, ValidationState } from '../api/contracts';
 
 const HL_FLOW = new Set([
   'IF',
