@@ -1,5 +1,6 @@
 #![no_std]
 #![no_main]
+#![recursion_limit = "256"]
 
 mod ducky;
 mod net;

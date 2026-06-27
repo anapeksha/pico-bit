@@ -1,0 +1,75 @@
+name: Release Firmware
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+env:
+  FIRMWARE_TARGET: thumbv8m.main-none-eabihf
+
+jobs:
+  package:
+    name: Release
+    runs-on: ubuntu-latest
+    if: startsWith(github.event.release.tag_name, 'v')
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Release tag must match v*.*.*"
+            exit 1
+          fi
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build embedded web assets
+        run: |
+          npm ci --prefix web
+          npm --prefix web run build
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ env.FIRMWARE_TARGET }}
+
+      - name: Install firmware tools
+        run: |
+          cargo install flip-link --locked
+          cargo install elf2uf2-rs --locked
+
+      - name: Build release firmware
+        run: cargo build --release --target "$FIRMWARE_TARGET"
+
+      - name: Package UF2
+        run: |
+          cp "target/$FIRMWARE_TARGET/release/pico-bit" firmware.elf
+          elf2uf2-rs firmware.elf firmware.uf2
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pico-bit-firmware
+          path: |
+            firmware.uf2
+            firmware.elf
+
+      - name: Attach firmware to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            firmware.uf2
+            firmware.elf

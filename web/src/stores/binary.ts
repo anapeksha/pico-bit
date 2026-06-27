@@ -1,22 +1,18 @@
 /**
- * Binary Armory state: upload, staging, and HID-injection of agent binaries.
+ * Binary Armory state: upload and staging for files stored on the device.
  *
  * Upload is performed via XHR (not `fetch`) to expose upload progress.
- * `injectBinary` opens the execution SSE stream before the POST so the
- * timeline component starts reacting immediately when the server begins
- * emitting step events.
- *
  * `armoryNotice` is a section-local notice distinct from the global toast;
  * use `setArmoryNotice` rather than writing to the store directly.
  */
-import { derived, get, writable } from 'svelte/store';
+import { derived, writable } from 'svelte/store';
 
-import { requestJson, uploadBinaryFile } from '../lib/api';
-import type { NoticeTone, TargetOs } from '../lib/types';
-import { loadBootstrap } from './bootstrap';
-import { resetExecution, startExecutionStream } from './execution';
+import { deleteBinaryFile, uploadBinaryFile } from '../api/client';
+import type { ArmoryFile, BootstrapState, NoticeTone, TargetOs } from '../api/contracts';
+import { MAX_ARMORY_FILE_SIZE } from '../lib/binary';
+import { refreshBootstrapSource, withOptimisticBootstrap } from './bootstrapCache';
 import { keyboard } from './keyboard';
-import { applyUsbAgent } from './usb';
+import { applyNcmLink } from './usb';
 
 const OS_CODE_TO_TARGET: Record<string, TargetOs> = {
   MAC: 'macos',
@@ -30,14 +26,17 @@ export const hasBinary = writable(false);
 /** Filename of the currently staged binary, empty string when none. */
 export const stagedBinaryName = writable('');
 
+/** Files currently reported by the device armory or bootstrap snapshot. */
+export const armoryFiles = writable<ArmoryFile[]>([]);
+
 /** XHR upload progress 0–100. */
 export const uploadProgress = writable(0);
 
+/** Maximum single-file upload size accepted by the firmware. */
+export const armoryUploadLimit = writable(MAX_ARMORY_FILE_SIZE);
+
 /** `true` while a binary upload is in progress. */
 export const uploadingBinary = writable(false);
-
-/** `true` while the HID injection POST is in flight. */
-export const injectingBinary = writable(false);
 
 /** Target OS for the HID stager script, derived from the active keyboard OS selection. */
 export const binaryTargetOs = derived(keyboard, ($k) => OS_CODE_TO_TARGET[$k.os] ?? 'windows');
@@ -58,6 +57,29 @@ export function setArmoryNotice(message: string, tone: NoticeTone = 'quiet') {
   armoryNotice.set({ message, tone, visible: Boolean(message) });
 }
 
+export function applyArmoryState(
+  data: Pick<BootstrapState, 'files' | 'has_binary' | 'ncm_link' | 'max_upload_bytes'>,
+) {
+  const files = data.files || [];
+  if (data.max_upload_bytes) armoryUploadLimit.set(data.max_upload_bytes);
+  armoryFiles.set(
+    files.map((file) => ({
+      name: file.name,
+      kind: file.kind,
+      path: file.path,
+      size: file.size,
+      url: file.path || file.name,
+    })),
+  );
+  hasBinary.set(Boolean(data.has_binary));
+  if (data.ncm_link?.filename) stagedBinaryName.set(data.ncm_link.filename);
+  applyNcmLink(data.ncm_link);
+}
+
+export async function refreshArmory() {
+  await refreshBootstrapSource();
+}
+
 /**
  * Upload a binary file to the device via XHR, reporting progress through
  * `uploadProgress`.  On success `hasBinary` and `stagedBinaryName` are updated.
@@ -65,52 +87,46 @@ export function setArmoryNotice(message: string, tone: NoticeTone = 'quiet') {
 export async function uploadBinary(file: File) {
   uploadingBinary.set(true);
   uploadProgress.set(0);
-  setArmoryNotice('Uploading...', 'quiet');
   try {
-    const data = await uploadBinaryFile(file, (percent) => uploadProgress.set(percent));
-    hasBinary.set(true);
-    stagedBinaryName.set(data.filename || file.name);
-    applyUsbAgent(data.usb_agent);
+    const data = await withOptimisticBootstrap(
+      () => {
+        setArmoryNotice('Uploading...', 'quiet');
+        hasBinary.set(true);
+        stagedBinaryName.set(file.name);
+        armoryFiles.update((files) => [
+          ...files.filter((item) => item.name !== file.name),
+          {
+            kind: 'asset',
+            name: file.name,
+            path: `/armory/${file.name}`,
+            size: file.size,
+            url: `/armory/${file.name}`,
+          },
+        ]);
+      },
+      () => uploadBinaryFile(file, (percent) => uploadProgress.set(percent)),
+    );
     setArmoryNotice(data.message || 'Upload complete.', data.notice || 'success');
-  } catch (error: any) {
-    setArmoryNotice(error.message || 'Upload failed.', 'error');
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Upload failed.';
+    setArmoryNotice(message, 'error');
   } finally {
     uploadingBinary.set(false);
   }
 }
 
-/**
- * Start the execution SSE stream and POST to `/api/inject_binary` to trigger
- * the HID stager on the device.  The stream receives step events while the
- * POST is blocking (HID typing takes several seconds), so both run concurrently
- * via the browser's parallel connection pool.
- */
-export async function injectBinary() {
-  injectingBinary.set(true);
-  setArmoryNotice('Injecting stager...', 'quiet');
-
-  let data: Record<string, any>;
+export async function deleteBinary(filename: string) {
   try {
-    data = await requestJson<Record<string, any>>('/api/inject_binary', {
-      method: 'POST',
-      body: JSON.stringify({ os: get(binaryTargetOs) }),
-    });
-  } catch (error: any) {
-    applyUsbAgent(error.data?.usb_agent);
-    setArmoryNotice(error.message || 'Injection failed.', 'error');
-    resetExecution();
-    injectingBinary.set(false);
-    return;
+    const data = await withOptimisticBootstrap(
+      () => {
+        setArmoryNotice('Deleting...', 'quiet');
+        armoryFiles.update((files) => files.filter((file) => file.name !== filename));
+      },
+      () => deleteBinaryFile(filename),
+    );
+    setArmoryNotice(data.message || 'File removed from flash.', data.notice || 'success');
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : 'Delete failed.';
+    setArmoryNotice(message, 'error');
   }
-
-  // POST returned — HID stager is running in the background on the device.
-  // Open the execution SSE stream now (no concurrent POST); it self-closes on `done`.
-  applyUsbAgent(data.usb_agent);
-  setArmoryNotice(data.message || 'Injection started.', 'success');
-
-  startExecutionStream(() => {
-    // Fires on `done` (success) or SSE error — refresh all state including run history.
-    loadBootstrap().catch(() => {});
-    injectingBinary.set(false);
-  });
 }

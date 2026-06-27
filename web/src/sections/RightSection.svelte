@@ -1,5 +1,11 @@
 <script lang="ts">
-  import { changeKeyboardTarget, keyboard } from '../stores/keyboard';
+  import {
+    applyKeyboardProfile,
+    changeKeyboardTarget,
+    keyboard,
+    keyboardProfiles,
+    selectedKeyboardProfileId,
+  } from '../stores/keyboard';
   import { runHistory } from '../stores/run';
 
   const panelClass = 'rounded-xl border border-(--border) bg-(--surface) px-4 py-4';
@@ -17,6 +23,23 @@
         Tell how the host interprets typed text.
       </p>
       <div class="flex flex-col gap-2">
+        <div class="grid gap-1">
+          <label class={labelClass} for="keyboard-profile">Profile</label>
+          <select
+            id="keyboard-profile"
+            class={selectClass}
+            value={$selectedKeyboardProfileId}
+            onchange={(event) =>
+              applyKeyboardProfile((event.currentTarget as HTMLSelectElement).value)}
+          >
+            {#each $keyboardProfiles as profile (profile.id)}
+              <option value={profile.id}>{profile.label}</option>
+            {/each}
+            {#if $selectedKeyboardProfileId === 'custom'}
+              <option value="custom">Custom</option>
+            {/if}
+          </select>
+        </div>
         <div class="grid gap-1">
           <label class={labelClass} for="keyboard-os">Operating system</label>
           <select

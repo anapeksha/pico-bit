@@ -1,0 +1,83 @@
+name: PR Quality Gates
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  FIRMWARE_TARGET: thumbv8m.main-none-eabihf
+  HOST_TEST_TARGET: x86_64-unknown-linux-gnu
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci --prefix web
+
+      - name: Check formatting
+        run: npm --prefix web run format:check
+
+      - name: Lint
+        run: npm --prefix web run lint -- --max-warnings=0
+
+      - name: Typecheck
+        run: npm --prefix web run check
+
+      - name: Unit tests
+        run: npm --prefix web test -- --run
+
+      - name: Production build
+        run: npm --prefix web run build
+
+  firmware:
+    name: Firmware
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Build embedded web assets
+        run: |
+          npm ci --prefix web
+          npm --prefix web run build
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+          targets: ${{ env.FIRMWARE_TARGET }}
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Firmware check
+        run: cargo check --target "$FIRMWARE_TARGET"
+
+      - name: Clippy
+        run: cargo clippy --target "$FIRMWARE_TARGET" --no-deps -- -D warnings -A clippy::new_without_default
+
+      - name: Host unit tests
+        run: cargo test --lib --no-default-features --target "$HOST_TEST_TARGET"

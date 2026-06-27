@@ -215,10 +215,10 @@ async fn run_script_payload<'buf>(
     // This guarantees the Mutex Guard is dropped BEFORE the loop starts.
     let bytes_written_len = {
         let storage_guard = storage.lock().await;
-        match storage_guard.read("payload.txt", content_buffer) {
+        match storage_guard.read("payload.dd", content_buffer) {
             Ok(bytes) => bytes.len(), // Just keep the numeric size
             Err(Error::NO_SUCH_ENTRY) => {
-                warn!("payload.txt not found in storage. Executing fallback...");
+                warn!("payload.dd not found in storage. Executing fallback...");
                 // Copy fallback directly into your buffer to maintain a single memory layout
                 let fallback = b"REM Stateless Fallback\nDELAY 500\n";
                 content_buffer[..fallback.len()].copy_from_slice(fallback);

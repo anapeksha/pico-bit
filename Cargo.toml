@@ -4,44 +4,75 @@ resolver = "2"
 version = "0.2.0"
 edition = "2024"
 
+[features]
+default = ["firmware"]
+firmware = [
+  "dep:cortex-m",
+  "dep:cortex-m-rt",
+  "dep:panic-probe",
+  "dep:embassy-executor",
+  "dep:embassy-time",
+  "dep:embassy-rp",
+  "dep:embassy-usb",
+  "dep:embassy-net",
+  "dep:embassy-futures",
+  "dep:embassy-sync",
+  "dep:defmt-rtt",
+  "dep:heapless",
+  "dep:static_cell",
+  "dep:leasehund",
+  "dep:cyw43-pio",
+  "dep:cyw43",
+  "dep:picoserve",
+  "dep:serde",
+  "dep:littlefs2",
+]
+
 [dependencies]
 # Cortex-M
-cortex-m = "0.7.7"
-cortex-m-rt = "0.7.5"
+cortex-m = { version = "0.7.7", optional = true }
+cortex-m-rt = { version = "0.7.5", optional = true }
 
 # Panic Handler
-panic-probe = { version = "1.0.0", features = ["print-defmt"] }
+panic-probe = { version = "1.0.0", features = ["print-defmt"], optional = true }
 
 # Embassy
 embassy-executor = { version = "0.9", features = [
   "arch-cortex-m",
   "executor-thread",
   "defmt",
-] }
-embassy-time = { version = "0.5.0" }
+], optional = true }
+embassy-time = { version = "0.5.0", optional = true }
 embassy-rp = { version = "0.10.0", features = [
   "time-driver",
   "critical-section-impl",
   "rp235xa",
   "binary-info",
   "defmt",
-] }
-embassy-usb = "0.6.0"
-embassy-net = { version = "0.9.1", features = ["defmt", "proto-ipv4", "dhcpv4", "medium-ethernet", "tcp", "udp"] }
-embassy-futures = { version = "0.1.2", features = ["defmt"] }
-embassy-sync = { version = "0.8.0", features = ["defmt"] }
+], optional = true }
+embassy-usb = { version = "0.6.0", optional = true }
+embassy-net = { version = "0.9.1", features = ["defmt", "proto-ipv4", "dhcpv4", "medium-ethernet", "tcp", "udp"], optional = true }
+embassy-futures = { version = "0.1.2", features = ["defmt"], optional = true }
+embassy-sync = { version = "0.8.0", features = ["defmt"], optional = true }
 
 # Defmt Logging
 defmt = "1.0.1"
-defmt-rtt = "1.1.0"
+defmt-rtt = { version = "1.1.0", optional = true }
 
 # Application crates
-heapless = "0.9.3"
+heapless = { version = "0.9.3", optional = true }
 usbd-hid = { version = "0.10.0", features = ["defmt"] }
-static_cell = "2.1.1"
-leasehund = { version = "0.5.1", features = ["defmt"] }
-cyw43-pio = { version = "0.10.0", features = ["defmt"] }
-cyw43 = { version = "0.7.0", features = ["defmt"] }
-picoserve = { version = "0.18.0", features = ["defmt", "embassy", "json"] }
-serde = { version = "1.0.228", default-features = false, features = ["derive"] }
-littlefs2 = "0.7.2"
+static_cell = { version = "2.1.1", optional = true }
+leasehund = { version = "0.5.1", features = ["defmt"], optional = true }
+cyw43-pio = { version = "0.10.0", features = ["defmt"], optional = true }
+cyw43 = { version = "0.7.0", features = ["defmt"], optional = true }
+picoserve = { version = "0.18.0", features = ["defmt", "embassy", "json"], optional = true }
+serde = { version = "1.0.228", default-features = false, features = ["derive"], optional = true }
+littlefs2 = { version = "0.7.2", optional = true }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

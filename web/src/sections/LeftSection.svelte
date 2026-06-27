@@ -24,7 +24,7 @@
           <strong>Stage&nbsp;2&nbsp;&middot;&nbsp;Inject</strong> - upload an agent binary, then HID-inject
           the USB execution stager; the agent writes loot back to the Pico drive
         </li>
-        <li>Loot panel live-updates as data arrives</li>
+        <li>Bootstrap refresh reconciles device state after changes</li>
       </ul>
     </div>
 
@@ -44,15 +44,6 @@
           </dd>
         </div>
       </dl>
-      <div class="my-3.5 h-px bg-(--border)"></div>
-      <form action="/logout" method="post">
-        <button
-          class="inline-flex h-9 w-full cursor-pointer items-center justify-center rounded-lg border border-(--border-strong) bg-(--surface) px-4 text-[13px] font-medium leading-none text-(--danger) hover:border-(--danger-border) hover:bg-(--danger-bg)"
-          type="submit"
-        >
-          Sign out
-        </button>
-      </form>
     </div>
   </aside>
 </div>

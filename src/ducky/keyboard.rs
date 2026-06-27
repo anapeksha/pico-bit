@@ -259,3 +259,64 @@ impl DuckyKeyboard {
         Ok(sequence)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DuckyKeyboard;
+    use crate::ducky::errors::DuckyError;
+    use crate::ducky::types::modifiers;
+
+    #[test]
+    fn maps_lowercase_uppercase_and_symbols_to_hid_reports() {
+        let lower = DuckyKeyboard::character_to_sequence('a').unwrap();
+        assert_eq!(lower.report.modifier, modifiers::NONE);
+        assert_eq!(lower.report.keycodes[0], 0x04);
+
+        let upper = DuckyKeyboard::character_to_sequence('A').unwrap();
+        assert_eq!(upper.report.modifier, modifiers::LEFT_SHIFT);
+        assert_eq!(upper.report.keycodes[0], 0x04);
+
+        let bang = DuckyKeyboard::character_to_sequence('!').unwrap();
+        assert_eq!(bang.report.modifier, modifiers::LEFT_SHIFT);
+        assert_eq!(bang.report.keycodes[0], 0x1E);
+    }
+
+    #[test]
+    fn rejects_non_ascii_characters() {
+        assert_eq!(
+            DuckyKeyboard::character_to_sequence('é').unwrap_err(),
+            DuckyError::InvalidKey
+        );
+    }
+
+    #[test]
+    fn parses_modifier_and_key_sequences() {
+        let sequence = DuckyKeyboard::parse_token_sequence("CTRL ALT DELETE").unwrap();
+
+        assert_eq!(
+            sequence.report.modifier,
+            modifiers::LEFT_CTRL | modifiers::LEFT_ALT
+        );
+        assert_eq!(sequence.report.keycodes[0], 0x4C);
+    }
+
+    #[test]
+    fn rejects_empty_unknown_and_too_many_key_sequences() {
+        assert_eq!(
+            DuckyKeyboard::parse_token_sequence("").unwrap_err(),
+            DuckyError::UnknownCommand
+        );
+        assert_eq!(
+            DuckyKeyboard::parse_token_sequence("NOPE").unwrap_err(),
+            DuckyError::InvalidKey
+        );
+        assert_eq!(
+            DuckyKeyboard::parse_token_sequence("A B C D E F G").unwrap_err(),
+            DuckyError::InvalidKey
+        );
+        assert_eq!(
+            DuckyKeyboard::parse_token_sequence("ENTER ESC TAB SPACE HOME END DELETE").unwrap_err(),
+            DuckyError::TooManyKeys
+        );
+    }
+}

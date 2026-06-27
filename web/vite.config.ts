@@ -31,7 +31,7 @@ function minifyHtml(): PluginOption {
  * Gzip the final emitted assets in-place.
  *
  * The generated files keep their normal names, but their contents are gzip
- * encoded. The MicroPython server must serve them with `Content-Encoding: gzip`.
+ * encoded. The server must serve them with `Content-Encoding: gzip`.
  */
 function gzipBuildAssets(): PluginOption {
   let outDir = 'dist';

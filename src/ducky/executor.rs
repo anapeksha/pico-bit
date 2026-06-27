@@ -3,6 +3,7 @@
 use crate::ducky::errors::DuckyError;
 use crate::ducky::keyboard::DuckyKeyboard;
 use crate::ducky::types::{AssignOp, BinaryOp, DuckyCommand, Expression};
+use core::future::Future;
 use usbd_hid::descriptor::KeyboardReport;
 
 /// Fixed runtime constraint profiles for an embedded architecture.
@@ -299,9 +300,166 @@ impl<'a> DuckyExecutor<'a> {
     }
 }
 
-/// Abstract implementation interface connecting to Embassy's hardware USB HID classes safely.
 pub trait StatefulWriter {
-    async fn write_report(&mut self, report: &KeyboardReport);
-    async fn clear_report(&mut self);
-    async fn delay_ms(&mut self, ms: u32);
+    fn write_report<'a>(&'a mut self, report: &'a KeyboardReport) -> impl Future<Output = ()> + 'a;
+    fn clear_report(&mut self) -> impl Future<Output = ()> + '_;
+    fn delay_ms(&mut self, ms: u32) -> impl Future<Output = ()> + '_;
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::{DuckyExecutor, StatefulWriter};
+    use crate::ducky::errors::DuckyError;
+    use crate::ducky::types::{AssignOp, DuckyCommand, Expression};
+    use core::future::Future;
+    use core::pin::Pin;
+    use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+    use std::vec::Vec;
+    use usbd_hid::descriptor::KeyboardReport;
+
+    #[derive(Default)]
+    struct TestWriter {
+        reports: Vec<KeyboardReport>,
+        clear_count: usize,
+        delays: Vec<u32>,
+    }
+
+    impl StatefulWriter for TestWriter {
+        async fn write_report(&mut self, report: &KeyboardReport) {
+            self.reports.push(*report);
+        }
+
+        async fn clear_report(&mut self) {
+            self.clear_count += 1;
+        }
+
+        async fn delay_ms(&mut self, ms: u32) {
+            self.delays.push(ms);
+        }
+    }
+
+    fn block_on<F: Future>(future: F) -> F::Output {
+        fn raw_waker() -> RawWaker {
+            fn clone(_: *const ()) -> RawWaker {
+                raw_waker()
+            }
+            fn noop(_: *const ()) {}
+
+            RawWaker::new(
+                core::ptr::null(),
+                &RawWakerVTable::new(clone, noop, noop, noop),
+            )
+        }
+
+        let waker = unsafe { Waker::from_raw(raw_waker()) };
+        let mut context = Context::from_waker(&waker);
+        let mut future = core::pin::pin!(future);
+
+        loop {
+            match Future::poll(Pin::as_mut(&mut future), &mut context) {
+                Poll::Ready(value) => return value,
+                Poll::Pending => {}
+            }
+        }
+    }
+
+    #[test]
+    fn delay_and_default_delay_return_expected_waits() {
+        let mut executor = DuckyExecutor::new();
+        let mut writer = TestWriter::default();
+
+        assert_eq!(
+            block_on(executor.execute_command(DuckyCommand::DefaultDelay(15), 1, &mut writer)),
+            Ok(None)
+        );
+        assert_eq!(
+            block_on(executor.execute_command(DuckyCommand::Delay(50), 2, &mut writer)),
+            Ok(Some(50))
+        );
+    }
+
+    #[test]
+    fn string_command_writes_and_clears_each_character() {
+        let mut executor = DuckyExecutor::new();
+        let mut writer = TestWriter::default();
+
+        assert_eq!(
+            block_on(executor.execute_command(DuckyCommand::String("Aa"), 1, &mut writer)),
+            Ok(Some(0))
+        );
+
+        assert_eq!(writer.reports.len(), 2);
+        assert_eq!(writer.clear_count, 2);
+        assert_eq!(writer.delays, [10, 10, 10, 10]);
+        assert_ne!(writer.reports[0].modifier, writer.reports[1].modifier);
+    }
+
+    #[test]
+    fn variables_can_be_declared_and_reused() {
+        let mut executor = DuckyExecutor::new();
+        let mut writer = TestWriter::default();
+
+        assert_eq!(
+            block_on(executor.execute_command(
+                DuckyCommand::VariableAssign {
+                    name: "count",
+                    operator: AssignOp::Equal,
+                    expression: Expression::Literal(4),
+                    is_declaration: true,
+                },
+                1,
+                &mut writer,
+            )),
+            Ok(None)
+        );
+        assert_eq!(
+            block_on(executor.execute_command(
+                DuckyCommand::VariableAssign {
+                    name: "count",
+                    operator: AssignOp::AddEqual,
+                    expression: Expression::Literal(2),
+                    is_declaration: false,
+                },
+                2,
+                &mut writer,
+            )),
+            Ok(None)
+        );
+        assert_eq!(
+            block_on(executor.execute_command(
+                DuckyCommand::IfBlock {
+                    condition: Expression::BinaryOperation {
+                        left: "$count",
+                        op: crate::ducky::types::BinaryOp::Equal,
+                        right: "6",
+                    },
+                },
+                3,
+                &mut writer,
+            )),
+            Ok(None)
+        );
+    }
+
+    #[test]
+    fn assigning_undeclared_variable_fails() {
+        let mut executor = DuckyExecutor::new();
+        let mut writer = TestWriter::default();
+
+        assert_eq!(
+            block_on(executor.execute_command(
+                DuckyCommand::VariableAssign {
+                    name: "missing",
+                    operator: AssignOp::Equal,
+                    expression: Expression::Literal(1),
+                    is_declaration: false,
+                },
+                1,
+                &mut writer,
+            )),
+            Err(DuckyError::UnknownCommand)
+        );
+    }
 }

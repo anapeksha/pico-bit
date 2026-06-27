@@ -5,9 +5,16 @@ const BOOTSTRAP_DATA = {
   ap_ssid: 'TestNet',
   ap_password: 'pass123',
   auth_enabled: true,
-  keyboard_ready: true,
   seeded: false,
   has_binary: true,
+  files: [
+    {
+      kind: 'asset',
+      name: 'payload.bin',
+      path: '/armory/payload.bin',
+      size: 4096,
+    },
+  ],
   run_history: [],
   payload: 'STRING Hello',
   keyboard_layout: 'en-US',
@@ -18,6 +25,25 @@ const BOOTSTRAP_DATA = {
   keyboard_os_label: 'Windows',
   keyboard_target_label: 'Windows / English (US)',
   keyboard_layout_hint: '',
+  host_hid: {
+    active: true,
+    available: true,
+    message: 'Host HID ready',
+    state: 'active',
+  },
+  ncm_link: {
+    active: true,
+    address: '192.168.7.1',
+    available: true,
+    filename: 'payload.bin',
+    gateway: '192.168.7.1',
+    has_binary: true,
+    interface: 'usb-ncm',
+    message: 'NCM ready',
+    root_url: 'http://192.168.7.1',
+    state: 'active',
+    transport: 'ncm',
+  },
 };
 
 describe('loadBootstrap', () => {
@@ -86,6 +112,34 @@ describe('loadBootstrap', () => {
     await loadBootstrap();
 
     expect(get(stores.binary.hasBinary)).toBe(true);
+  });
+
+  it('hydrates armory files and staged filename from bootstrap data', async () => {
+    vi.mocked(fetch)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(BOOTSTRAP_DATA),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 404,
+        json: vi.fn().mockResolvedValue({}),
+      } as unknown as Response);
+
+    const { stores, loadBootstrap } = await setup();
+    await loadBootstrap();
+
+    expect(get(stores.binary.armoryFiles)).toEqual([
+      {
+        kind: 'asset',
+        name: 'payload.bin',
+        path: '/armory/payload.bin',
+        size: 4096,
+        url: '/armory/payload.bin',
+      },
+    ]);
+    expect(get(stores.binary.stagedBinaryName)).toBe('payload.bin');
   });
 
   it('throws when /api/bootstrap returns a non-ok response', async () => {

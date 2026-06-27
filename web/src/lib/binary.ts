@@ -1,5 +1,5 @@
 const ALLOWED_BINARY_EXTENSIONS = new Set(['appimage', 'bin', 'elf', 'exe']);
-const MAX_ARMORY_FILE_SIZE = 1024 * 1024;
+export const MAX_ARMORY_FILE_SIZE = 500 * 1024;
 const BLOCKED_FILE_TYPES = new Set([
   'application/gzip',
   'application/json',
@@ -42,13 +42,16 @@ function looksLikeExecutableBinary(bytes: Uint8Array): boolean {
   );
 }
 
-export async function validateArmoryFile(file: File | null): Promise<string> {
+export async function validateArmoryFile(
+  file: File | null,
+  maxBytes = MAX_ARMORY_FILE_SIZE,
+): Promise<string> {
   if (!file || !file.size) {
     return 'Choose a compiled EXE, ELF, or Mach-O binary.';
   }
 
-  if (file.size > MAX_ARMORY_FILE_SIZE) {
-    return 'Binary too large (max 1 MB).';
+  if (file.size > maxBytes) {
+    return `Binary too large (max ${formatBytes(maxBytes)}).`;
   }
 
   const extension = fileExtension(file.name);

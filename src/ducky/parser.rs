@@ -200,3 +200,91 @@ impl DuckyParser {
         Err(DuckyError::UnknownCommand)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::DuckyParser;
+    use crate::ducky::errors::DuckyError;
+    use crate::ducky::types::{AssignOp, BinaryOp, DuckyCommand, Expression, modifiers};
+
+    #[test]
+    fn parses_comments_and_empty_lines() {
+        assert_eq!(
+            DuckyParser::parse_line("REM note"),
+            Ok(DuckyCommand::Comment)
+        );
+        assert_eq!(
+            DuckyParser::parse_line("// note"),
+            Ok(DuckyCommand::Comment)
+        );
+        assert_eq!(DuckyParser::parse_line("   "), Err(DuckyError::EmptyLine));
+    }
+
+    #[test]
+    fn parses_delays_strings_and_control_blocks() {
+        assert_eq!(
+            DuckyParser::parse_line("DELAY 250"),
+            Ok(DuckyCommand::Delay(250))
+        );
+        assert_eq!(
+            DuckyParser::parse_line("DEFAULT_DELAY 20"),
+            Ok(DuckyCommand::DefaultDelay(20))
+        );
+        assert_eq!(
+            DuckyParser::parse_line("STRING hello world"),
+            Ok(DuckyCommand::String("hello world"))
+        );
+        assert_eq!(
+            DuckyParser::parse_line("IF $ready == 1"),
+            Ok(DuckyCommand::IfBlock {
+                condition: Expression::BinaryOperation {
+                    left: "$ready",
+                    op: BinaryOp::Equal,
+                    right: "1",
+                },
+            })
+        );
+        assert_eq!(DuckyParser::parse_line("ELSE"), Ok(DuckyCommand::ElseBlock));
+        assert_eq!(DuckyParser::parse_line("END_IF"), Ok(DuckyCommand::EndIf));
+    }
+
+    #[test]
+    fn parses_variable_assignments_and_rejects_invalid_assignments() {
+        assert_eq!(
+            DuckyParser::parse_line("VAR $count = 3"),
+            Ok(DuckyCommand::VariableAssign {
+                name: "count",
+                operator: AssignOp::Equal,
+                expression: Expression::Literal(3),
+                is_declaration: true,
+            })
+        );
+        assert_eq!(
+            DuckyParser::parse_line("$count += 2"),
+            Ok(DuckyCommand::VariableAssign {
+                name: "count",
+                operator: AssignOp::AddEqual,
+                expression: Expression::Literal(2),
+                is_declaration: false,
+            })
+        );
+        assert_eq!(
+            DuckyParser::parse_line("VAR count = 1"),
+            Err(DuckyError::UnknownCommand)
+        );
+    }
+
+    #[test]
+    fn parses_key_sequences_as_fallback() {
+        let command = DuckyParser::parse_line("CTRL ALT DELETE").unwrap();
+        let DuckyCommand::KeySequence(sequence) = command else {
+            panic!("expected key sequence");
+        };
+
+        assert_eq!(
+            sequence.report.modifier,
+            modifiers::LEFT_CTRL | modifiers::LEFT_ALT
+        );
+        assert_eq!(sequence.report.keycodes[0], 0x4C);
+    }
+}
