@@ -1,6 +1,7 @@
 use super::service;
 use picoserve::io::Read;
 use picoserve::request::Request;
+use picoserve::response::chunked::ChunkedResponse;
 use picoserve::response::{IntoResponse, Json, ResponseWriter, StatusCode};
 use picoserve::routing::{
     PathRouter, RequestHandlerService, delete, get, parse_path_segment, post_service,
@@ -10,7 +11,7 @@ use picoserve::{ResponseSent, Router};
 const UPLOAD_CHUNK_SIZE: usize = 1024;
 
 async fn list_armory() -> impl IntoResponse {
-    Json(service::list().await)
+    ChunkedResponse::new(service::ArmoryListChunks)
 }
 
 async fn delete_armory(filename: heapless::String<64>) -> impl IntoResponse {

@@ -107,13 +107,6 @@ export type KeyboardTargetRequest = {
   os?: string;
 };
 
-export type KeyboardProfile = {
-  id: string;
-  label: string;
-  layout: string;
-  os: string;
-};
-
 export type PayloadReadResponse = {
   code: string;
 };
@@ -130,10 +123,14 @@ export type PayloadMutationResponse = {
   validation?: ValidationState;
 };
 
+export type PayloadRunResponse = {
+  message: string;
+  success: boolean;
+};
+
 export type BootstrapState = {
   ap_password?: string;
   ap_ssid?: string;
-  auth_enabled?: boolean;
   files?: LittleFsFile[];
   has_binary?: boolean;
   host_hid?: HostHidState;
@@ -153,7 +150,6 @@ export type BootstrapState = {
   run_history?: RunHistoryItem[];
   seeded?: boolean;
   ncm_link?: NcmLinkState;
-  validation?: ValidationState;
 };
 
 export type RequestFailure = Error & {

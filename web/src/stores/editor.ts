@@ -8,10 +8,14 @@
  */
 import { derived, get, writable } from 'svelte/store';
 
-import { savePayload as savePayloadApi, validatePayload } from '../api/client';
+import {
+  runPayload as runPayloadApi,
+  savePayload as savePayloadApi,
+  validatePayload,
+} from '../api/client';
 import type { PayloadMutationResponse, RequestFailure, ValidationState } from '../api/contracts';
-import { withOptimisticBootstrap } from './bootstrapCache';
-import { showNotice } from './ui';
+import { refreshBootstrapSource } from './bootstrapCache';
+import { showNotice, validationModalOpen } from './ui';
 
 let validationRequest = 0;
 
@@ -80,21 +84,26 @@ export async function validatePayloadDraft(script = get(payload)) {
   }
 }
 
-/** Save the current payload to the device and update `validation` from the response. */
+/** Save the current payload. If firmware validation passes, immediately trigger execution. */
 export async function savePayload() {
   saving.set(true);
   try {
     const draft = get(payload);
-    const data = await withOptimisticBootstrap(
-      () => {
-        payloadState.set('Saved on device');
-      },
-      () => savePayloadApi({ code: draft }),
-    );
-    showNotice(
-      data.message || 'payload.dd saved.',
-      data.success ? data.notice || 'success' : 'error',
-    );
+    const data = await savePayloadApi({ code: draft });
+    const nextValidation = validationFromFirmware(data);
+    validation.set(nextValidation);
+
+    if (!data.success) {
+      validationModalOpen.set(true);
+      showNotice(data.message || 'Syntax validation failed.', 'error');
+      return;
+    }
+
+    validation.set(null);
+    payloadState.set('Saved on device');
+    const run = await runPayloadApi();
+    await refreshBootstrapSource();
+    showNotice(run.message || data.message || 'Payload saved and run.', 'success');
   } catch (error: unknown) {
     const failure = error as RequestFailure;
     if (failure.data?.validation) validation.set(failure.data.validation as ValidationState);

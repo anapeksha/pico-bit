@@ -100,7 +100,7 @@ if (shouldMock) {
       typeof input === 'string' ? input : input instanceof URL ? input.pathname : input.url;
     const method = (options.method || 'GET').toUpperCase();
 
-    if (!url.startsWith('/api/') && url !== '/logout') {
+    if (!url.startsWith('/api/')) {
       return originalFetch(input, options);
     }
 
@@ -109,7 +109,6 @@ if (shouldMock) {
       return jsonResponse({
         ap_password: 'PicoBit24Net',
         ap_ssid: 'PicoBit',
-        auth_enabled: true,
         files: armoryFiles(),
         has_binary: staged,
         host_hid: hostHid(),
@@ -133,7 +132,6 @@ if (shouldMock) {
         payload,
         run_history: runs,
         seeded: false,
-        validation: validationFor(payload),
       });
     }
 
@@ -157,6 +155,27 @@ if (shouldMock) {
         success: !validation.blocking,
         error_line: validation.diagnostics[0]?.line || null,
       });
+    }
+
+    if (url === '/api/payload/run' && method === 'POST') {
+      const validation = validationFor(payload);
+      if (!validation.blocking) {
+        runs.unshift({
+          message: 'Mock payload run requested.',
+          notice: 'success',
+          preview: payload.split('\n').find(Boolean) || 'payload.dd',
+          sequence: runs.length + 1,
+          source: 'payload.dd',
+        });
+      }
+
+      return jsonResponse(
+        {
+          message: validation.blocking ? validation.summary : 'Mock payload run requested.',
+          success: !validation.blocking,
+        },
+        validation.blocking ? 400 : 200,
+      );
     }
 
     if (url === '/api/armory' && method === 'GET') {

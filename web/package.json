@@ -14,19 +14,16 @@
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "@gfx/zopfli": "^1.0.15",
     "@lucide/svelte": "^1.16.0",
     "@sveltejs/vite-plugin-svelte": "^7.1.2",
     "@tailwindcss/vite": "^4.1.17",
     "@testing-library/jest-dom": "^6.9.1",
     "@testing-library/svelte": "^5.3.1",
-    "@types/html-minifier-terser": "^7.0.2",
     "@types/node": "^24.10.2",
     "eslint": "^10.4.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-svelte": "^3.17.1",
     "globals": "^17.6.0",
-    "html-minifier-terser": "^7.2.0",
     "jsdom": "^29.1.1",
     "prettier": "^3.8.3",
     "prettier-plugin-svelte": "^3.5.2",
@@ -37,6 +34,8 @@
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.59.3",
     "vite": "^8.0.13",
+    "vite-plugin-compression": "^0.5.1",
+    "vite-plugin-singlefile": "^2.3.3",
     "vitest": "^4.1.6"
   }
 }

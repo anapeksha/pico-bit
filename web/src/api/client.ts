@@ -2,6 +2,7 @@ import type {
   ArmoryMutationResponse,
   BootstrapState,
   PayloadMutationResponse,
+  PayloadRunResponse,
   PayloadWriteRequest,
   RequestFailure,
 } from './contracts';
@@ -60,6 +61,12 @@ export function savePayload(body: PayloadWriteRequest): Promise<PayloadMutationR
   return requestJson<PayloadMutationResponse>('/api/payload', {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+}
+
+export function runPayload(): Promise<PayloadRunResponse> {
+  return requestJson<PayloadRunResponse>('/api/payload/run', {
+    method: 'POST',
   });
 }
 

@@ -1,8 +1,15 @@
 use crate::storage::{
     GLOBAL_STORAGE, LISTED_FILE_NAME_MAX, LISTED_FILE_PATH_MAX, ListedFile, SharedStorage,
 };
+use crate::utils::json_chunks;
+use core::cell::RefCell;
 use core::sync::atomic::Ordering;
-use serde::ser::{SerializeSeq, SerializeStruct};
+use embassy_sync::blocking_mutex::Mutex;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex as AsyncMutex;
+use picoserve::io::Write;
+use picoserve::response::chunked::{ChunkWriter, Chunks, ChunksWritten};
+use serde::ser::SerializeStruct;
 use serde::{Serialize, Serializer};
 
 pub(super) const MAX_ARMORY_UPLOAD_BYTES: usize = 500 * 1024;
@@ -51,21 +58,6 @@ impl ArmoryFile {
     }
 }
 
-impl Serialize for ArmoryFile {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut state = serializer.serialize_struct("ArmoryFile", 5)?;
-        state.serialize_field("kind", self.kind)?;
-        state.serialize_field("name", self.name())?;
-        state.serialize_field("path", self.path())?;
-        state.serialize_field("size", &self.size)?;
-        state.serialize_field("url", self.path())?;
-        state.end()
-    }
-}
-
 #[derive(Clone, Copy)]
 pub(super) struct ArmoryFileList {
     entries: [ArmoryFile; MAX_ARMORY_FILES],
@@ -73,24 +65,23 @@ pub(super) struct ArmoryFileList {
 }
 
 impl ArmoryFileList {
-    fn empty() -> Self {
+    const fn empty() -> Self {
         Self {
             entries: [ArmoryFile::empty(); MAX_ARMORY_FILES],
             len: 0,
         }
     }
 
-    fn from_listed(files: &[ListedFile]) -> Self {
-        let mut list = Self::empty();
+    fn replace_from_listed(&mut self, files: &[ListedFile]) {
+        *self = Self::empty();
         let mut index = 0;
 
         while index < files.len() && index < MAX_ARMORY_FILES {
-            list.entries[index] = ArmoryFile::from_listed(&files[index]);
+            self.entries[index] = ArmoryFile::from_listed(&files[index]);
             index += 1;
         }
 
-        list.len = index;
-        list
+        self.len = index;
     }
 
     fn has_binary(&self) -> bool {
@@ -98,28 +89,6 @@ impl ArmoryFileList {
             .iter()
             .any(|file| file.kind == "asset")
     }
-}
-
-impl Serialize for ArmoryFileList {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut seq = serializer.serialize_seq(Some(self.len))?;
-        for entry in &self.entries[..self.len] {
-            seq.serialize_element(entry)?;
-        }
-        seq.end()
-    }
-}
-
-#[derive(Serialize)]
-pub(super) struct ArmoryListResponse {
-    files: ArmoryFileList,
-    has_binary: bool,
-    max_upload_bytes: usize,
-    message: &'static str,
-    notice: &'static str,
 }
 
 pub(super) struct ArmoryMutationResponse {
@@ -153,6 +122,11 @@ impl ArmoryMutationResponse {
         self.notice == "error"
     }
 }
+
+static ARMORY_FILES: Mutex<CriticalSectionRawMutex, RefCell<ArmoryFileList>> =
+    Mutex::new(RefCell::new(ArmoryFileList::empty()));
+static LISTED_SCRATCH: AsyncMutex<CriticalSectionRawMutex, [ListedFile; MAX_ARMORY_FILES]> =
+    AsyncMutex::new([ListedFile::empty(); MAX_ARMORY_FILES]);
 
 impl Serialize for ArmoryMutationResponse {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -255,29 +229,99 @@ fn armory_path<'a>(
     core::str::from_utf8(&path_buffer[..total_len]).map_err(|_| ArmoryError::InvalidFilename)
 }
 
-async fn list_files() -> ArmoryFileList {
+fn set_armory_files(files: ArmoryFileList) {
+    ARMORY_FILES.lock(|cell| {
+        *cell.borrow_mut() = files;
+    });
+}
+
+async fn refresh_armory_files() -> bool {
     let Some(storage) = storage() else {
-        return ArmoryFileList::empty();
+        set_armory_files(ArmoryFileList::empty());
+        return false;
     };
 
     let storage_guard = storage.lock().await;
-    let mut listed = [ListedFile::empty(); MAX_ARMORY_FILES];
+    let mut listed = LISTED_SCRATCH.lock().await;
+    let listed_count = storage_guard.list_files(&mut listed).ok();
 
-    match storage_guard.list_files(&mut listed) {
-        Ok(count) => ArmoryFileList::from_listed(&listed[..count]),
-        Err(_) => ArmoryFileList::empty(),
+    ARMORY_FILES.lock(|files_cell| {
+        let mut files = files_cell.borrow_mut();
+        if let Some(count) = listed_count {
+            files.replace_from_listed(&listed[..count]);
+        } else {
+            *files = ArmoryFileList::empty();
+        }
+        files.has_binary()
+    })
+}
+
+#[derive(Clone, Copy)]
+pub(super) struct ArmoryListChunks;
+
+impl Chunks for ArmoryListChunks {
+    fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+
+    async fn write_chunks<W: Write>(
+        self,
+        mut writer: ChunkWriter<W>,
+    ) -> Result<ChunksWritten, W::Error> {
+        let has_binary = refresh_armory_files().await;
+
+        json_chunks::raw(&mut writer, b"{\"files\":").await?;
+        write_armory_files(&mut writer).await?;
+        json_chunks::raw(&mut writer, b",\"has_binary\":").await?;
+        json_chunks::bool_value(&mut writer, has_binary).await?;
+        json_chunks::raw(&mut writer, b",\"max_upload_bytes\":").await?;
+        json_chunks::usize_value(&mut writer, MAX_ARMORY_UPLOAD_BYTES).await?;
+        json_chunks::raw(
+            &mut writer,
+            b",\"message\":\"Armory files loaded from littlefs2.\",\"notice\":\"success\"}",
+        )
+        .await?;
+
+        writer.finalize().await
     }
 }
 
-pub(super) async fn list() -> ArmoryListResponse {
-    let files = list_files().await;
-    ArmoryListResponse {
-        files,
-        has_binary: files.has_binary(),
-        max_upload_bytes: MAX_ARMORY_UPLOAD_BYTES,
-        message: "Armory files loaded from littlefs2.",
-        notice: "success",
+async fn write_armory_files<W: Write>(writer: &mut ChunkWriter<W>) -> Result<(), W::Error> {
+    json_chunks::raw(writer, b"[").await?;
+
+    let len = ARMORY_FILES.lock(|cell| cell.borrow().len);
+    let mut index = 0;
+
+    while index < len {
+        if index > 0 {
+            json_chunks::raw(writer, b",").await?;
+        }
+
+        if let Some(file) = ARMORY_FILES.lock(|cell| cell.borrow().entries.get(index).copied()) {
+            write_armory_file(writer, &file).await?;
+        }
+
+        index += 1;
     }
+
+    json_chunks::raw(writer, b"]").await
+}
+
+async fn write_armory_file<W: Write>(
+    writer: &mut ChunkWriter<W>,
+    file: &ArmoryFile,
+) -> Result<(), W::Error> {
+    json_chunks::raw(writer, b"{\"kind\":").await?;
+    json_chunks::string(writer, file.kind).await?;
+    json_chunks::raw(writer, b",\"name\":").await?;
+    json_chunks::string(writer, file.name()).await?;
+    json_chunks::raw(writer, b",\"path\":").await?;
+    json_chunks::string(writer, file.path()).await?;
+    json_chunks::raw(writer, b",\"size\":").await?;
+    json_chunks::usize_value(writer, file.size).await?;
+    json_chunks::raw(writer, b",\"url\":").await?;
+    json_chunks::string(writer, file.path()).await?;
+    json_chunks::raw(writer, b"}").await
 }
 
 pub(super) fn upload_too_large(filename: &str) -> ArmoryMutationResponse {
@@ -314,10 +358,10 @@ pub(super) async fn append_upload_chunk(filename: &str, chunk: &[u8]) -> Result<
 }
 
 pub(super) async fn finish_upload(filename: &str) -> ArmoryMutationResponse {
-    let files = list_files().await;
+    let has_binary = refresh_armory_files().await;
     ArmoryMutationResponse::new(
         filename,
-        files.has_binary(),
+        has_binary,
         "Upload committed to flash.",
         "success",
     )
@@ -331,13 +375,8 @@ pub(super) async fn fail_upload(filename: &str, error: ArmoryError) -> ArmoryMut
 pub(super) async fn delete_file(filename: &str) -> ArmoryMutationResponse {
     match delete_file_result(filename).await {
         Ok(()) => {
-            let files = list_files().await;
-            ArmoryMutationResponse::new(
-                filename,
-                files.has_binary(),
-                "File removed from flash.",
-                "success",
-            )
+            let has_binary = refresh_armory_files().await;
+            ArmoryMutationResponse::new(filename, has_binary, "File removed from flash.", "success")
         }
         Err(error) => ArmoryMutationResponse::new(filename, false, error.message(), "error"),
     }

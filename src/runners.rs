@@ -100,14 +100,16 @@ async fn wifi_dhcp_task(mut server: DhcpServer<32, 4>, stack: &'static Stack<'st
     server.run(*stack).await;
 }
 
-#[embassy_executor::task(pool_size = 3)]
+#[embassy_executor::task]
 async fn server_task(
     stack: &'static Stack<'static>,
-    task_id: usize,
     router: &'static AppRouter,
     _storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
 ) {
-    let config = Config::new(Timeouts::default());
+    let config = Config::new(Timeouts {
+        write: picoserve::time::Duration::from_secs(10),
+        ..Timeouts::default()
+    });
 
     let router = router.build();
 
@@ -115,18 +117,18 @@ async fn server_task(
     let mut tx_buffer = [0u8; 1024];
     let mut picoserve_buffer = [0u8; 512];
 
-    info!("HTTP worker {} initialised...", task_id);
+    info!("HTTP worker initialised...");
 
     loop {
         let mut socket = TcpSocket::new(*stack, &mut rx_buffer, &mut tx_buffer);
 
         if let Err(e) = socket.accept(80).await {
-            warn!("[Worker {}] Accept failed: {:?}", task_id, e);
+            warn!("[Worker] Accept failed: {:?}", e);
             continue;
         }
 
         let remote_address = socket.remote_endpoint();
-        info!("[Worker {}] Connected to {}", task_id, remote_address);
+        info!("[Worker] Connected to {}", remote_address);
 
         match Server::new(&router, &config, &mut picoserve_buffer)
             .serve(socket)
@@ -173,16 +175,13 @@ pub async fn wifi_task(
 
     info!("Starting network loops...");
 
-    // 6. Spawn the distinct runtime loops into their own execution slots
     spawner.spawn(wifi_net_task(wifi_net_runner)).unwrap();
     spawner
         .spawn(wifi_dhcp_task(wifi_dhcp, wifi_net_stack))
         .unwrap();
-    for id in 0..3 {
-        spawner
-            .spawn(server_task(wifi_net_stack, id, router, storage))
-            .unwrap();
-    }
+    spawner
+        .spawn(server_task(wifi_net_stack, router, storage))
+        .unwrap();
 }
 
 struct EmbassyUsbWriter<'a> {

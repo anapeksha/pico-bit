@@ -20,7 +20,7 @@ describe('keyboard store', () => {
   });
 
   it('falls back to Windows US when no frontend storage exists', async () => {
-    const { applyKeyboardState, keyboard, selectedKeyboardProfileId } = await import('./keyboard');
+    const { applyKeyboardState, keyboard } = await import('./keyboard');
 
     applyKeyboardState(BOOTSTRAP_KEYBOARD);
 
@@ -29,16 +29,12 @@ describe('keyboard store', () => {
       os: 'WIN',
       targetLabel: 'Windows - English (US)',
     });
-    expect(get(selectedKeyboardProfileId)).toBe('windows-us');
   });
 
-  it('restores a saved macOS US profile from frontend storage', async () => {
-    localStorage.setItem(
-      TARGET_KEY,
-      JSON.stringify({ layout: 'US', os: 'MAC', profileId: 'macos-us' }),
-    );
+  it('restores a saved macOS US target from frontend storage', async () => {
+    localStorage.setItem(TARGET_KEY, JSON.stringify({ layout: 'US', os: 'MAC' }));
 
-    const { applyKeyboardState, keyboard, selectedKeyboardProfileId } = await import('./keyboard');
+    const { applyKeyboardState, keyboard } = await import('./keyboard');
 
     applyKeyboardState(BOOTSTRAP_KEYBOARD);
 
@@ -47,12 +43,10 @@ describe('keyboard store', () => {
       os: 'MAC',
       targetLabel: 'macOS - English (US)',
     });
-    expect(get(selectedKeyboardProfileId)).toBe('macos-us');
   });
 
   it('persists target changes locally without requiring a firmware mutation', async () => {
-    const { applyKeyboardState, changeKeyboardTarget, selectedKeyboardProfileId } =
-      await import('./keyboard');
+    const { applyKeyboardState, changeKeyboardTarget } = await import('./keyboard');
 
     applyKeyboardState(BOOTSTRAP_KEYBOARD);
     await changeKeyboardTarget({ layout: 'US', os: 'LINUX' });
@@ -60,8 +54,6 @@ describe('keyboard store', () => {
     expect(JSON.parse(localStorage.getItem(TARGET_KEY) || '{}')).toEqual({
       layout: 'US',
       os: 'LINUX',
-      profileId: 'linux-us',
     });
-    expect(get(selectedKeyboardProfileId)).toBe('linux-us');
   });
 });

@@ -4,7 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const BOOTSTRAP_DATA = {
   ap_ssid: 'TestNet',
   ap_password: 'pass123',
-  auth_enabled: true,
   seeded: false,
   has_binary: true,
   files: [
@@ -92,7 +91,6 @@ describe('loadBootstrap', () => {
 
     expect(get(stores.ap.apSsid)).toBe('TestNet');
     expect(get(stores.ap.apPassword)).toBe('pass123');
-    expect(get(stores.ap.authEnabled)).toBe(true);
   });
 
   it('sets hasBinary from bootstrap data', async () => {

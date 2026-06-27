@@ -17,9 +17,8 @@ import type {
   NcmLinkState,
   NoticeTone,
   RunHistoryItem,
-  ValidationState,
 } from '../api/contracts';
-import { apPassword, apSsid, authEnabled } from './ap';
+import { apPassword, apSsid } from './ap';
 import {
   applyArmoryState,
   armoryFiles,
@@ -33,7 +32,7 @@ import {
   loadCachedBootstrap,
   refreshBootstrapSource,
 } from './bootstrapCache';
-import { payload, payloadState, validation } from './editor';
+import { payload, payloadState } from './editor';
 import {
   applyHostHidState,
   applyKeyboardState,
@@ -55,7 +54,6 @@ type BootstrapSnapshot = {
     visible: boolean;
   };
   armoryUploadLimit: number;
-  authEnabled: boolean;
   hasBinary: boolean;
   hostHid: HostHidState;
   keyboard: KeyboardState;
@@ -66,13 +64,11 @@ type BootstrapSnapshot = {
   runHistory: RunHistoryItem[];
   seededThisBoot: boolean;
   stagedBinaryName: string;
-  validation: ValidationState | null;
 };
 
 export function applyBootstrap(data: BootstrapState) {
   apSsid.set(data.ap_ssid || 'PicoBit');
   apPassword.set(data.ap_password || 'Open network');
-  authEnabled.set(Boolean(data.auth_enabled));
   applyHostHidState(data.host_hid);
   seededThisBoot.set(Boolean(data.seeded));
   hasBinary.set(Boolean(data.has_binary));
@@ -80,7 +76,6 @@ export function applyBootstrap(data: BootstrapState) {
   runHistory.set(data.run_history || []);
   payload.set(data.payload || '');
   payloadState.set(data.seeded ? 'Seeded on boot' : 'Saved on device');
-  if (data.validation) validation.set(data.validation);
   applyKeyboardState(data);
   applyNcmLink(data.ncm_link);
   if (data.ncm_link?.filename) stagedBinaryName.set(data.ncm_link.filename);
@@ -94,7 +89,6 @@ function captureBootstrapSnapshot(): BootstrapSnapshot {
     armoryFiles: get(armoryFiles),
     armoryNotice: get(armoryNotice),
     armoryUploadLimit: get(armoryUploadLimit),
-    authEnabled: get(authEnabled),
     hasBinary: get(hasBinary),
     hostHid: get(hostHid),
     keyboard: get(keyboard),
@@ -105,7 +99,6 @@ function captureBootstrapSnapshot(): BootstrapSnapshot {
     runHistory: get(runHistory),
     seededThisBoot: get(seededThisBoot),
     stagedBinaryName: get(stagedBinaryName),
-    validation: get(validation),
   };
 }
 
@@ -116,7 +109,6 @@ function restoreBootstrapSnapshot(snapshot: unknown) {
   armoryFiles.set(data.armoryFiles);
   armoryNotice.set(data.armoryNotice);
   armoryUploadLimit.set(data.armoryUploadLimit);
-  authEnabled.set(data.authEnabled);
   hasBinary.set(data.hasBinary);
   hostHid.set(data.hostHid);
   keyboard.set(data.keyboard);
@@ -127,7 +119,6 @@ function restoreBootstrapSnapshot(snapshot: unknown) {
   runHistory.set(data.runHistory);
   seededThisBoot.set(data.seededThisBoot);
   stagedBinaryName.set(data.stagedBinaryName);
-  validation.set(data.validation);
 }
 
 configureBootstrapState({

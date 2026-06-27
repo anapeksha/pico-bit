@@ -19,5 +19,5 @@ rustflags = [
   "-C", "link-arg=-Tlink.x",   # Loads the core memory layout script (requires a memory.x file)
   "-C", "link-arg=-Tdefmt.x",  # Mandated by defmt_rtt to structure your live diagnostic logs
   "-C", "target-cpu=cortex-m33", # Enables hardware-level optimizations for the RP2350 core
-  "-C", "link-arg=--defsym=_stack_size=32K"
+  "-C", "link-arg=--defsym=_stack_size=64K"
 ]

@@ -1,17 +1,16 @@
 use crate::ducky::{DuckyParser, ErrorDiagnostic};
 use crate::storage::{GLOBAL_STORAGE, SharedStorage};
+use crate::utils::json_chunks;
 use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::mutex::Mutex as AsyncMutex;
+use picoserve::io::Write;
+use picoserve::response::chunked::{ChunkWriter, Chunks, ChunksWritten};
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub(super) static TRIGGER_RUN: AtomicBool = AtomicBool::new(false);
-
-#[derive(Serialize)]
-pub(super) struct PayloadResponse<'a> {
-    code: &'a str,
-}
 
 #[derive(Serialize)]
 pub(super) struct ValidationResponse {
@@ -35,11 +34,22 @@ struct StagingBuffer {
     len: usize,
 }
 
+struct ReadBuffer {
+    bytes: [u8; 2048],
+    len: usize,
+}
+
 static STAGING_BUFFER: Mutex<CriticalSectionRawMutex, RefCell<StagingBuffer>> =
     Mutex::new(RefCell::new(StagingBuffer {
         bytes: [0u8; 2048],
         len: 0,
     }));
+static READ_BUFFER: Mutex<CriticalSectionRawMutex, RefCell<ReadBuffer>> =
+    Mutex::new(RefCell::new(ReadBuffer {
+        bytes: [0u8; 2048],
+        len: 0,
+    }));
+static READ_SCRATCH: AsyncMutex<CriticalSectionRawMutex, [u8; 2048]> = AsyncMutex::new([0u8; 2048]);
 
 impl<'de> Deserialize<'de> for CodeStringWrapper {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -160,19 +170,64 @@ fn validate_staged_buffer() -> Result<(), (Option<usize>, &'static str)> {
     })
 }
 
-pub(super) async fn read<'a>(buffer: &'a mut [u8; 2048]) -> PayloadResponse<'a> {
+#[derive(Clone, Copy)]
+pub(super) struct PayloadChunks;
+
+impl Chunks for PayloadChunks {
+    fn content_type(&self) -> &'static str {
+        "application/json"
+    }
+
+    async fn write_chunks<W: Write>(
+        self,
+        mut writer: ChunkWriter<W>,
+    ) -> Result<ChunksWritten, W::Error> {
+        refresh_read_buffer().await;
+
+        json_chunks::raw(&mut writer, b"{\"code\":").await?;
+        write_read_buffer(&mut writer).await?;
+        json_chunks::raw(&mut writer, b"}").await?;
+
+        writer.finalize().await
+    }
+}
+
+async fn refresh_read_buffer() {
     let storage = storage();
     let storage_guard = storage.lock().await;
+    let mut scratch = READ_SCRATCH.lock().await;
+    let len = storage_guard
+        .read("payload.dd", &mut scratch[..])
+        .map(|bytes| bytes.len())
+        .unwrap_or(0);
 
-    match storage_guard.read("payload.dd", buffer) {
-        Ok(bytes_read) => match core::str::from_utf8(bytes_read) {
-            Ok(text) => PayloadResponse { code: text },
-            Err(_) => PayloadResponse {
-                code: "Error: Invalid UTF-8 data stored on flash.",
-            },
-        },
-        Err(_) => PayloadResponse { code: "" },
+    READ_BUFFER.lock(|read_cell| {
+        let mut read = read_cell.borrow_mut();
+        read.bytes[..len].copy_from_slice(&scratch[..len]);
+        read.len = len;
+    });
+}
+
+async fn write_read_buffer<W: Write>(writer: &mut ChunkWriter<W>) -> Result<(), W::Error> {
+    let len = READ_BUFFER.lock(|cell| cell.borrow().len);
+    let mut offset = 0;
+    let mut buffer = [0u8; 96];
+
+    json_chunks::string_start(writer).await?;
+
+    while offset < len {
+        let copied = READ_BUFFER.lock(|cell| {
+            let read = cell.borrow();
+            let count = (len - offset).min(buffer.len());
+            buffer[..count].copy_from_slice(&read.bytes[offset..offset + count]);
+            count
+        });
+
+        json_chunks::string_bytes(writer, &buffer[..copied]).await?;
+        offset += copied;
     }
+
+    json_chunks::string_end(writer).await
 }
 
 pub(super) async fn save_staged() -> ValidationResponse {

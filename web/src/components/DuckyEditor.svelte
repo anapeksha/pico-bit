@@ -102,6 +102,8 @@
 
   function handleInput() {
     payloadState.set('Unsaved draft');
+    validation.set(null);
+    validationModalOpen.set(false);
   }
 
   // --- Binary Armory Functions ---
