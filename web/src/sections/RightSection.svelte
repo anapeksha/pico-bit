@@ -1,8 +1,5 @@
 <script lang="ts">
-  import {
-    changeKeyboardTarget,
-    keyboard,
-  } from '../stores/keyboard';
+  import { changeKeyboardTarget, keyboard } from '../stores/keyboard';
   import { runHistory } from '../stores/run';
 
   const panelClass = 'rounded-xl border border-(--border) bg-(--surface) px-4 py-4';
