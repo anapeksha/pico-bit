@@ -12,18 +12,13 @@ import type { NcmLinkState } from '../api/contracts';
 
 /** Raw NCM link state from the device. */
 export const ncmLink = writable<NcmLinkState>({
-  available: false,
-  message: 'Waiting',
-  state: 'inactive',
-  transport: 'ncm',
+  active: false,
+  root_url: 'http://192.168.7.1',
 });
 
 /** Human-readable NCM status derived from `ncmLink`. */
 export const ncmLinkLabel = derived(ncmLink, ($ncm) => {
-  if (!$ncm.available) return 'Unavailable';
-  if ($ncm.active || $ncm.state === 'active') return 'Active';
-  if ($ncm.state === 'error') return 'Error';
-  return 'Inactive';
+  return $ncm.active ? 'Active' : 'Inactive';
 });
 
 /** Overwrite `ncmLink` with a fresh snapshot; a no-op when `state` is undefined. */

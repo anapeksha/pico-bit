@@ -1,2 +1,2 @@
 pub mod controller;
-mod service;
+pub(crate) mod service;

@@ -4,14 +4,14 @@ use picoserve::request::Request;
 use picoserve::response::chunked::ChunkedResponse;
 use picoserve::response::{IntoResponse, Json, ResponseWriter, StatusCode};
 use picoserve::routing::{
-    PathRouter, RequestHandlerService, delete, get, parse_path_segment, post_service,
+    PathRouter, RequestHandlerService, get, parse_path_segment, post_service,
 };
 use picoserve::{ResponseSent, Router};
 
 const UPLOAD_CHUNK_SIZE: usize = 1024;
 
 async fn list_armory() -> impl IntoResponse {
-    ChunkedResponse::new(service::ArmoryListChunks)
+    Json(service::list().await)
 }
 
 async fn delete_armory(filename: heapless::String<64>) -> impl IntoResponse {
@@ -28,6 +28,12 @@ async fn delete_armory(filename: heapless::String<64>) -> impl IntoResponse {
     };
 
     Json(response).into_response().with_status_code(status)
+}
+
+async fn download_armory(filename: heapless::String<64>) -> impl IntoResponse {
+    ChunkedResponse::new(service::ArmoryDownloadChunks::new(filename.as_str()))
+        .into_response()
+        .with_status_code(StatusCode::OK)
 }
 
 struct UploadArmory;
@@ -125,6 +131,6 @@ pub fn build<R: PathRouter>(router: Router<R, ()>) -> Router<impl PathRouter, ()
         )
         .route(
             ("/api/armory", parse_path_segment::<heapless::String<64>>()),
-            delete(delete_armory),
+            get(download_armory).delete(delete_armory),
         )
 }

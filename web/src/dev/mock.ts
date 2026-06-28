@@ -11,6 +11,8 @@ if (shouldMock) {
   let payload = 'REM Local Vite mock\\nSTRING Hello from Pico Bit\\nENTER\\n';
   const runs: MockRecord[] = [];
   let staged = false;
+  let keyboardLayout = 'US';
+  let keyboardOs = 'WIN';
 
   // Artificial latency so skeleton loaders are visible during development.
   const delay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -55,41 +57,25 @@ if (shouldMock) {
 
   const ncmLink = () => ({
     active: true,
-    address: '192.168.7.1',
-    available: true,
-    filename: staged ? 'payload.bin' : '',
-    gateway: '192.168.7.1',
-    has_binary: staged,
-    interface: 'usb-ncm',
-    message: 'Local Vite mock NCM link.',
     root_url: 'http://192.168.7.1',
-    state: 'active',
-    transport: 'ncm',
   });
 
   const hostHid = () => ({
     active: true,
-    available: true,
-    message: 'Local Vite mock Host HID.',
-    state: 'active',
   });
 
   const armoryFiles = () => [
     {
       kind: 'ducky',
       name: 'payload.dd',
-      path: '/payload.dd',
       size: payload.length,
-      url: '/payload.dd',
     },
     ...(staged
       ? [
           {
             kind: 'asset',
             name: 'payload.bin',
-            path: '/armory/payload.bin',
             size: 128 * 1024,
-            url: '/armory/payload.bin',
           },
         ]
       : []),
@@ -109,60 +95,51 @@ if (shouldMock) {
       return jsonResponse({
         ap_password: 'PicoBit24Net',
         ap_ssid: 'PicoBit',
-        files: armoryFiles(),
-        has_binary: staged,
-        host_hid: hostHid(),
-        keyboard_layout: 'US',
-        keyboard_layout_code: 'US',
-        keyboard_layout_hint: 'Used for typed text and remembered on the device.',
-        keyboard_layout_label: 'English (US)',
-        keyboard_layouts: [
-          { code: 'US', label: 'English (US)' },
-          { code: 'FR', label: 'French (FR)' },
-        ],
-        keyboard_os: 'WIN',
-        keyboard_os_code: 'WIN',
-        keyboard_oses: [
-          { code: 'WIN', label: 'Windows' },
-          { code: 'MAC', label: 'macOS' },
-          { code: 'LINUX', label: 'Linux' },
-        ],
-        keyboard_target_label: 'Windows - English (US)',
-        ncm_link: ncmLink(),
-        payload,
-        run_history: runs,
+        host_hid_active: hostHid().active,
+        keyboard_layout: keyboardLayout,
+        keyboard_os: keyboardOs,
+        ncm_active: ncmLink().active,
+        ncm_url: ncmLink().root_url,
         seeded: false,
       });
     }
 
-    if (url === '/api/payload/validate' && method === 'POST') {
+    if (url === '/api/keyboard-layout' && method === 'POST') {
       const data = requestJson(options.body);
-      const validation = validationFor(stringField(data, 'code'));
+      keyboardLayout = stringField(data, 'layout') || keyboardLayout;
+      keyboardOs = stringField(data, 'os') || keyboardOs;
       return jsonResponse({
-        error_line: validation.diagnostics[0]?.line || null,
-        message: validation.summary,
-        success: !validation.blocking,
+        keyboard_layout: keyboardLayout,
+        keyboard_os: keyboardOs,
+        message: 'Keyboard target updated.',
+        notice: 'success',
       });
     }
 
     if (url === '/api/payload' && method === 'POST') {
       const data = requestJson(options.body);
-      payload = stringField(data, 'code');
-      const validation = validationFor(payload);
-      return jsonResponse({
-        message: 'payload.dd saved.',
-        notice: 'success',
-        success: !validation.blocking,
-        error_line: validation.diagnostics[0]?.line || null,
-      });
+      const draft = stringField(data, 'code');
+      const validation = validationFor(draft);
+      if (!validation.blocking) {
+        payload = draft;
+      }
+
+      return jsonResponse(
+        {
+          message: validation.blocking ? validation.summary : 'payload.dd saved.',
+          notice: validation.blocking ? 'error' : 'success',
+          success: !validation.blocking,
+          error_line: validation.diagnostics[0]?.line || null,
+        },
+        validation.blocking ? 400 : 200,
+      );
     }
 
     if (url === '/api/payload/run' && method === 'POST') {
       const validation = validationFor(payload);
       if (!validation.blocking) {
         runs.unshift({
-          message: 'Mock payload run requested.',
-          notice: 'success',
+          ok: true,
           preview: payload.split('\n').find(Boolean) || 'payload.dd',
           sequence: runs.length + 1,
           source: 'payload.dd',
@@ -182,8 +159,17 @@ if (shouldMock) {
       return jsonResponse({
         files: armoryFiles(),
         has_binary: staged,
-        message: 'Local armory mock.',
-        notice: 'quiet',
+      });
+    }
+
+    if (url === '/api/payload' && method === 'GET') {
+      return jsonResponse({ code: payload });
+    }
+
+    if (url === '/api/runs' && method === 'GET') {
+      return jsonResponse({
+        run_history: runs,
+        seeded: false,
       });
     }
 
@@ -192,7 +178,6 @@ if (shouldMock) {
       return jsonResponse({
         filename: 'payload.bin',
         has_binary: true,
-        max_upload_bytes: 500 * 1024,
         message: 'Mock binary uploaded.',
         notice: 'success',
       });
@@ -204,7 +189,6 @@ if (shouldMock) {
           {
             filename: 'payload.dd',
             has_binary: staged,
-            max_upload_bytes: 500 * 1024,
             message: 'payload.dd is managed by the editor and cannot be deleted.',
             notice: 'error',
           },
@@ -216,7 +200,6 @@ if (shouldMock) {
       return jsonResponse({
         filename: decodeURIComponent(url.split('/').pop() || ''),
         has_binary: false,
-        max_upload_bytes: 500 * 1024,
         message: 'Mock file deleted.',
         notice: 'success',
       });

@@ -13,18 +13,17 @@
     <div class={panelClass}>
       <p class={titleClass}>About</p>
       <p class="m-0 mb-2.5 text-xs leading-relaxed text-(--text-3)">
-        Two-stage drop-shell workflow for authorized security assessment.
+        Pico Bit manages the device payload file and staged Armory assets from the browser.
       </p>
       <ul class="m-0 list-disc pl-4 text-xs leading-7 text-(--text-3)">
         <li>
-          <strong>Stage&nbsp;1&nbsp;&middot;&nbsp;Recon</strong> - write DuckyScript to type commands
-          or exfiltrate data from the target
+          <strong>DuckyScript</strong> - edit <span class="font-mono">payload.dd</span>, then save
+          or run with firmware validation
         </li>
         <li>
-          <strong>Stage&nbsp;2&nbsp;&middot;&nbsp;Inject</strong> - upload an agent binary, then HID-inject
-          the USB execution stager; the agent writes loot back to the Pico drive
+          <strong>Binary Armory</strong> - upload, download, copy links, or delete files stored in littlefs2
         </li>
-        <li>Bootstrap refresh reconciles device state after changes</li>
+        <li>NCM link exposes staged files to the host while Host HID handles typed payload runs</li>
       </ul>
     </div>
 

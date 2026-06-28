@@ -1,56 +1,180 @@
+use crate::ducky::KeyboardLayout;
+use core::sync::atomic::{AtomicU8, Ordering};
 use serde::Serialize;
+use serde::{Deserialize, Deserializer};
 
 #[derive(Serialize)]
-pub(super) struct SelectOption {
-    code: &'static str,
-    label: &'static str,
+pub(crate) struct KeyboardResponse {
+    pub(crate) keyboard_layout: &'static str,
+    pub(crate) keyboard_os: &'static str,
+    pub(crate) message: &'static str,
+    pub(crate) notice: &'static str,
 }
 
-#[derive(Serialize)]
-pub(super) struct KeyboardResponse {
-    keyboard_layout: &'static str,
-    keyboard_layout_hint: &'static str,
-    keyboard_layout_label: &'static str,
-    keyboard_layouts: &'static [SelectOption],
-    keyboard_os: &'static str,
-    keyboard_os_label: &'static str,
-    keyboard_oses: &'static [SelectOption],
-    keyboard_target_label: &'static str,
-    message: &'static str,
-    notice: &'static str,
-}
-
-static KEYBOARD_LAYOUTS: &[SelectOption] = &[SelectOption {
-    code: "US",
-    label: "English (US)",
-}];
-
-static KEYBOARD_OSES: &[SelectOption] = &[
-    SelectOption {
-        code: "WIN",
-        label: "Windows",
-    },
-    SelectOption {
-        code: "MAC",
-        label: "macOS",
-    },
-    SelectOption {
-        code: "LINUX",
-        label: "Linux",
-    },
-];
-
-pub(super) fn current_target() -> KeyboardResponse {
-    KeyboardResponse {
-        keyboard_layout: "US",
-        keyboard_layout_hint: "Used for typed text and remembered on the device.",
-        keyboard_layout_label: "English (US)",
-        keyboard_layouts: KEYBOARD_LAYOUTS,
-        keyboard_os: "WIN",
-        keyboard_os_label: "Windows",
-        keyboard_oses: KEYBOARD_OSES,
-        keyboard_target_label: "Windows - English (US)",
-        message: "Keyboard service layer not wired.",
-        notice: "quiet",
+impl KeyboardResponse {
+    pub(super) fn is_error(&self) -> bool {
+        self.notice == "error"
     }
+}
+
+pub(super) struct KeyboardTargetRequest {
+    layout: Option<KeyboardLayout>,
+    os: Option<KeyboardOs>,
+    valid: bool,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+enum KeyboardOs {
+    Windows = 0,
+    MacOs = 1,
+    Linux = 2,
+}
+
+static ACTIVE_LAYOUT: AtomicU8 = AtomicU8::new(KeyboardLayout::Us as u8);
+static ACTIVE_OS: AtomicU8 = AtomicU8::new(KeyboardOs::Windows as u8);
+
+impl<'de> Deserialize<'de> for KeyboardTargetRequest {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        struct RequestVisitor;
+
+        impl<'de> serde::de::Visitor<'de> for RequestVisitor {
+            type Value = KeyboardTargetRequest;
+
+            fn expecting(&self, formatter: &mut core::fmt::Formatter) -> core::fmt::Result {
+                formatter.write_str("a keyboard target object")
+            }
+
+            fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
+            where
+                A: serde::de::MapAccess<'de>,
+            {
+                let mut layout = None;
+                let mut os = None;
+                let mut valid = true;
+
+                while let Some(key) = map.next_key::<&str>()? {
+                    match key {
+                        "layout" => {
+                            let code = map.next_value::<&str>()?;
+                            layout = layout_from_code(code);
+                            valid &= layout.is_some();
+                        }
+                        "os" => {
+                            let code = map.next_value::<&str>()?;
+                            os = os_from_code(code);
+                            valid &= os.is_some();
+                        }
+                        _ => {
+                            let _: serde::de::IgnoredAny = map.next_value()?;
+                        }
+                    }
+                }
+
+                Ok(KeyboardTargetRequest { layout, os, valid })
+            }
+        }
+
+        deserializer.deserialize_map(RequestVisitor)
+    }
+}
+
+fn layout_from_code(code: &str) -> Option<KeyboardLayout> {
+    match code {
+        "US" => Some(KeyboardLayout::Us),
+        "UK" => Some(KeyboardLayout::Uk),
+        "DE" => Some(KeyboardLayout::De),
+        "FR" => Some(KeyboardLayout::Fr),
+        _ => None,
+    }
+}
+
+fn layout_code(layout: KeyboardLayout) -> &'static str {
+    match layout {
+        KeyboardLayout::Us => "US",
+        KeyboardLayout::Uk => "UK",
+        KeyboardLayout::De => "DE",
+        KeyboardLayout::Fr => "FR",
+    }
+}
+
+fn os_from_code(code: &str) -> Option<KeyboardOs> {
+    match code {
+        "WIN" => Some(KeyboardOs::Windows),
+        "MAC" => Some(KeyboardOs::MacOs),
+        "LINUX" => Some(KeyboardOs::Linux),
+        _ => None,
+    }
+}
+
+fn os_code(os: KeyboardOs) -> &'static str {
+    match os {
+        KeyboardOs::Windows => "WIN",
+        KeyboardOs::MacOs => "MAC",
+        KeyboardOs::Linux => "LINUX",
+    }
+}
+
+fn decode_layout(value: u8) -> KeyboardLayout {
+    match value {
+        value if value == KeyboardLayout::Uk as u8 => KeyboardLayout::Uk,
+        value if value == KeyboardLayout::De as u8 => KeyboardLayout::De,
+        value if value == KeyboardLayout::Fr as u8 => KeyboardLayout::Fr,
+        _ => KeyboardLayout::Us,
+    }
+}
+
+fn decode_os(value: u8) -> KeyboardOs {
+    match value {
+        value if value == KeyboardOs::MacOs as u8 => KeyboardOs::MacOs,
+        value if value == KeyboardOs::Linux as u8 => KeyboardOs::Linux,
+        _ => KeyboardOs::Windows,
+    }
+}
+
+pub(crate) fn active_layout() -> KeyboardLayout {
+    decode_layout(ACTIVE_LAYOUT.load(Ordering::Acquire))
+}
+
+fn active_os() -> KeyboardOs {
+    decode_os(ACTIVE_OS.load(Ordering::Acquire))
+}
+
+fn set_target(os: KeyboardOs, layout: KeyboardLayout) {
+    ACTIVE_OS.store(os as u8, Ordering::Release);
+    ACTIVE_LAYOUT.store(layout as u8, Ordering::Release);
+}
+
+fn response(message: &'static str, notice: &'static str) -> KeyboardResponse {
+    let layout = active_layout();
+    let os = active_os();
+
+    KeyboardResponse {
+        keyboard_layout: layout_code(layout),
+        keyboard_os: os_code(os),
+        message,
+        notice,
+    }
+}
+
+pub(crate) fn active_target_codes() -> (&'static str, &'static str) {
+    (os_code(active_os()), layout_code(active_layout()))
+}
+
+pub(super) fn update_target(request: KeyboardTargetRequest) -> KeyboardResponse {
+    let current_layout = active_layout();
+    let current_os = active_os();
+
+    if !request.valid {
+        return response("Unsupported keyboard layout.", "error");
+    }
+
+    let layout = request.layout.unwrap_or(current_layout);
+    let os = request.os.unwrap_or(current_os);
+
+    set_target(os, layout);
+    response("Keyboard target updated.", "success")
 }

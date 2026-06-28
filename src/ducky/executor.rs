@@ -1,7 +1,7 @@
 // src/ducky/executor.rs
 
 use crate::ducky::errors::DuckyError;
-use crate::ducky::keyboard::DuckyKeyboard;
+use crate::ducky::keyboard::{DuckyKeyboard, KeyboardLayout};
 use crate::ducky::types::{AssignOp, BinaryOp, DuckyCommand, Expression};
 use core::future::Future;
 use usbd_hid::descriptor::KeyboardReport;
@@ -30,6 +30,7 @@ pub struct DuckyExecutor<'a> {
     loop_stack: [Option<usize>; MAX_STACK_DEPTH],
     loop_top: usize,
     default_delay: u32,
+    keyboard_layout: KeyboardLayout,
 }
 
 impl<'a> DuckyExecutor<'a> {
@@ -41,7 +42,12 @@ impl<'a> DuckyExecutor<'a> {
             loop_stack: [None; MAX_STACK_DEPTH],
             loop_top: 0,
             default_delay: 0,
+            keyboard_layout: KeyboardLayout::Us,
         }
+    }
+
+    pub fn set_keyboard_layout(&mut self, layout: KeyboardLayout) {
+        self.keyboard_layout = layout;
     }
 
     fn eval_expression(&self, expr: &Expression<'a>) -> Result<u32, DuckyError> {
@@ -160,7 +166,8 @@ impl<'a> DuckyExecutor<'a> {
 
             DuckyCommand::String(text) => {
                 for c in text.chars() {
-                    let seq = DuckyKeyboard::character_to_sequence(c)?;
+                    let seq =
+                        DuckyKeyboard::character_to_sequence_for_layout(c, self.keyboard_layout)?;
                     usb_writer.write_report(&seq.report).await;
                     usb_writer.delay_ms(10).await; // Character hold timing safety margin
                     usb_writer.clear_report().await;

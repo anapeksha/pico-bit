@@ -4,14 +4,13 @@
  * `loadBootstrap` fetches `/api/bootstrap` and fans the response out to every
  * domain store so they all reflect the current device state in one round-trip.
  *
- * `startPortal` calls `loadBootstrap` and returns a no-op teardown for
- * symmetry with `onMount` conventions.
+ * `startApp` calls `loadBootstrap` and returns the dashboard teardown hook.
  */
 import { get } from 'svelte/store';
 
 import type {
   ArmoryFile,
-  BootstrapState,
+  HydratedBootstrapState,
   HostHidState,
   KeyboardState,
   NcmLinkState,
@@ -41,7 +40,6 @@ import {
   keyboardReady,
 } from './keyboard';
 import { runHistory, seededThisBoot } from './run';
-import { showNotice } from './ui';
 import { applyNcmLink, ncmLink } from './usb';
 
 type BootstrapSnapshot = {
@@ -66,10 +64,10 @@ type BootstrapSnapshot = {
   stagedBinaryName: string;
 };
 
-export function applyBootstrap(data: BootstrapState) {
+export function applyBootstrap(data: HydratedBootstrapState) {
   apSsid.set(data.ap_ssid || 'PicoBit');
   apPassword.set(data.ap_password || 'Open network');
-  applyHostHidState(data.host_hid);
+  applyHostHidState(data.host_hid || { active: Boolean(data.host_hid_active) });
   seededThisBoot.set(Boolean(data.seeded));
   hasBinary.set(Boolean(data.has_binary));
   applyArmoryState(data);
@@ -77,9 +75,7 @@ export function applyBootstrap(data: BootstrapState) {
   payload.set(data.payload || '');
   payloadState.set(data.seeded ? 'Seeded on boot' : 'Saved on device');
   applyKeyboardState(data);
-  applyNcmLink(data.ncm_link);
-  if (data.ncm_link?.filename) stagedBinaryName.set(data.ncm_link.filename);
-  if (data.message) showNotice(data.message, data.notice || 'quiet');
+  applyNcmLink(data.ncm_link || { active: Boolean(data.ncm_active), root_url: data.ncm_url });
 }
 
 function captureBootstrapSnapshot(): BootstrapSnapshot {
@@ -140,11 +136,9 @@ export async function refreshBootstrap() {
 }
 
 /**
- * Bootstrap the portal and start the loot SSE stream.
- * Returns a cleanup function that closes the stream — pass it as the `onMount`
- * return value so it runs on component destroy.
+ * Bootstrap the dashboard. Returns a teardown function for `onMount`.
  */
-export async function startPortal(): Promise<() => void> {
+export async function startApp(): Promise<() => void> {
   await loadBootstrap();
   return () => {};
 }

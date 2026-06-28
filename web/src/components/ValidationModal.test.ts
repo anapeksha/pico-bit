@@ -19,7 +19,7 @@ const WARN_DIAGNOSTIC = {
   column: 1,
   end_column: 6,
   message: 'RD_KBD is ignored at runtime',
-  hint: 'Use the portal keyboard selector instead.',
+  hint: 'Use the dashboard keyboard selector instead.',
   code: 'layout_managed',
 };
 
@@ -102,7 +102,7 @@ describe('ValidationModal', () => {
     validationModalOpen.set(true);
     validation.set(makeValidation({ diagnostics: [WARN_DIAGNOSTIC] }));
     render(ValidationModal);
-    expect(screen.getByText('Use the portal keyboard selector instead.')).toBeInTheDocument();
+    expect(screen.getByText('Use the dashboard keyboard selector instead.')).toBeInTheDocument();
   });
 
   it('renders "No issues detected" when diagnostics are empty', () => {

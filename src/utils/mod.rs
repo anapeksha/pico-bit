@@ -1,1 +1,1 @@
-pub(crate) mod json_chunks;
+pub(crate) mod json_buffer;

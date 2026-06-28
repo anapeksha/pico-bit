@@ -52,22 +52,12 @@
 
   <dl
     class={`${statClass} m-0 ${
-      $ncmLink.state === 'active' || $ncmLink.active
-        ? 'border-picobit-success-border bg-picobit-success-bg'
-        : $ncmLink.state === 'error' || !$ncmLink.available
-          ? 'border-picobit-danger-border bg-picobit-danger-bg'
-          : ''
+      $ncmLink.active ? 'border-picobit-success-border bg-picobit-success-bg' : ''
     }`}
   >
     <dt class={labelClass}>NCM Link</dt>
     <dd
-      class={`${valueClass} m-0 ${
-        $ncmLink.state === 'active' || $ncmLink.active
-          ? 'text-picobit-success'
-          : $ncmLink.state === 'error' || !$ncmLink.available
-            ? 'text-picobit-danger'
-            : ''
-      }`}
+      class={`${valueClass} m-0 ${$ncmLink.active ? 'text-picobit-success' : ''}`}
       aria-live="polite"
     >
       {$ncmLinkLabel}

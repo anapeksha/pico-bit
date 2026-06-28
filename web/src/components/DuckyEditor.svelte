@@ -5,6 +5,10 @@
   import Trash2 from '@lucide/svelte/icons/trash-2';
   import FileTerminal from '@lucide/svelte/icons/file-terminal';
   import Check from '@lucide/svelte/icons/check';
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw';
+  import Save from '@lucide/svelte/icons/save';
+  import Play from '@lucide/svelte/icons/play';
+  import Download from '@lucide/svelte/icons/download';
   import { onMount } from 'svelte';
 
   import {
@@ -14,7 +18,15 @@
     highlightPayload,
     type EditorMetrics,
   } from '../lib/editor';
-  import { canSave, payload, payloadState, savePayload, validation } from '../stores/editor';
+  import {
+    canRun,
+    canSave,
+    payload,
+    payloadState,
+    runPayload,
+    savePayload,
+    validation,
+  } from '../stores/editor';
   import { activeAccordion, validationModalOpen } from '../stores/ui';
 
   // --- Binary Armory Core Imports ---
@@ -56,9 +68,9 @@
     }`;
 
   const buttonClass =
-    'inline-flex h-9 cursor-pointer items-center justify-center whitespace-nowrap rounded-lg border px-4 text-[13px] font-medium leading-none disabled:cursor-not-allowed disabled:opacity-40 transition-colors';
-  const ghostButton = `${buttonClass} border-picobit-border-strong bg-picobit-surface text-picobit-text hover:bg-picobit-surface-2`;
-  const primaryButton = `${buttonClass} border-picobit-text bg-picobit-text text-white hover:bg-[#2d2d2f] dark:text-black dark:hover:bg-[#f2f2f2]`;
+    'inline-flex h-8 min-h-8 w-[5.25rem] appearance-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-0 text-xs font-medium leading-none transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40';
+  const ghostButton = `${buttonClass} border-(--button-ghost-border) bg-(--button-ghost-bg) text-(--button-ghost-text) hover:bg-(--button-ghost-hover)`;
+  const primaryButton = `${buttonClass} border-(--button-primary-border) bg-(--button-primary-bg) text-(--button-primary-text) hover:bg-(--button-primary-hover)`;
   const gatewayUrl = 'http://192.168.7.1';
   const sampleAssetName = $derived(
     $armoryFiles.find((file) => file.kind !== 'ducky')?.name || 'payload.bin',
@@ -148,6 +160,10 @@
     await deleteBinary(filename);
   }
 
+  function downloadUrl(filename: string) {
+    return `/api/armory/${encodeURIComponent(filename)}`;
+  }
+
   // --- Lifecycle Configuration ---
   onMount(() => {
     measure();
@@ -190,12 +206,12 @@
           </span>
         </div>
 
-        <div class="grid min-h-96 grid-cols-[3rem_minmax(0,1fr)]">
+        <div class="grid h-[28rem] min-h-0 grid-cols-[3rem_minmax(0,1fr)] sm:h-[32rem]">
           <div
             class="relative overflow-hidden border-r border-(--border) bg-(--surface-2) select-none"
           >
             <div
-              class="relative py-[0.85rem] font-mono text-[13px] leading-[1.7]"
+              class="relative min-h-full py-[0.85rem] font-mono text-[13px] leading-[1.7]"
               style={`transform: translateY(${-scrollTop}px);`}
             >
               {#each gutterLines($payload, $validation) as item (item.line)}
@@ -218,7 +234,7 @@
             </div>
           </div>
 
-          <div class="relative overflow-hidden bg-(--surface)">
+          <div class="relative min-h-0 overflow-hidden bg-(--surface)">
             <div class="pointer-events-none absolute inset-0">
               {#each editorMarkers($validation, metrics, scrollLeft, scrollTop) as marker (`${marker.line}-${marker.severity}`)}
                 <div
@@ -243,30 +259,29 @@
               bind:this={textarea}
               bind:value={$payload}
               id="payload"
-              class="relative z-10 block h-full min-h-96 w-full resize-none overflow-auto whitespace-pre border-0 bg-transparent p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-transparent caret-(--text) outline-none tab-4"
+              class="relative z-10 block h-full w-full resize-none overflow-auto whitespace-pre border-0 bg-transparent p-[0.85rem_1rem] font-mono text-[13px] leading-[1.7] text-transparent caret-(--text) outline-none tab-4"
               spellcheck="false"
               autocapitalize="off"
               autocomplete="off"
               placeholder="REM Write your payload here"
               wrap="off"
-              aria-describedby="editor-status"
+              aria-describedby={$validation?.blocking ? 'editor-status' : undefined}
               oninput={handleInput}
-              onscroll={syncScroll}
-            ></textarea>
+              onscroll={syncScroll}></textarea>
           </div>
         </div>
 
         <div
           class="flex flex-col items-stretch justify-between gap-4 border-t border-(--border) bg-(--surface-3) px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center"
         >
-          <div class="flex min-w-0 flex-1 items-center gap-2.5" id="editor-status">
-            <span class={badgeClass($validation?.badge_tone)}>
-              {$validation?.badge_label || 'Ready'}
-            </span>
-            <span class="min-w-0 flex-1 truncate text-xs text-(--text-2)">
-              {$validation?.summary || 'Validation runs on save.'}
-            </span>
-            {#if $validation?.diagnostics?.length}
+          {#if $validation?.blocking}
+            <div class="flex min-w-0 flex-1 items-center gap-2.5" id="editor-status">
+              <span class={badgeClass($validation.badge_tone)}>
+                {$validation.badge_label}
+              </span>
+              <span class="min-w-0 flex-1 truncate text-xs text-(--text-2)">
+                {$validation.summary}
+              </span>
               <button
                 class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-md border border-(--danger-border) bg-(--danger-bg) px-2 py-1 text-[11px] font-medium text-(--danger) hover:border-(--danger)"
                 type="button"
@@ -274,25 +289,36 @@
                 onclick={() => validationModalOpen.set(true)}
               >
                 <Info size={16} />
-                <span>{$validation.diagnostics.length}</span>
+                <span>{$validation.diagnostics?.length || 1}</span>
               </button>
-            {/if}
-          </div>
-          <div class="flex w-full items-center gap-1.5 sm:w-auto">
+            </div>
+          {/if}
+          <div class="flex w-full items-center gap-1.5 sm:ml-auto sm:w-auto">
             <button
-              class={`${ghostButton} h-8 text-xs flex-1 sm:flex-none`}
+              class={`${ghostButton} flex-1 sm:flex-none`}
               type="button"
               onclick={() => location.reload()}
             >
+              <RotateCcw size={14} />
               Reload
             </button>
             <button
-              class={`${ghostButton} h-8 text-xs flex-1 sm:flex-none`}
+              class={`${ghostButton} flex-1 sm:flex-none`}
               type="button"
               disabled={!$canSave}
               onclick={() => savePayload()}
             >
+              <Save size={14} />
               Save
+            </button>
+            <button
+              class={`${primaryButton} flex-1 sm:flex-none`}
+              type="button"
+              disabled={!$canRun}
+              onclick={() => runPayload()}
+            >
+              <Play size={14} />
+              Run
             </button>
           </div>
         </div>
@@ -451,8 +477,18 @@
                             {/if}
                           </button>
 
+                          <a
+                            class="inline-flex size-7 items-center justify-center rounded-md border border-picobit-border bg-picobit-surface-2 text-picobit-text transition-colors hover:bg-picobit-surface-3"
+                            href={downloadUrl(file.name)}
+                            download={file.name}
+                            title="Download file"
+                            aria-label={`Download ${file.name}`}
+                          >
+                            <Download size={13} />
+                          </a>
+
                           <button
-                            class="inline-flex size-7 items-center justify-center rounded-md border border-picobit-danger-border bg-picobit-danger-bg text-picobit-danger transition-all hover:brightness-95"
+                            class="inline-flex size-7 items-center justify-center rounded-md border border-picobit-danger-border bg-picobit-danger-bg text-picobit-danger transition-all hover:brightness-95 disabled:cursor-not-allowed disabled:border-picobit-border disabled:bg-picobit-surface-2 disabled:text-picobit-text-4 disabled:opacity-45 disabled:hover:brightness-100"
                             type="button"
                             title={file.kind === 'ducky'
                               ? 'payload.dd is managed by the editor'

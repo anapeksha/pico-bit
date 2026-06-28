@@ -1,6 +1,6 @@
 use crate::ducky::{DuckyParser, ErrorDiagnostic};
 use crate::storage::{GLOBAL_STORAGE, SharedStorage};
-use crate::utils::json_chunks;
+use crate::utils::json_buffer::{JsonChunkBuffer, JsonChunkSink};
 use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::Mutex;
@@ -19,10 +19,23 @@ pub(super) struct ValidationResponse {
     message: Option<&'static str>,
 }
 
+impl ValidationResponse {
+    pub(super) fn is_error(&self) -> bool {
+        !self.success
+    }
+}
+
 #[derive(Serialize)]
 pub(super) struct RunResponse {
     success: bool,
     message: &'static str,
+    error_line: Option<usize>,
+}
+
+impl RunResponse {
+    pub(super) fn is_error(&self) -> bool {
+        !self.success
+    }
 }
 
 pub(super) struct SavePayloadRequest;
@@ -147,26 +160,31 @@ fn storage() -> &'static SharedStorage {
     unsafe { &*ptr }
 }
 
+fn validate_script_bytes(bytes: &[u8]) -> Result<(), (Option<usize>, &'static str)> {
+    let valid_str = match core::str::from_utf8(bytes) {
+        Ok(s) => s,
+        Err(_) => return Err((None, "Invalid UTF-8 sequence sent in payload body.")),
+    };
+
+    for (line_num, line) in (1..).zip(valid_str.lines()) {
+        let trimmed = line.trim();
+        if !trimmed.is_empty()
+            && let Err(ducky_err) = DuckyParser::parse_line(trimmed)
+        {
+            let diagnostic = ErrorDiagnostic::new(line_num, ducky_err, line);
+            diagnostic.log_diagnostic();
+
+            return Err((Some(diagnostic.line_number), "Syntax validation failed."));
+        }
+    }
+
+    Ok(())
+}
+
 fn validate_staged_buffer() -> Result<(), (Option<usize>, &'static str)> {
     STAGING_BUFFER.lock(|cell| {
         let staging = cell.borrow();
-        let valid_str = match core::str::from_utf8(&staging.bytes[..staging.len]) {
-            Ok(s) => s,
-            Err(_) => return Err((None, "Invalid UTF-8 sequence sent in payload body.")),
-        };
-
-        for (line_num, line) in (1..).zip(valid_str.lines()) {
-            let trimmed = line.trim();
-            if !trimmed.is_empty()
-                && let Err(ducky_err) = DuckyParser::parse_line(trimmed)
-            {
-                let diagnostic = ErrorDiagnostic::new(line_num, ducky_err, line);
-                diagnostic.log_diagnostic();
-
-                return Err((Some(diagnostic.line_number), "Syntax validation failed."));
-            }
-        }
-        Ok(())
+        validate_script_bytes(&staging.bytes[..staging.len])
     })
 }
 
@@ -184,9 +202,14 @@ impl Chunks for PayloadChunks {
     ) -> Result<ChunksWritten, W::Error> {
         refresh_read_buffer().await;
 
-        json_chunks::raw(&mut writer, b"{\"code\":").await?;
-        write_read_buffer(&mut writer).await?;
-        json_chunks::raw(&mut writer, b"}").await?;
+        {
+            let mut json = JsonChunkBuffer::new(&mut writer);
+
+            json.raw(b"{\"code\":").await?;
+            write_read_buffer(&mut json).await?;
+            json.raw(b"}").await?;
+            json.flush().await?;
+        }
 
         writer.finalize().await
     }
@@ -208,12 +231,14 @@ async fn refresh_read_buffer() {
     });
 }
 
-async fn write_read_buffer<W: Write>(writer: &mut ChunkWriter<W>) -> Result<(), W::Error> {
+async fn write_read_buffer<S: JsonChunkSink>(
+    json: &mut JsonChunkBuffer<'_, S>,
+) -> Result<(), S::Error> {
     let len = READ_BUFFER.lock(|cell| cell.borrow().len);
     let mut offset = 0;
     let mut buffer = [0u8; 96];
 
-    json_chunks::string_start(writer).await?;
+    json.string_start().await?;
 
     while offset < len {
         let copied = READ_BUFFER.lock(|cell| {
@@ -223,11 +248,11 @@ async fn write_read_buffer<W: Write>(writer: &mut ChunkWriter<W>) -> Result<(), 
             count
         });
 
-        json_chunks::string_bytes(writer, &buffer[..copied]).await?;
+        json.string_bytes(&buffer[..copied]).await?;
         offset += copied;
     }
 
-    json_chunks::string_end(writer).await
+    json.string_end().await
 }
 
 pub(super) async fn save_staged() -> ValidationResponse {
@@ -264,25 +289,26 @@ pub(super) async fn save_staged() -> ValidationResponse {
     }
 }
 
-pub(super) fn validate_staged() -> ValidationResponse {
-    match validate_staged_buffer() {
-        Ok(_) => ValidationResponse {
-            success: true,
-            error_line: None,
-            message: Some("Dry run complete. Script layout is completely valid."),
-        },
-        Err((error_line, message)) => ValidationResponse {
-            success: false,
-            error_line,
-            message: Some(message),
-        },
-    }
-}
+pub(super) async fn trigger_run() -> RunResponse {
+    refresh_read_buffer().await;
 
-pub(super) fn trigger_run() -> RunResponse {
+    let validation = READ_BUFFER.lock(|cell| {
+        let read = cell.borrow();
+        validate_script_bytes(&read.bytes[..read.len])
+    });
+
+    if let Err((error_line, message)) = validation {
+        return RunResponse {
+            success: false,
+            message,
+            error_line,
+        };
+    }
+
     TRIGGER_RUN.store(true, Ordering::Release);
     RunResponse {
         success: true,
         message: "Payload injection sequence initialized.",
+        error_line: None,
     }
 }

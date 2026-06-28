@@ -1,10 +1,16 @@
 import type {
   ArmoryMutationResponse,
+  ArmoryListResponse,
   BootstrapState,
+  HydratedBootstrapState,
+  KeyboardTargetResponse,
+  KeyboardTargetRequest,
+  PayloadReadResponse,
   PayloadMutationResponse,
   PayloadRunResponse,
   PayloadWriteRequest,
   RequestFailure,
+  RunsResponse,
 } from './contracts';
 
 type JsonObject = Record<string, unknown>;
@@ -50,11 +56,38 @@ export function getBootstrap(): Promise<BootstrapState> {
   return requestJson<BootstrapState>('/api/bootstrap');
 }
 
-export function validatePayload(body: PayloadWriteRequest): Promise<PayloadMutationResponse> {
-  return requestJson<PayloadMutationResponse>('/api/payload/validate', {
-    method: 'POST',
-    body: JSON.stringify(body),
-  });
+export function getArmory(): Promise<ArmoryListResponse> {
+  return requestJson<ArmoryListResponse>('/api/armory');
+}
+
+export function getPayload(): Promise<PayloadReadResponse> {
+  return requestJson<PayloadReadResponse>('/api/payload');
+}
+
+export function getRuns(): Promise<RunsResponse> {
+  return requestJson<RunsResponse>('/api/runs');
+}
+
+export async function getHydratedBootstrap(): Promise<HydratedBootstrapState> {
+  const bootstrap = await getBootstrap();
+  const armory = await getArmory();
+  const payload = await getPayload();
+  const runs = await getRuns();
+
+  return {
+    ...bootstrap,
+    files: armory.files.map((file) => ({
+      kind: file.kind,
+      name: file.name,
+      path: file.kind === 'ducky' ? '/payload.dd' : `/armory/${file.name}`,
+      size: file.size,
+    })),
+    has_binary: armory.has_binary,
+    payload: payload.code,
+    payload_file: 'payload.dd',
+    run_history: runs.run_history,
+    seeded: runs.seeded,
+  };
 }
 
 export function savePayload(body: PayloadWriteRequest): Promise<PayloadMutationResponse> {
@@ -67,6 +100,13 @@ export function savePayload(body: PayloadWriteRequest): Promise<PayloadMutationR
 export function runPayload(): Promise<PayloadRunResponse> {
   return requestJson<PayloadRunResponse>('/api/payload/run', {
     method: 'POST',
+  });
+}
+
+export function updateKeyboardTarget(body: KeyboardTargetRequest): Promise<KeyboardTargetResponse> {
+  return requestJson<KeyboardTargetResponse>('/api/keyboard-layout', {
+    method: 'POST',
+    body: JSON.stringify(body),
   });
 }
 

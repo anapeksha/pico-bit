@@ -6,6 +6,10 @@ use picoserve::routing::{PathRouter, get};
 
 static INDEX_HTML: &[u8] = include_bytes!("../../../dist/index.html.gz");
 
+pub(crate) fn compressed_index_html() -> &'static [u8] {
+    INDEX_HTML
+}
+
 #[derive(Copy, Clone)]
 struct HtmlAsset;
 impl Chunks for HtmlAsset {

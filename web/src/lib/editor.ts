@@ -12,7 +12,6 @@ const HL_FLOW = new Set([
   'RETURN',
   'CALL',
   'REPEAT',
-  'VAR',
   'DEFINE',
   'BUTTON_DEF',
   'END_BUTTON',
@@ -20,6 +19,7 @@ const HL_FLOW = new Set([
   'END_EXTENSION',
 ]);
 const HL_STRING_CMD = new Set(['STRING', 'STRINGLN', 'END_STRING', 'END_STRINGLN']);
+const HL_ASSIGNMENT = new Set(['VAR', 'DEFINE', '$_DEFINE']);
 const HL_KEYWORD = new Set([
   'ATTACKMODE',
   'DELAY',
@@ -68,7 +68,58 @@ const HL_KEYWORD = new Set([
   'LED_B',
   'LED_ON',
   'LED_OFF',
+  'WAIT_FOR_STORAGE',
+  'SAVE_STORAGE',
+  'RESTORE_STORAGE',
 ]);
+const HL_MODIFIER = new Set([
+  'CTRL',
+  'CONTROL',
+  'SHIFT',
+  'ALT',
+  'GUI',
+  'WINDOWS',
+  'COMMAND',
+  'OPTION',
+  'LEFT_CTRL',
+  'LEFT_CONTROL',
+  'RIGHT_CTRL',
+  'RIGHT_CONTROL',
+  'LEFT_SHIFT',
+  'RIGHT_SHIFT',
+  'LEFT_ALT',
+  'RIGHT_ALT',
+  'LEFT_GUI',
+  'RIGHT_GUI',
+]);
+const HL_KEY = new Set([
+  'ENTER',
+  'ESC',
+  'ESCAPE',
+  'SPACE',
+  'TAB',
+  'BACKSPACE',
+  'DELETE',
+  'INSERT',
+  'HOME',
+  'END',
+  'PAGEUP',
+  'PAGEDOWN',
+  'UP',
+  'DOWN',
+  'LEFT',
+  'RIGHT',
+  'CAPSLOCK',
+  'NUMLOCK',
+  'SCROLLLOCK',
+  'PRINTSCREEN',
+  'PAUSE',
+  'MENU',
+]);
+for (let index = 1; index <= 24; index += 1) HL_KEY.add(`F${index}`);
+
+const INLINE_TOKEN_PATTERN =
+  /\$[A-Za-z_]\w*|0x[\da-f]+|\d+|\+=|-=|\*=|\/=|%=|==|!=|<=|>=|&&|\|\||[=+\-*/%<>!]|\b[A-Z][A-Z0-9_]*\b/gi;
 
 export type EditorMetrics = {
   charWidth: number;
@@ -101,8 +152,46 @@ export function escapeHtml(value: string): string {
   return value.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-function highlightVars(escaped: string): string {
-  return escaped.replace(/\$([A-Za-z_]\w*)/g, '<span class="hl-var">$$$1</span>');
+function highlightInline(value: string): string {
+  let output = '';
+  let cursor = 0;
+
+  for (const match of value.matchAll(INLINE_TOKEN_PATTERN)) {
+    const token = match[0];
+    const index = match.index || 0;
+
+    output += escapeHtml(value.slice(cursor, index));
+    output += highlightToken(token);
+    cursor = index + token.length;
+  }
+
+  output += escapeHtml(value.slice(cursor));
+  return output;
+}
+
+function highlightToken(token: string): string {
+  const upper = token.toUpperCase();
+
+  if (token.startsWith('$')) return `<span class="hl-var">${escapeHtml(token)}</span>`;
+  if (/^(?:0x[\da-f]+|\d+)$/i.test(token)) {
+    return `<span class="hl-number">${escapeHtml(token)}</span>`;
+  }
+  if (/^(?:\+=|-=|\*=|\/=|%=|==|!=|<=|>=|&&|\|\||[=+\-*/%<>!])$/.test(token)) {
+    return `<span class="hl-operator">${escapeHtml(token)}</span>`;
+  }
+  if (['TRUE', 'FALSE', 'NULL', 'ENABLE', 'DISABLE', 'ENABLED', 'DISABLED'].includes(upper)) {
+    return `<span class="hl-constant">${escapeHtml(token)}</span>`;
+  }
+  if (HL_MODIFIER.has(upper)) return `<span class="hl-modifier">${escapeHtml(token)}</span>`;
+  if (HL_KEY.has(upper)) return `<span class="hl-key">${escapeHtml(token)}</span>`;
+
+  return escapeHtml(token);
+}
+
+function splitTrailingComment(value: string): [string, string] {
+  const marker = value.search(/\sREM(?:\s|$)/i);
+  if (marker < 0) return [value, ''];
+  return [value.slice(0, marker), value.slice(marker)];
 }
 
 function highlightLine(raw: string): string {
@@ -119,19 +208,27 @@ function highlightLine(raw: string): string {
   const rest = spaceAt < 0 ? '' : stripped.slice(spaceAt);
   const tokenUpper = token.toUpperCase();
   let className = '';
-  if (HL_FLOW.has(tokenUpper)) className = 'hl-flow';
+  if (HL_ASSIGNMENT.has(tokenUpper)) className = 'hl-assign';
+  else if (HL_FLOW.has(tokenUpper)) className = 'hl-flow';
   else if (HL_STRING_CMD.has(tokenUpper) || HL_KEYWORD.has(tokenUpper)) {
     className = 'hl-keyword';
+  } else if (HL_MODIFIER.has(tokenUpper)) {
+    className = 'hl-modifier';
+  } else if (HL_KEY.has(tokenUpper)) {
+    className = 'hl-key';
   }
-  if (!className) return escapeHtml(raw);
+  if (!className) return highlightInline(raw);
 
   const indentHtml = escapeHtml(raw.slice(0, indent));
   const tokenHtml = `<span class="${className}">${escapeHtml(token)}</span>`;
-  const restHtml =
-    HL_STRING_CMD.has(tokenUpper) && rest
-      ? `<span class="hl-string">${highlightVars(escapeHtml(rest))}</span>`
-      : highlightVars(escapeHtml(rest));
-  return indentHtml + tokenHtml + restHtml;
+  const [codeRest, commentRest] = splitTrailingComment(rest);
+  const restHtml = HL_STRING_CMD.has(tokenUpper)
+    ? `<span class="hl-string">${highlightInline(codeRest)}</span>`
+    : highlightInline(codeRest);
+  const commentHtml = commentRest
+    ? `<span class="hl-comment">${escapeHtml(commentRest)}</span>`
+    : '';
+  return indentHtml + tokenHtml + restHtml + commentHtml;
 }
 
 export function highlightPayload(payload: string): string {

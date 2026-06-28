@@ -1,14 +1,9 @@
 import { get } from 'svelte/store';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const BOOTSTRAP_KEYBOARD = {
-  keyboard_layout_hint: 'Local preference',
-  keyboard_layouts: [{ code: 'US', label: 'English (US)' }],
-  keyboard_oses: [
-    { code: 'WIN', label: 'Windows' },
-    { code: 'MAC', label: 'macOS' },
-    { code: 'LINUX', label: 'Linux' },
-  ],
+  keyboard_layout: 'US',
+  keyboard_os: 'WIN',
 };
 
 const TARGET_KEY = 'picobit.keyboard.target.v1';
@@ -16,7 +11,24 @@ const TARGET_KEY = 'picobit.keyboard.target.v1';
 describe('keyboard store', () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue({
+          keyboard_layout: 'US',
+          keyboard_os: 'WIN',
+          message: 'Keyboard target updated.',
+          notice: 'success',
+        }),
+      }),
+    );
     vi.resetModules();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
   });
 
   it('falls back to Windows US when no frontend storage exists', async () => {
@@ -45,15 +57,31 @@ describe('keyboard store', () => {
     });
   });
 
-  it('persists target changes locally without requiring a firmware mutation', async () => {
+  it('persists target changes locally and syncs firmware', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: vi.fn().mockResolvedValue({
+        keyboard_layout: 'DE',
+        keyboard_os: 'LINUX',
+        message: 'Keyboard target updated.',
+        notice: 'success',
+      }),
+    } as unknown as Response);
+
     const { applyKeyboardState, changeKeyboardTarget } = await import('./keyboard');
 
     applyKeyboardState(BOOTSTRAP_KEYBOARD);
-    await changeKeyboardTarget({ layout: 'US', os: 'LINUX' });
+    await changeKeyboardTarget({ layout: 'DE', os: 'LINUX' });
 
     expect(JSON.parse(localStorage.getItem(TARGET_KEY) || '{}')).toEqual({
-      layout: 'US',
+      layout: 'DE',
       os: 'LINUX',
+    });
+    expect(fetch).toHaveBeenCalledWith('/api/keyboard-layout', {
+      body: JSON.stringify({ layout: 'DE', os: 'LINUX' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
     });
   });
 });

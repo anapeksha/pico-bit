@@ -1,20 +1,17 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import PortalSkeleton from './components/PortalSkeleton.svelte';
+  import AppSkeleton from './components/AppSkeleton.svelte';
   import ThemeToggle from './components/ThemeToggle.svelte';
   import ValidationModal from './components/ValidationModal.svelte';
   import LeftSection from './sections/LeftSection.svelte';
   import MiddleSection from './sections/MiddleSection.svelte';
   import RightSection from './sections/RightSection.svelte';
   import TopSection from './sections/TopSection.svelte';
-  import { startPortal } from './stores/bootstrap';
+  import { startApp } from './stores/bootstrap';
   import { initTheme } from './stores/theme';
   import { globalError, notice, showNotice } from './stores/ui';
 
-  // Never-resolving placeholder keeps the skeleton visible until onMount assigns
-  // the real bootstrap promise (avoids a flash of portal content before the
-  // promise is set up).
-  let portalPromise = $state<Promise<void>>(new Promise(() => {}));
+  let bootstrapPromise = $state<Promise<void>>(new Promise(() => {}));
 
   onMount(() => {
     const stopTheme = initTheme();
@@ -22,17 +19,17 @@
     let stop: (() => void) | null = null;
     let cancelled = false;
 
-    const portalTask = startPortal();
+    const bootstrapTask = startApp();
 
-    portalTask.then((fn) => {
+    bootstrapTask.then((fn) => {
       if (cancelled) fn();
       else stop = fn;
     });
 
-    portalPromise = portalTask
+    bootstrapPromise = bootstrapTask
       .then(() => {})
       .catch((error: Error) => {
-        showNotice(error.message || 'Portal bootstrap failed.', 'error');
+        showNotice(error.message || 'Bootstrap failed.', 'error');
         throw error;
       });
 
@@ -45,7 +42,7 @@
 
   function handleBoundaryError(error: unknown) {
     // eslint-disable-next-line no-console
-    console.error('Portal render error:', error);
+    console.error('App render error:', error);
     showNotice((error as Error)?.message || 'An unexpected error occurred.', 'error');
   }
 </script>
@@ -102,7 +99,6 @@
   {/if}
 
   <div>
-    <!-- Nav stays outside {#await} so it is always visible during load -->
     <nav
       class="fixed inset-x-0 top-0 z-50 flex h-12 items-center gap-3 border-b border-black/10 bg-white/80 px-6 backdrop-blur-xl dark:border-white/10 dark:bg-black/80"
     >
@@ -113,8 +109,8 @@
 
     <svelte:boundary onerror={handleBoundaryError}>
       <main class="mx-auto grid max-w-360 gap-4 px-4 pt-6 pb-16 sm:px-6">
-        {#await portalPromise}
-          <PortalSkeleton />
+        {#await bootstrapPromise}
+          <AppSkeleton />
         {:then}
           <TopSection />
           <div
@@ -130,7 +126,7 @@
             role="alert"
           >
             <p class="m-0 text-sm text-picobit-danger">
-              {error?.message ?? 'Portal failed to load. Refresh to retry.'}
+              {error?.message ?? 'Dashboard failed to load. Refresh to retry.'}
             </p>
           </div>
         {/await}

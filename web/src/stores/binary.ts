@@ -8,7 +8,7 @@
 import { derived, writable } from 'svelte/store';
 
 import { deleteBinaryFile, uploadBinaryFile } from '../api/client';
-import type { ArmoryFile, BootstrapState, NoticeTone, TargetOs } from '../api/contracts';
+import type { ArmoryFile, HydratedBootstrapState, NoticeTone, TargetOs } from '../api/contracts';
 import { MAX_ARMORY_FILE_SIZE } from '../lib/binary';
 import { refreshBootstrapSource, withOptimisticBootstrap } from './bootstrapCache';
 import { keyboard } from './keyboard';
@@ -58,10 +58,9 @@ export function setArmoryNotice(message: string, tone: NoticeTone = 'quiet') {
 }
 
 export function applyArmoryState(
-  data: Pick<BootstrapState, 'files' | 'has_binary' | 'ncm_link' | 'max_upload_bytes'>,
+  data: Pick<HydratedBootstrapState, 'files' | 'has_binary' | 'ncm_link'>,
 ) {
   const files = data.files || [];
-  if (data.max_upload_bytes) armoryUploadLimit.set(data.max_upload_bytes);
   armoryFiles.set(
     files.map((file) => ({
       name: file.name,
@@ -72,7 +71,7 @@ export function applyArmoryState(
     })),
   );
   hasBinary.set(Boolean(data.has_binary));
-  if (data.ncm_link?.filename) stagedBinaryName.set(data.ncm_link.filename);
+  stagedBinaryName.set(files.find((file) => file.kind === 'asset')?.name || '');
   applyNcmLink(data.ncm_link);
 }
 

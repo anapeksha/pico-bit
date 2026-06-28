@@ -53,6 +53,10 @@ static LFS_DRIVER: StaticCell<FlashDriver> = StaticCell::new();
 static STORAGE_MANAGER: StaticCell<Mutex<CriticalSectionRawMutex, StorageManager>> =
     StaticCell::new();
 
+/// # Safety
+///
+/// `dest` and `src` must be valid non-null C string pointers. `dest` must point
+/// to writable memory large enough to hold `src` including the trailing NUL.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn strcpy(dest: *mut u8, src: *const u8) -> *mut u8 {
     let mut offset = 0;

@@ -68,18 +68,16 @@
                 #{item.sequence}
               </span>
               <span class="min-w-0 flex-1 truncate text-xs text-(--text-2)">
-                {item.source ? `${item.source} · ` : ''}{item.notice !== 'success' && item.message
-                  ? item.message
-                  : item.preview || item.message}
+                {item.source ? `${item.source} · ` : ''}{item.preview || 'payload.dd'}
               </span>
               <span
                 class={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold tracking-[0.04em] uppercase ${
-                  item.notice === 'success'
+                  item.ok !== false
                     ? 'border-(--success-border) bg-(--success-bg) text-(--success)'
                     : 'border-(--danger-border) bg-(--danger-bg) text-(--danger)'
                 }`}
               >
-                {item.notice === 'success' ? 'OK' : 'ERR'}
+                {item.ok !== false ? 'OK' : 'ERR'}
               </span>
             </div>
           {/each}

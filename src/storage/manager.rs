@@ -5,7 +5,7 @@ use core::sync::atomic::AtomicPtr;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use littlefs2::fs::{Allocation, Filesystem};
-use littlefs2::io::{Error, Result};
+use littlefs2::io::{Error, Result, SeekFrom};
 use littlefs2::path::Path;
 
 pub const LISTED_FILE_NAME_MAX: usize = 64;
@@ -111,6 +111,15 @@ impl StorageManager {
             self.fs.open_file_and_then(p, |file| {
                 let bytes_read = file.read(buffer)?;
                 Ok(&buffer[..bytes_read])
+            })
+        })
+    }
+
+    pub fn read_at(&self, path: &str, offset: usize, buffer: &mut [u8]) -> Result<usize> {
+        self.with_path(path, |p| {
+            self.fs.open_file_and_then(p, |file| {
+                file.seek(SeekFrom::Start(offset as u32))?;
+                file.read(buffer)
             })
         })
     }

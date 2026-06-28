@@ -38,7 +38,8 @@ This file provides strict architectural context, constraints, and learned patter
 * **Avoiding Trait Bounds Errors:** Do not inject `picoserve::response::ResponseWriter` into standard handler arguments to try and manually write headers. The framework relies on specific trait boundaries (`RequestHandlerFunction`). Construct responses natively using `Json` and status codes instead.
 * **Service-Level Streaming:** If an endpoint needs both a path parameter and direct request-body streaming, use `RequestHandlerService` with `post_service`. This is the supported exception for working directly with `Request`, `ResponseWriter`, and `ResponseSent`.
 * **Chunked Streaming:** When downloading/uploading raw files, do not read the entire file into memory. Stream incoming/outgoing payload bytes directly between the HTTP socket and LittleFS in small loop chunks, currently 1 KB for Armory uploads.
-* **Large JSON Responses:** Bootstrap, Armory list, and payload read responses must use chunked response writers. Shared JSON escaping/chunk helpers live under `src/utils/json_chunks.rs`; do not recreate per-endpoint JSON escaping helpers.
+* **Large JSON Responses:** Use `ChunkedResponse` only for endpoints that carry variable-sized content, currently `GET /api/payload` and raw file downloads. Small bounded metadata responses should return normal `Json<T>`.
+* **Lean GET Contracts:** Firmware GET endpoints should return machine state only: booleans, short codes, filenames, sizes, and URLs when necessary. Do not send UI labels, friendly names, hints, or success messages from read-only endpoints; keep those in the frontend.
 
 ### API Layout Rules
 * **Folder Per API Surface:** Each API surface lives in its own folder under `src/net/http/api/<name>/`.
@@ -61,19 +62,21 @@ This file provides strict architectural context, constraints, and learned patter
 ## 4. Key Subsystems
 
 * **Bootstrap (`src/net/http/api/bootstrap/`):**
-  The frontend startup source of truth. It returns AP settings, Host HID state, NCM Link state, LittleFS file entries, current `payload.dd`, keyboard options, recent runs, and `max_upload_bytes`. It must not return validation state.
+  The fixed startup device snapshot. It returns AP settings, `host_hid_active`, `ncm_active`, `ncm_url`, keyboard OS/layout codes, and `seeded`. It must not read LittleFS and must not return files, payload text, run history, validation state, upload limits, labels, hints, or messages. Because the contract is small and fixed, it should return normal `Json<T>`, not `ChunkedResponse`.
 * **Armory (`src/net/http/api/armory/`):**
-  Manages files under `/armory` in LittleFS. Upload route is `POST /api/armory/upload/:filename`; delete route is `DELETE /api/armory/:filename`. Uploads stream in 1 KB chunks and must reject files above `500 * 1024` bytes. The frontend must validate this too, using `max_upload_bytes` from bootstrap with a 500 KB fallback.
+  Manages files under `/armory` in LittleFS and exposes the bounded file table through `GET /api/armory`. File list entries contain only `kind`, `name`, and `size`; the frontend derives URLs/labels. Upload route is `POST /api/armory/upload/:filename`; delete route is `DELETE /api/armory/:filename`. Uploads stream in 1 KB chunks and must reject files above `500 * 1024` bytes. The frontend must validate this too using its local 500 KB limit.
 * **Payload Engine (`src/net/http/api/payload/`):**
-  Accepts DuckyScript text via JSON. Uses a zero-allocation staging buffer to parse syntax line-by-line (`DuckyParser`) before overwriting `payload.dd`. The saved payload file is always `payload.dd`; do not use or reintroduce `payload.txt`.
+  Accepts DuckyScript text via JSON. Uses a zero-allocation staging buffer to parse syntax line-by-line (`DuckyParser`) before overwriting `payload.dd`. `GET /api/payload` returns the current editor text and remains chunked. The saved payload file is always `payload.dd`; do not use or reintroduce `payload.txt`.
+* **Runs (`src/net/http/api/runs/`):**
+  Exposes recent run metadata and seeded state through `GET /api/runs`. Run history entries contain only compact metadata such as `ok`, `sequence`, `source`, and `preview`. Keep this as normal `Json<T>` while the response remains bounded metadata.
 * **Storage (`src/storage/manager.rs`):**
   Owns LittleFS read/write/truncate/append/list helpers. It must create `/armory` and ensure `payload.dd` exists after mount. `list_files` returns bounded `ListedFile` entries from `/` and `/armory`.
 * **Runtime Runner (`src/runners.rs`):**
   Reads and executes `payload.dd`. If missing or unreadable in the expected way, use the existing fallback behavior. Do not point runtime execution back to `payload.txt`.
 * **Static Dashboard (`src/net/http/assets.rs`):**
-  Streams only the gzipped single-file dashboard artifact in 1 KB chunks from `dist/index.html.gz`.
+  Serves only the gzipped single-file dashboard artifact from `dist/index.html.gz`. Use a fixed `Content-Length` response and write the body in small slices; do not serve the dashboard with HTTP chunked transfer. The asset is precompressed and has a known length, and chunk framing can exceed small TCP buffers.
 * **Utilities (`src/utils/`):**
-  Shared helpers used by multiple subsystems belong here. Current JSON chunk escaping/writing helpers are exported from `src/utils/mod.rs`.
+  Shared helpers used by multiple subsystems belong here. Current chunked JSON escaping/writing helpers are exported from `src/utils/mod.rs` as `json_buffer`.
 
 ---
 
@@ -85,6 +88,8 @@ This file provides strict architectural context, constraints, and learned patter
 * **Protected Payload File:** `payload.dd` is editor-managed and must not be deletable from the Armory delete API or UI.
 * **No Portal Auth State:** Device/bootstrap contracts should not expose portal login state. AP SSID/password are Wi-Fi access-point details, not portal authentication.
 * **No Bootstrap Validation:** Validation is action-scoped state, not device snapshot state. Keep validation out of `/api/bootstrap`, bootstrap stores, and the development mock response.
+* **No Variable Bootstrap Data:** LittleFS file entries, current payload text, and recent run history are not bootstrap fields. They belong to `/api/armory`, `/api/payload`, and `/api/runs`.
+* **Frontend-Owned Labels:** Keyboard layout/OS option labels, NCM/Host HID display strings, upload-limit copy, and success text for read-only snapshots are frontend-owned.
 
 ---
 
@@ -92,7 +97,7 @@ This file provides strict architectural context, constraints, and learned patter
 
 * **Contracts:** API response/request shapes live in `web/src/api/contracts.ts`. Keep frontend types aligned with firmware JSON fields.
 * **Client:** HTTP calls live in `web/src/api/client.ts`.
-* **Bootstrap Cache:** `web/src/stores/bootstrapCache.ts` is the app-level cache layer. Bootstrap is the source of truth after mutations.
+* **Bootstrap Cache:** `web/src/stores/bootstrapCache.ts` is the app-level cache layer. Startup hydration fetches `/api/bootstrap`, `/api/armory`, `/api/payload`, and `/api/runs` in sequence and applies one composed state. Mutations refresh through the same composed hydration path.
 * **Optimistic Mutations:** Frontend mutations should update state optimistically, then refresh bootstrap. Revert to the captured snapshot only if the bootstrap refresh fails.
 * **Keyboard Target:** Keyboard target selection is frontend-local and consists only of operating system plus keyboard layout. Do not show or store a separate "Profile" field; it is just a derived combination of OS/layout. Persist OS/layout in browser storage and fall back to Windows US if no frontend storage exists. Do not call a firmware mutation endpoint for keyboard target changes.
 * **Editor Validation:** DuckyScript validation should run only on explicit save/save-run flows, not on every keystroke and not during bootstrap. The Save button posts the payload for firmware validation; if valid, the frontend immediately calls the run endpoint. If invalid, open `ValidationModal` with the returned validation response.
@@ -104,7 +109,9 @@ This file provides strict architectural context, constraints, and learned patter
 
 * **HTTP Worker Count:** The dashboard is a single static request, so the HTTP server uses one worker. Do not raise the worker pool just to support separate JS/CSS assets; fix the frontend bundle instead.
 * **Build Ordering:** `cargo check`/`cargo build` include `dist/index.html.gz`. Run `npm --prefix web run build` first when the artifact may be missing or stale.
-* **Chunked Bootstrap Required:** `/api/bootstrap` must use `ChunkedResponse` and manual JSON chunk writers. A buffered `Json(service::snapshot())` implementation previously inflated firmware memory usage enough to crash before the HTTP worker started on Pico 2 W. Keep dynamic LittleFS file and payload data in bounded static scratch buffers and stream the response.
+* **Small Bootstrap Required:** `/api/bootstrap` must stay a small fixed `Json<T>` response. Do not add LittleFS reads, payload text, file tables, run history, validation, or other variable-sized fields back into bootstrap.
+* **Chunk Only Where Needed:** `JsonChunkBuffer` is for payload reads and similar variable-sized JSON bodies. Do not use chunking for fixed metadata endpoints just because they are JSON.
+* **Static Asset Writes:** Keep dashboard write slices below the TCP tx buffer size. If `src/runners.rs` tx buffer changes, verify `HTML_WRITE_CHUNK` in `src/net/http/assets.rs` remains safely smaller.
 
 ---
 
@@ -121,6 +128,8 @@ Use host-side library tests only for code that is available without firmware fea
 ```sh
 cargo test --lib --no-default-features --target x86_64-unknown-linux-gnu
 ```
+
+This command includes firmware-agnostic unit tests; run it after changes to DuckyScript parsing, keyboard mapping, or chunked JSON utilities.
 
 Frontend quality gates:
 
