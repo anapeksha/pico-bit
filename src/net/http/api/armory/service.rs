@@ -6,8 +6,12 @@ use core::sync::atomic::Ordering;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex as AsyncMutex;
-use picoserve::io::Write;
-use picoserve::response::chunked::{ChunkWriter, Chunks, ChunksWritten};
+use picoserve::ResponseSent;
+use picoserve::io::{Read, Write};
+use picoserve::request::Request;
+use picoserve::response::chunked::{ChunkWriter, ChunkedResponse, Chunks, ChunksWritten};
+use picoserve::response::{IntoResponse, Json, ResponseWriter, StatusCode};
+use picoserve::routing::RequestHandlerService;
 use serde::ser::{SerializeSeq, SerializeStruct};
 use serde::{Serialize, Serializer};
 
@@ -16,7 +20,8 @@ pub(super) const MAX_ARMORY_UPLOAD_BYTES: usize = 500 * 1024;
 const ARMORY_DIR: &str = "/armory";
 const ARMORY_PREFIX: &str = "/armory/";
 const MAX_ARMORY_FILES: usize = 16;
-const DOWNLOAD_CHUNK_SIZE: usize = 1024;
+const UPLOAD_CHUNK_SIZE: usize = 1024;
+pub(super) const DOWNLOAD_CHUNK_SIZE: usize = 1024;
 
 #[derive(Clone, Copy)]
 pub(super) struct ArmoryFile {
@@ -103,12 +108,12 @@ pub(super) struct ArmoryDownloadChunks {
 
 impl ArmoryDownloadChunks {
     pub(super) fn new(filename: &str) -> Self {
-        let mut chunks = Self {
+        let mut body = Self {
             filename: [0u8; LISTED_FILE_NAME_MAX],
             filename_len: 0,
         };
-        chunks.filename_len = copy_str(filename, &mut chunks.filename);
-        chunks
+        body.filename_len = copy_str(filename, &mut body.filename);
+        body
     }
 
     fn filename(&self) -> &str {
@@ -243,6 +248,111 @@ impl ArmoryError {
             Self::StorageUnavailable => "littlefs2 storage is not initialized.",
             Self::TooLarge => "Upload exceeds 500 KB capacity limit.",
         }
+    }
+}
+
+pub(super) async fn list_response() -> impl IntoResponse {
+    Json(list().await)
+}
+
+pub(super) async fn delete_response(filename: heapless::String<64>) -> impl IntoResponse {
+    let protected_payload = filename.as_str() == "payload.dd";
+    let response = delete_file(filename.as_str()).await;
+    let status = if response.is_error() {
+        if protected_payload {
+            StatusCode::FORBIDDEN
+        } else {
+            StatusCode::BAD_REQUEST
+        }
+    } else {
+        StatusCode::OK
+    };
+
+    Json(response).into_response().with_status_code(status)
+}
+
+pub(super) fn download_response(filename: heapless::String<64>) -> impl IntoResponse {
+    ChunkedResponse::new(ArmoryDownloadChunks::new(filename.as_str()))
+        .into_response()
+        .with_header("Cache-Control", "no-store")
+}
+
+pub(super) struct UploadArmory;
+
+impl<State> RequestHandlerService<State, (heapless::String<64>,)> for UploadArmory {
+    async fn call_request_handler_service<R, W>(
+        &self,
+        _state: &State,
+        (filename,): (heapless::String<64>,),
+        mut request: Request<'_, R>,
+        response_writer: W,
+    ) -> Result<ResponseSent, W::Error>
+    where
+        R: Read,
+        W: ResponseWriter<Error = R::Error>,
+    {
+        let filename = filename.as_str();
+        let content_length = request.body_connection.content_length();
+
+        let (status, response) = if content_length > MAX_ARMORY_UPLOAD_BYTES {
+            (StatusCode::PAYLOAD_TOO_LARGE, upload_too_large(filename))
+        } else {
+            upload_stream(filename, &mut request).await?
+        };
+
+        Json(response)
+            .into_response()
+            .with_status_code(status)
+            .write_to(request.body_connection.finalize().await?, response_writer)
+            .await
+    }
+}
+
+async fn upload_stream<R: Read>(
+    filename: &str,
+    request: &mut Request<'_, R>,
+) -> Result<(StatusCode, ArmoryMutationResponse), R::Error> {
+    match begin_upload_result(filename).await {
+        Ok(()) => {
+            let mut reader = request.body_connection.body().reader();
+            let mut buffer = [0u8; UPLOAD_CHUNK_SIZE];
+            let mut received = 0usize;
+            let mut failure = None;
+
+            loop {
+                let read = reader.read(&mut buffer).await?;
+                if read == 0 {
+                    break;
+                }
+
+                received += read;
+                if received > MAX_ARMORY_UPLOAD_BYTES {
+                    failure = Some(ArmoryError::TooLarge);
+                    break;
+                }
+
+                if let Err(error) = append_upload_chunk(filename, &buffer[..read]).await {
+                    failure = Some(error);
+                    break;
+                }
+            }
+
+            Ok(match failure {
+                Some(error) => (status_for_error(error), fail_upload(filename, error).await),
+                None => (StatusCode::OK, finish_upload(filename).await),
+            })
+        }
+        Err(error) => Ok((status_for_error(error), fail_upload(filename, error).await)),
+    }
+}
+
+fn status_for_error(error: ArmoryError) -> StatusCode {
+    match error {
+        ArmoryError::InvalidFilename => StatusCode::BAD_REQUEST,
+        ArmoryError::ProtectedPayload => StatusCode::FORBIDDEN,
+        ArmoryError::Storage => StatusCode::INSUFFICIENT_STORAGE,
+        ArmoryError::StorageUnavailable => StatusCode::SERVICE_UNAVAILABLE,
+        ArmoryError::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
     }
 }
 

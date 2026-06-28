@@ -36,18 +36,17 @@ This file provides strict architectural context, constraints, and learned patter
 ### Picoserve Response & Handler Patterns
 * **Standard Returns:** Route handlers should generally return `impl IntoResponse`. For API responses, return a tuple of `(StatusCode, Json<T>)` or just `Json<T>`.
 * **Avoiding Trait Bounds Errors:** Do not inject `picoserve::response::ResponseWriter` into standard handler arguments to try and manually write headers. The framework relies on specific trait boundaries (`RequestHandlerFunction`). Construct responses natively using `Json` and status codes instead.
-* **Service-Level Streaming:** If an endpoint needs both a path parameter and direct request-body streaming, use `RequestHandlerService` with `post_service`. This is the supported exception for working directly with `Request`, `ResponseWriter`, and `ResponseSent`.
-* **Chunked Streaming:** When downloading/uploading raw files, do not read the entire file into memory. Stream incoming/outgoing payload bytes directly between the HTTP socket and LittleFS in small loop chunks, currently 1 KB for Armory uploads.
-* **Large JSON Responses:** Use `ChunkedResponse` only for endpoints that carry variable-sized content, currently `GET /api/payload` and raw file downloads. Small bounded metadata responses should return normal `Json<T>`.
+* **Service-Level Streaming:** If an endpoint needs both a path parameter and direct request-body streaming, use `RequestHandlerService` with `post_service`. Keep the controller as a route adapter; put the streaming service object and upload loop in the API service module.
+* **Streaming Transfers:** When uploading/downloading raw files, do not read the entire file into memory. Uploads and downloads stream between picoserve and LittleFS in small loop chunks, currently 1 KB for Armory. `/api/bootstrap` stays fixed-length JSON. Variable startup data such as Armory, payload text, and runs may use chunked transfer to avoid response buffering.
 * **Lean GET Contracts:** Firmware GET endpoints should return machine state only: booleans, short codes, filenames, sizes, and URLs when necessary. Do not send UI labels, friendly names, hints, or success messages from read-only endpoints; keep those in the frontend.
-* **Canonical API Source:** Picoserve controllers are the only web/API route implementation. Do not add worker-level route handlers unless there is a reproduced firmware fault that cannot be fixed in routing, frontend request flow, or picoserve configuration.
+* **HTTP Ownership:** Keep route contracts in picoserve controllers and service modules. The single HTTP worker may also serve the bounded startup GET responses directly when hardware testing shows that path is required for browser stability; do not add a second routing system or ad hoc endpoint names.
 
 ### API Layout Rules
 * **Folder Per API Surface:** Each API surface lives in its own folder under `src/net/http/api/<name>/`.
 * **Separation of Concerns:** Each API folder must contain:
   * `mod.rs`: exposes only the relevant controller module.
-  * `controller.rs`: picoserve routing, HTTP status selection, request extraction/streaming.
-  * `service.rs`: bounded data models, storage access, validation, and business behavior.
+  * `controller.rs`: picoserve routing and input handoff only. Keep it thin, like bootstrap.
+  * `service.rs`: bounded data models, response construction, storage access, validation, streaming services, and business behavior.
 * **Router Wiring:** Tie API controllers only through `src/net/http/mod.rs`. Do not reintroduce flat `armory.rs`, `payload.rs`, or `status.rs` API files.
 * **No Status API:** The old status endpoint was only a liveness stub and must not be used as a frontend data source.
 * **No Portal Auth API:** The frontend no longer has login/logout or portal auth state. Do not reintroduce `/login`, `/logout`, `auth_enabled`, `authState`, or auth-specific frontend props unless the product requirement explicitly changes.
@@ -67,18 +66,15 @@ This file provides strict architectural context, constraints, and learned patter
 * **Armory (`src/net/http/api/armory/`):**
   Manages files under `/armory` in LittleFS and exposes the bounded file table through `GET /api/armory`. File list entries contain only `kind`, `name`, and `size`; the frontend derives URLs/labels. Upload route is `POST /api/armory/upload/:filename`; delete route is `DELETE /api/armory/:filename`. Uploads stream in 1 KB chunks and must reject files above `500 * 1024` bytes. The frontend must validate this too using its local 500 KB limit.
 * **Payload Engine (`src/net/http/api/payload/`):**
-  Accepts DuckyScript text via JSON. Uses a zero-allocation staging buffer to parse syntax line-by-line (`DuckyParser`) before overwriting `payload.dd`. `GET /api/payload` returns the current editor text and remains chunked. The saved payload file is always `payload.dd`; do not use or reintroduce `payload.txt`.
+  Accepts DuckyScript text via JSON. Uses a zero-allocation staging buffer to parse syntax line-by-line (`DuckyParser`) before overwriting `payload.dd`. `GET /api/payload` streams the current editor text as chunked JSON, bounded by the 2 KB payload buffer. The saved payload file is always `payload.dd`; do not use or reintroduce `payload.txt`.
 * **Runs (`src/net/http/api/runs/`):**
-  Exposes recent run metadata and seeded state through `GET /api/runs`. Run history entries contain only compact metadata such as `ok`, `sequence`, `source`, and `preview`. Keep this as normal `Json<T>` while the response remains bounded metadata.
+  Exposes recent run metadata and seeded state through `GET /api/runs`. Run history entries contain only compact metadata such as `ok`, `sequence`, `source`, and `preview`.
 * **Storage (`src/storage/manager.rs`):**
   Owns LittleFS read/write/truncate/append/list helpers. It must create `/armory` and ensure `payload.dd` exists after mount. `list_files` returns bounded `ListedFile` entries from `/` and `/armory`.
 * **Runtime Runners (`src/runners/`):**
-  `mod.rs` exports only the Embassy task functions required by `main.rs`. `usb.rs` owns USB, NCM, USB DHCP, and Host HID execution. `wifi.rs` owns CYW43 AP bring-up and starts the HTTP worker. `http/mod.rs` owns the single accepted-socket HTTP worker loop. `http/classify.rs`, `http/direct.rs`, `http/json.rs`, `http/request.rs`, and `http/replay.rs` keep request classification, direct startup responses, JSON/chunk writing, request body parsing, and picoserve prefix replay separate. Known startup GETs are served directly from the HTTP worker because routing them through the generic picoserve serve path has reproduced firmware faults on the Pico 2 W. Keep these direct startup responses small, fixed, and boring. HID execution reads and executes `payload.dd`; if missing in the expected way, use the existing fallback behavior. Do not point runtime execution back to `payload.txt`.
+  `mod.rs` exports only the Embassy task functions required by `main.rs`. `usb.rs` owns USB, NCM, USB DHCP, and Host HID execution. `wifi.rs` owns CYW43 AP bring-up and starts the HTTP worker. `http.rs` owns the single accepted-socket HTTP worker loop, small preflight, bounded startup responses, and picoserve prefix replay fallback. On hardware, routing Safari dashboard hydration entirely through the generic picoserve serve path reproduced firmware faults; keep `/`, `/api/bootstrap`, `/api/armory`, `/api/payload`, `/api/runs`, browser probes, OPTIONS, and `/api/keyboard/layout` on the bounded startup path unless hardware testing proves a replacement. HID execution reads and executes `payload.dd`; if missing in the expected way, use the existing fallback behavior. Do not point runtime execution back to `payload.txt`.
 * **Static Dashboard (`src/net/http/assets.rs`):**
   Serves only the gzipped single-file dashboard artifact from `dist/index.html.gz` through picoserve with `Content-Encoding: gzip`. Do not serve separate JS/CSS assets from firmware.
-* **Utilities (`src/utils/`):**
-  Shared helpers used by multiple subsystems belong here. Current chunked JSON escaping/writing helpers are exported from `src/utils/mod.rs` as `json_buffer`.
-
 ---
 
 ## 5. Device State Contracts
@@ -102,18 +98,18 @@ This file provides strict architectural context, constraints, and learned patter
 * **Optimistic Mutations:** Frontend mutations should update state optimistically, then refresh bootstrap. Revert to the captured snapshot only if the bootstrap refresh fails.
 * **Keyboard Target:** Keyboard target selection consists only of operating system plus keyboard layout. Do not show or store a separate "Profile" field; it is just a derived combination of OS/layout. Do not persist keyboard target in browser storage. Bootstrap applies the firmware-reported target, and the frontend calls `/api/keyboard/layout` only when the user changes the controls.
 * **Editor Validation:** DuckyScript validation should run only on explicit save/save-run flows, not on every keystroke and not during bootstrap. The Save button posts the payload for firmware validation; if valid, the frontend immediately calls the run endpoint. If invalid, open `ValidationModal` with the returned validation response.
-* **Binary Armory UI:** Render files from bootstrap file entries. Show `payload.dd`, but disable delete for it. Upload validation must enforce the current `max_upload_bytes` limit.
+* **Binary Armory UI:** Render files from `/api/armory`. Show `payload.dd`, but disable delete for it. Upload validation must enforce the frontend-owned 500 KB limit.
 * **Network Stager Reference:** Windows uses PowerShell examples; macOS and Linux use `curl`.
 * **No Login UI:** Do not add login forms, auth body classes, auth props, `/login` form posts, or `/logout` handlers in the Svelte app.
 
 ## 7. Runtime/Worker Constraints
 
 * **HTTP Worker Count:** The dashboard is a single static request, so the HTTP server uses one worker. Do not raise the worker pool just to support separate JS/CSS assets; fix the frontend bundle instead.
-* **Straightforward Startup:** Dashboard startup should be explicit and boring: load `/`, then hydrate through the frontend client. Do not add hidden browser-storage restore flows that call mutation APIs during startup. The current worker-level startup responses exist only to avoid the reproduced picoserve generic serve crash on the Pico 2 W; do not expand them beyond the known startup surface without hardware verification.
+* **Straightforward Startup:** Dashboard startup should be explicit and boring: load `/`, then hydrate through the frontend client. Do not add hidden browser-storage restore flows that call mutation APIs during startup. The HTTP worker owns the bounded startup responses listed above because this is the hardware-stable path.
 * **Build Ordering:** `cargo check`/`cargo build` include `dist/index.html.gz`. Run `npm --prefix web run build` first when the artifact may be missing or stale.
-* **Small Bootstrap Required:** `/api/bootstrap` must stay a small fixed `Json<T>` response. Do not add LittleFS reads, payload text, file tables, run history, validation, or other variable-sized fields back into bootstrap.
-* **Chunk Only Where Needed:** `JsonChunkBuffer` is for payload reads and similar variable-sized JSON bodies. Do not use chunking for fixed metadata endpoints just because they are JSON.
-* **Static Asset Writes:** Keep dashboard write slices below the TCP tx buffer size. If the HTTP worker tx buffer in `src/runners/http/mod.rs` changes, verify the static dashboard chunk size remains safely smaller.
+* **Small Bootstrap Required:** `/api/bootstrap` must stay a small fixed contract and direct fixed-length JSON response. Do not add LittleFS reads, payload text, file tables, run history, validation, or other variable-sized fields back into bootstrap.
+* **Chunk Only Variable Startup Data:** The gzipped dashboard asset, Armory listing/downloads, payload text, and runs may be chunked. Bootstrap should not be chunked. Do not use chunked transfer for small mutation responses.
+* **Static Asset Writes:** Keep dashboard write slices below the TCP tx buffer size. If the HTTP worker tx buffer in `src/runners/http.rs` changes, verify the static dashboard chunk size remains safely smaller.
 
 ---
 

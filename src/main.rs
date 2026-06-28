@@ -8,7 +8,6 @@ mod pio;
 mod runners;
 mod storage;
 mod usb;
-mod utils;
 
 use core::sync::atomic::Ordering;
 use defmt::info;

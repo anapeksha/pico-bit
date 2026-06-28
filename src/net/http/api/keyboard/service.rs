@@ -1,5 +1,6 @@
 use crate::ducky::KeyboardLayout;
 use core::sync::atomic::{AtomicU8, Ordering};
+use picoserve::response::{IntoResponse, Json, StatusCode};
 use serde::Serialize;
 use serde::{Deserialize, Deserializer};
 
@@ -15,6 +16,17 @@ impl KeyboardResponse {
     pub(super) fn is_error(&self) -> bool {
         self.notice == "error"
     }
+}
+
+pub(super) fn update_response(request: KeyboardTargetRequest) -> impl IntoResponse {
+    let response = update_target(request);
+    let status = if response.is_error() {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::OK
+    };
+
+    Json(response).into_response().with_status_code(status)
 }
 
 pub(super) struct KeyboardTargetRequest {

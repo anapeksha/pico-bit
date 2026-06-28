@@ -1,13 +1,13 @@
 use crate::ducky::{DuckyParser, ErrorDiagnostic};
 use crate::storage::{GLOBAL_STORAGE, SharedStorage};
-use crate::utils::json_buffer::{JsonChunkBuffer, JsonChunkSink};
 use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex as AsyncMutex;
 use picoserve::io::Write;
-use picoserve::response::chunked::{ChunkWriter, Chunks, ChunksWritten};
+use picoserve::response::chunked::{ChunkWriter, ChunkedResponse, Chunks, ChunksWritten};
+use picoserve::response::{IntoResponse, Json, StatusCode};
 use serde::{Deserialize, Deserializer, Serialize};
 
 pub(super) static TRIGGER_RUN: AtomicBool = AtomicBool::new(false);
@@ -35,6 +35,30 @@ pub(super) struct RunResponse {
 impl RunResponse {
     pub(super) fn is_error(&self) -> bool {
         !self.success
+    }
+}
+
+pub(super) fn read_response() -> impl IntoResponse {
+    ChunkedResponse::new(PayloadChunks)
+}
+
+pub(super) async fn save_response() -> impl IntoResponse {
+    let response = save_staged().await;
+    let status = status_for_validation(response.is_error());
+    Json(response).into_response().with_status_code(status)
+}
+
+pub(super) async fn run_response() -> impl IntoResponse {
+    let response = trigger_run().await;
+    let status = status_for_validation(response.is_error());
+    Json(response).into_response().with_status_code(status)
+}
+
+fn status_for_validation(is_error: bool) -> StatusCode {
+    if is_error {
+        StatusCode::BAD_REQUEST
+    } else {
+        StatusCode::OK
     }
 }
 
@@ -202,14 +226,9 @@ impl Chunks for PayloadChunks {
     ) -> Result<ChunksWritten, W::Error> {
         refresh_read_buffer().await;
 
-        {
-            let mut json = JsonChunkBuffer::new(&mut writer);
-
-            json.raw(b"{\"code\":").await?;
-            write_read_buffer(&mut json).await?;
-            json.raw(b"}").await?;
-            json.flush().await?;
-        }
+        writer.write_chunk(b"{\"code\":").await?;
+        write_read_buffer_json_string(&mut writer).await?;
+        writer.write_chunk(b"}").await?;
 
         writer.finalize().await
     }
@@ -231,14 +250,14 @@ async fn refresh_read_buffer() {
     });
 }
 
-async fn write_read_buffer<S: JsonChunkSink>(
-    json: &mut JsonChunkBuffer<'_, S>,
-) -> Result<(), S::Error> {
+async fn write_read_buffer_json_string<W: Write>(
+    writer: &mut ChunkWriter<W>,
+) -> Result<(), W::Error> {
     let len = READ_BUFFER.lock(|cell| cell.borrow().len);
-    let mut offset = 0;
+    let mut offset = 0usize;
     let mut buffer = [0u8; 96];
 
-    json.string_start().await?;
+    writer.write_chunk(b"\"").await?;
 
     while offset < len {
         let copied = READ_BUFFER.lock(|cell| {
@@ -248,11 +267,66 @@ async fn write_read_buffer<S: JsonChunkSink>(
             count
         });
 
-        json.string_bytes(&buffer[..copied]).await?;
+        write_json_string_bytes(writer, &buffer[..copied]).await?;
         offset += copied;
     }
 
-    json.string_end().await
+    writer.write_chunk(b"\"").await
+}
+
+async fn write_json_string_bytes<W: Write>(
+    writer: &mut ChunkWriter<W>,
+    bytes: &[u8],
+) -> Result<(), W::Error> {
+    let mut start = 0usize;
+    let mut index = 0usize;
+
+    while index < bytes.len() {
+        let escape = match bytes[index] {
+            b'"' => Some(&b"\\\""[..]),
+            b'\\' => Some(&b"\\\\"[..]),
+            b'\n' => Some(&b"\\n"[..]),
+            b'\r' => Some(&b"\\r"[..]),
+            b'\t' => Some(&b"\\t"[..]),
+            0x00..=0x1f => None,
+            _ => {
+                index += 1;
+                continue;
+            }
+        };
+
+        if start < index {
+            writer.write_chunk(&bytes[start..index]).await?;
+        }
+
+        if let Some(escape) = escape {
+            writer.write_chunk(escape).await?;
+        } else {
+            let escaped = json_unicode_escape(bytes[index]);
+            writer.write_chunk(&escaped).await?;
+        }
+
+        index += 1;
+        start = index;
+    }
+
+    if start < bytes.len() {
+        writer.write_chunk(&bytes[start..]).await?;
+    }
+
+    Ok(())
+}
+
+fn json_unicode_escape(byte: u8) -> [u8; 6] {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    [
+        b'\\',
+        b'u',
+        b'0',
+        b'0',
+        HEX[(byte >> 4) as usize],
+        HEX[(byte & 0x0f) as usize],
+    ]
 }
 
 pub(super) async fn save_staged() -> ValidationResponse {

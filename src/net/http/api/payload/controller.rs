@@ -1,36 +1,21 @@
 use super::service::{self, SavePayloadRequest};
 use picoserve::Router;
 use picoserve::extract::JsonWithUnescapeBufferSize;
-use picoserve::response::chunked::ChunkedResponse;
-use picoserve::response::{IntoResponse, Json, StatusCode};
+use picoserve::response::IntoResponse;
 use picoserve::routing::{PathRouter, get, post};
 
 async fn get_payload() -> impl IntoResponse {
-    ChunkedResponse::new(service::PayloadChunks)
+    service::read_response()
 }
 
 async fn save_payload(
     JsonWithUnescapeBufferSize(_): JsonWithUnescapeBufferSize<SavePayloadRequest, 2048>,
 ) -> impl IntoResponse {
-    let response = service::save_staged().await;
-    let status = if response.is_error() {
-        StatusCode::BAD_REQUEST
-    } else {
-        StatusCode::OK
-    };
-
-    Json(response).into_response().with_status_code(status)
+    service::save_response().await
 }
 
 async fn run_payload() -> impl IntoResponse {
-    let response = service::trigger_run().await;
-    let status = if response.is_error() {
-        StatusCode::BAD_REQUEST
-    } else {
-        StatusCode::OK
-    };
-
-    Json(response).into_response().with_status_code(status)
+    service::run_response().await
 }
 
 pub fn build<R: PathRouter>(router: Router<R, ()>) -> Router<impl PathRouter, ()> {
