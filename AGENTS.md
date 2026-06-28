@@ -72,8 +72,8 @@ This file provides strict architectural context, constraints, and learned patter
   Exposes recent run metadata and seeded state through `GET /api/runs`. Run history entries contain only compact metadata such as `ok`, `sequence`, `source`, and `preview`. Keep this as normal `Json<T>` while the response remains bounded metadata.
 * **Storage (`src/storage/manager.rs`):**
   Owns LittleFS read/write/truncate/append/list helpers. It must create `/armory` and ensure `payload.dd` exists after mount. `list_files` returns bounded `ListedFile` entries from `/` and `/armory`.
-* **Runtime Runner (`src/runners.rs`):**
-  Owns the Embassy tasks for USB, NCM, Wi-Fi, DHCP, HTTP, and Host HID execution. The HTTP worker uses a single accepted socket loop with a small request preflight. Known startup GETs are served directly from this worker because routing them through the generic picoserve serve path has reproduced firmware faults on the Pico 2 W. Keep these direct startup responses small, fixed, and boring. HID execution reads and executes `payload.dd`; if missing in the expected way, use the existing fallback behavior. Do not point runtime execution back to `payload.txt`.
+* **Runtime Runners (`src/runners/`):**
+  `mod.rs` exports only the Embassy task functions required by `main.rs`. `usb.rs` owns USB, NCM, USB DHCP, and Host HID execution. `wifi.rs` owns CYW43 AP bring-up and starts the HTTP worker. `http/mod.rs` owns the single accepted-socket HTTP worker loop. `http/classify.rs`, `http/direct.rs`, `http/json.rs`, `http/request.rs`, and `http/replay.rs` keep request classification, direct startup responses, JSON/chunk writing, request body parsing, and picoserve prefix replay separate. Known startup GETs are served directly from the HTTP worker because routing them through the generic picoserve serve path has reproduced firmware faults on the Pico 2 W. Keep these direct startup responses small, fixed, and boring. HID execution reads and executes `payload.dd`; if missing in the expected way, use the existing fallback behavior. Do not point runtime execution back to `payload.txt`.
 * **Static Dashboard (`src/net/http/assets.rs`):**
   Serves only the gzipped single-file dashboard artifact from `dist/index.html.gz` through picoserve with `Content-Encoding: gzip`. Do not serve separate JS/CSS assets from firmware.
 * **Utilities (`src/utils/`):**
@@ -113,7 +113,7 @@ This file provides strict architectural context, constraints, and learned patter
 * **Build Ordering:** `cargo check`/`cargo build` include `dist/index.html.gz`. Run `npm --prefix web run build` first when the artifact may be missing or stale.
 * **Small Bootstrap Required:** `/api/bootstrap` must stay a small fixed `Json<T>` response. Do not add LittleFS reads, payload text, file tables, run history, validation, or other variable-sized fields back into bootstrap.
 * **Chunk Only Where Needed:** `JsonChunkBuffer` is for payload reads and similar variable-sized JSON bodies. Do not use chunking for fixed metadata endpoints just because they are JSON.
-* **Static Asset Writes:** Keep dashboard write slices below the TCP tx buffer size. If the HTTP worker tx buffer in `src/runners.rs` changes, verify the static dashboard chunk size remains safely smaller.
+* **Static Asset Writes:** Keep dashboard write slices below the TCP tx buffer size. If the HTTP worker tx buffer in `src/runners/http/mod.rs` changes, verify the static dashboard chunk size remains safely smaller.
 
 ---
 
