@@ -1,5 +1,4 @@
 export type NoticeTone = 'quiet' | 'success' | 'error' | 'warning';
-export type TargetOs = 'windows' | 'linux' | 'macos';
 
 export type SelectOption = {
   code: string;
@@ -29,15 +28,6 @@ export type ValidationState = {
   parsed_commands?: unknown[];
   summary: string;
   warning_count?: number;
-};
-
-export type NcmLinkState = {
-  active?: boolean;
-  root_url?: string;
-};
-
-export type HostHidState = {
-  active?: boolean;
 };
 
 export type RunHistoryItem = {
@@ -129,18 +119,15 @@ export type BootstrapState = {
   ap_password?: string;
   ap_ssid?: string;
   host_hid_active?: boolean;
-  host_hid?: HostHidState;
   keyboard_layout?: string;
   keyboard_os?: string;
   ncm_active?: boolean;
   ncm_url?: string;
   seeded?: boolean;
-  ncm_link?: NcmLinkState;
 };
 
 export type HydratedBootstrapState = BootstrapState & {
   files?: LittleFsFile[];
-  has_binary?: boolean;
   payload?: string;
   payload_file?: string;
   run_history?: RunHistoryItem[];

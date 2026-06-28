@@ -82,7 +82,6 @@ export async function getHydratedBootstrap(): Promise<HydratedBootstrapState> {
       path: file.kind === 'ducky' ? '/payload.dd' : `/armory/${file.name}`,
       size: file.size,
     })),
-    has_binary: armory.has_binary,
     payload: payload.code,
     payload_file: 'payload.dd',
     run_history: runs.run_history,

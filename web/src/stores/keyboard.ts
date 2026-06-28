@@ -9,7 +9,6 @@ import { derived, writable } from 'svelte/store';
 import { updateKeyboardTarget } from '../api/client';
 import type {
   BootstrapState,
-  HostHidState,
   KeyboardState,
   KeyboardTargetRequest,
   SelectOption,
@@ -17,6 +16,7 @@ import type {
 import { showNotice } from './ui';
 
 type KeyboardStateSource = Partial<BootstrapState>;
+type HostHidState = { active?: boolean };
 
 const KEYBOARD_LAYOUTS: SelectOption[] = [
   { code: 'US', label: 'English (US)' },
@@ -62,11 +62,7 @@ function optionLabel(options: SelectOption[], code: string, fallback: string) {
   return options.find((option) => option.code === code)?.label || fallback;
 }
 
-export function applyHostHidState(state?: HostHidState, fallbackReady = false) {
-  const next = state || {
-    active: fallbackReady,
-  };
-
+export function applyHostHidState(next: HostHidState) {
   hostHid.set(next);
   keyboardReady.set(Boolean(next.active));
 }

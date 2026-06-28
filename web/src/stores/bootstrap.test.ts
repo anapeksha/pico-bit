@@ -101,16 +101,7 @@ describe('loadBootstrap', () => {
     expect(get(stores.ap.apPassword)).toBe('pass123');
   });
 
-  it('sets hasBinary from bootstrap data', async () => {
-    mockHydration();
-
-    const { stores, loadBootstrap } = await setup();
-    await loadBootstrap();
-
-    expect(get(stores.binary.hasBinary)).toBe(true);
-  });
-
-  it('hydrates armory files and staged filename from bootstrap data', async () => {
+  it('hydrates armory files from bootstrap data', async () => {
     mockHydration();
 
     const { stores, loadBootstrap } = await setup();
@@ -125,7 +116,6 @@ describe('loadBootstrap', () => {
         url: '/armory/payload.bin',
       },
     ]);
-    expect(get(stores.binary.stagedBinaryName)).toBe('payload.bin');
   });
 
   it('throws when /api/bootstrap returns a non-ok response', async () => {

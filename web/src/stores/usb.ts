@@ -1,14 +1,17 @@
 /**
  * NCM link state as reported by the device.
  *
- * `ncmLink` mirrors the raw `NcmLinkState` object from the server.
+ * `ncmLink` mirrors the raw NCM link object from the server.
  * `ncmLinkLabel` derives a single human-readable summary string for display.
  * `applyNcmLink` is called by bootstrap or another integration layer whenever
  * the server returns an updated transport snapshot.
  */
 import { derived, writable } from 'svelte/store';
 
-import type { NcmLinkState } from '../api/contracts';
+type NcmLinkState = {
+  active?: boolean;
+  root_url?: string;
+};
 
 /** Raw NCM link state from the device. */
 export const ncmLink = writable<NcmLinkState>({

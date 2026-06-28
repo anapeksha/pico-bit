@@ -11,26 +11,13 @@ import { get } from 'svelte/store';
 import type {
   ArmoryFile,
   HydratedBootstrapState,
-  HostHidState,
   KeyboardState,
-  NcmLinkState,
   NoticeTone,
   RunHistoryItem,
 } from '../api/contracts';
 import { apPassword, apSsid } from './ap';
-import {
-  applyArmoryState,
-  armoryFiles,
-  armoryNotice,
-  armoryUploadLimit,
-  hasBinary,
-  stagedBinaryName,
-} from './binary';
-import {
-  configureBootstrapState,
-  loadCachedBootstrap,
-  refreshBootstrapSource,
-} from './bootstrapCache';
+import { applyArmoryState, armoryFiles, armoryNotice } from './binary';
+import { configureBootstrapState, loadCachedBootstrap } from './bootstrapCache';
 import { payload, payloadState } from './editor';
 import {
   applyHostHidState,
@@ -51,31 +38,32 @@ type BootstrapSnapshot = {
     tone: NoticeTone;
     visible: boolean;
   };
-  armoryUploadLimit: number;
-  hasBinary: boolean;
-  hostHid: HostHidState;
+  hostHid: {
+    active?: boolean;
+  };
   keyboard: KeyboardState;
   keyboardReady: boolean;
-  ncmLink: NcmLinkState;
+  ncmLink: {
+    active?: boolean;
+    root_url?: string;
+  };
   payload: string;
   payloadState: string;
   runHistory: RunHistoryItem[];
   seededThisBoot: boolean;
-  stagedBinaryName: string;
 };
 
 export function applyBootstrap(data: HydratedBootstrapState) {
   apSsid.set(data.ap_ssid || 'PicoBit');
   apPassword.set(data.ap_password || 'Open network');
-  applyHostHidState(data.host_hid || { active: Boolean(data.host_hid_active) });
+  applyHostHidState({ active: Boolean(data.host_hid_active) });
   seededThisBoot.set(Boolean(data.seeded));
-  hasBinary.set(Boolean(data.has_binary));
   applyArmoryState(data);
   runHistory.set(data.run_history || []);
   payload.set(data.payload || '');
   payloadState.set(data.seeded ? 'Seeded on boot' : 'Saved on device');
   applyKeyboardState(data);
-  applyNcmLink(data.ncm_link || { active: Boolean(data.ncm_active), root_url: data.ncm_url });
+  applyNcmLink({ active: Boolean(data.ncm_active), root_url: data.ncm_url });
 }
 
 function captureBootstrapSnapshot(): BootstrapSnapshot {
@@ -84,8 +72,6 @@ function captureBootstrapSnapshot(): BootstrapSnapshot {
     apSsid: get(apSsid),
     armoryFiles: get(armoryFiles),
     armoryNotice: get(armoryNotice),
-    armoryUploadLimit: get(armoryUploadLimit),
-    hasBinary: get(hasBinary),
     hostHid: get(hostHid),
     keyboard: get(keyboard),
     keyboardReady: get(keyboardReady),
@@ -94,7 +80,6 @@ function captureBootstrapSnapshot(): BootstrapSnapshot {
     payloadState: get(payloadState),
     runHistory: get(runHistory),
     seededThisBoot: get(seededThisBoot),
-    stagedBinaryName: get(stagedBinaryName),
   };
 }
 
@@ -104,8 +89,6 @@ function restoreBootstrapSnapshot(snapshot: unknown) {
   apSsid.set(data.apSsid);
   armoryFiles.set(data.armoryFiles);
   armoryNotice.set(data.armoryNotice);
-  armoryUploadLimit.set(data.armoryUploadLimit);
-  hasBinary.set(data.hasBinary);
   hostHid.set(data.hostHid);
   keyboard.set(data.keyboard);
   keyboardReady.set(data.keyboardReady);
@@ -114,7 +97,6 @@ function restoreBootstrapSnapshot(snapshot: unknown) {
   payloadState.set(data.payloadState);
   runHistory.set(data.runHistory);
   seededThisBoot.set(data.seededThisBoot);
-  stagedBinaryName.set(data.stagedBinaryName);
 }
 
 configureBootstrapState({
@@ -129,10 +111,6 @@ configureBootstrapState({
  */
 export async function loadBootstrap() {
   await loadCachedBootstrap();
-}
-
-export async function refreshBootstrap() {
-  await refreshBootstrapSource();
 }
 
 /**

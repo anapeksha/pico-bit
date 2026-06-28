@@ -27,15 +27,6 @@ export async function refreshBootstrapSource() {
   return data;
 }
 
-export function setCachedBootstrap(data: HydratedBootstrapState) {
-  bootstrapCache.set(data);
-  binding?.apply(data);
-}
-
-export function invalidateBootstrap() {
-  bootstrapCache.invalidate();
-}
-
 export async function withOptimisticBootstrap<T>(
   optimisticUpdate: () => void,
   mutation: () => Promise<T>,
