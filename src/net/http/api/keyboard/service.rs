@@ -164,6 +164,18 @@ pub(crate) fn active_target_codes() -> (&'static str, &'static str) {
     (os_code(active_os()), layout_code(active_layout()))
 }
 
+pub(crate) fn update_target_codes(os_code_value: &str, layout_code_value: &str) -> bool {
+    let Some(os) = os_from_code(os_code_value) else {
+        return false;
+    };
+    let Some(layout) = layout_from_code(layout_code_value) else {
+        return false;
+    };
+
+    set_target(os, layout);
+    true
+}
+
 pub(super) fn update_target(request: KeyboardTargetRequest) -> KeyboardResponse {
     let current_layout = active_layout();
     let current_os = active_os();

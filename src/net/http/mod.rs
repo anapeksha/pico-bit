@@ -1,5 +1,3 @@
-// src/net/http/mod.rs
-
 mod api;
 mod assets;
 
@@ -12,6 +10,14 @@ pub struct AppRouter;
 
 pub(crate) fn active_keyboard_layout() -> KeyboardLayout {
     api::keyboard::service::active_layout()
+}
+
+pub(crate) fn active_keyboard_target_codes() -> (&'static str, &'static str) {
+    api::keyboard::service::active_target_codes()
+}
+
+pub(crate) fn update_keyboard_target_codes(os: &str, layout: &str) -> bool {
+    api::keyboard::service::update_target_codes(os, layout)
 }
 
 pub(crate) fn compressed_index_html() -> &'static [u8] {
