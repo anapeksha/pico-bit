@@ -268,7 +268,7 @@ describe('updateKeyboardTarget', () => {
 
     await updateKeyboardTarget({ layout: 'DE', os: 'LINUX' });
 
-    expect(fetch).toHaveBeenCalledWith('/api/keyboard-layout', {
+    expect(fetch).toHaveBeenCalledWith('/api/keyboard/layout', {
       body: JSON.stringify({ layout: 'DE', os: 'LINUX' }),
       headers: { 'Content-Type': 'application/json' },
       method: 'POST',

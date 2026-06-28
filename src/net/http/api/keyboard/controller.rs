@@ -20,5 +20,5 @@ async fn update_keyboard_target(
 }
 
 pub fn build<R: PathRouter>(router: Router<R, ()>) -> Router<impl PathRouter, ()> {
-    router.route("/api/keyboard-layout", post(update_keyboard_target))
+    router.route("/api/keyboard/layout", post(update_keyboard_target))
 }

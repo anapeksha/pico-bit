@@ -104,7 +104,7 @@ export function runPayload(): Promise<PayloadRunResponse> {
 }
 
 export function updateKeyboardTarget(body: KeyboardTargetRequest): Promise<KeyboardTargetResponse> {
-  return requestJson<KeyboardTargetResponse>('/api/keyboard-layout', {
+  return requestJson<KeyboardTargetResponse>('/api/keyboard/layout', {
     method: 'POST',
     body: JSON.stringify(body),
   });

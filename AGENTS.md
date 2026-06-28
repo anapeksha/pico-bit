@@ -40,6 +40,7 @@ This file provides strict architectural context, constraints, and learned patter
 * **Chunked Streaming:** When downloading/uploading raw files, do not read the entire file into memory. Stream incoming/outgoing payload bytes directly between the HTTP socket and LittleFS in small loop chunks, currently 1 KB for Armory uploads.
 * **Large JSON Responses:** Use `ChunkedResponse` only for endpoints that carry variable-sized content, currently `GET /api/payload` and raw file downloads. Small bounded metadata responses should return normal `Json<T>`.
 * **Lean GET Contracts:** Firmware GET endpoints should return machine state only: booleans, short codes, filenames, sizes, and URLs when necessary. Do not send UI labels, friendly names, hints, or success messages from read-only endpoints; keep those in the frontend.
+* **Canonical API Source:** Picoserve controllers are the only web/API route implementation. Do not add worker-level route handlers unless there is a reproduced firmware fault that cannot be fixed in routing, frontend request flow, or picoserve configuration.
 
 ### API Layout Rules
 * **Folder Per API Surface:** Each API surface lives in its own folder under `src/net/http/api/<name>/`.
@@ -72,9 +73,9 @@ This file provides strict architectural context, constraints, and learned patter
 * **Storage (`src/storage/manager.rs`):**
   Owns LittleFS read/write/truncate/append/list helpers. It must create `/armory` and ensure `payload.dd` exists after mount. `list_files` returns bounded `ListedFile` entries from `/` and `/armory`.
 * **Runtime Runner (`src/runners.rs`):**
-  Reads and executes `payload.dd`. If missing or unreadable in the expected way, use the existing fallback behavior. Do not point runtime execution back to `payload.txt`.
+  Owns the Embassy tasks for USB, NCM, Wi-Fi, DHCP, HTTP, and Host HID execution. The HTTP worker uses a single accepted socket loop with a small request preflight. Known startup GETs are served directly from this worker because routing them through the generic picoserve serve path has reproduced firmware faults on the Pico 2 W. Keep these direct startup responses small, fixed, and boring. HID execution reads and executes `payload.dd`; if missing in the expected way, use the existing fallback behavior. Do not point runtime execution back to `payload.txt`.
 * **Static Dashboard (`src/net/http/assets.rs`):**
-  Serves only the gzipped single-file dashboard artifact from `dist/index.html.gz`. Use a fixed `Content-Length` response and write the body in small slices; do not serve the dashboard with HTTP chunked transfer. The asset is precompressed and has a known length, and chunk framing can exceed small TCP buffers.
+  Serves only the gzipped single-file dashboard artifact from `dist/index.html.gz` through picoserve with `Content-Encoding: gzip`. Do not serve separate JS/CSS assets from firmware.
 * **Utilities (`src/utils/`):**
   Shared helpers used by multiple subsystems belong here. Current chunked JSON escaping/writing helpers are exported from `src/utils/mod.rs` as `json_buffer`.
 
@@ -99,7 +100,7 @@ This file provides strict architectural context, constraints, and learned patter
 * **Client:** HTTP calls live in `web/src/api/client.ts`.
 * **Bootstrap Cache:** `web/src/stores/bootstrapCache.ts` is the app-level cache layer. Startup hydration fetches `/api/bootstrap`, `/api/armory`, `/api/payload`, and `/api/runs` in sequence and applies one composed state. Mutations refresh through the same composed hydration path.
 * **Optimistic Mutations:** Frontend mutations should update state optimistically, then refresh bootstrap. Revert to the captured snapshot only if the bootstrap refresh fails.
-* **Keyboard Target:** Keyboard target selection is frontend-local and consists only of operating system plus keyboard layout. Do not show or store a separate "Profile" field; it is just a derived combination of OS/layout. Persist OS/layout in browser storage and fall back to Windows US if no frontend storage exists. Do not call a firmware mutation endpoint for keyboard target changes.
+* **Keyboard Target:** Keyboard target selection consists only of operating system plus keyboard layout. Do not show or store a separate "Profile" field; it is just a derived combination of OS/layout. Do not persist keyboard target in browser storage. Bootstrap applies the firmware-reported target, and the frontend calls `/api/keyboard/layout` only when the user changes the controls.
 * **Editor Validation:** DuckyScript validation should run only on explicit save/save-run flows, not on every keystroke and not during bootstrap. The Save button posts the payload for firmware validation; if valid, the frontend immediately calls the run endpoint. If invalid, open `ValidationModal` with the returned validation response.
 * **Binary Armory UI:** Render files from bootstrap file entries. Show `payload.dd`, but disable delete for it. Upload validation must enforce the current `max_upload_bytes` limit.
 * **Network Stager Reference:** Windows uses PowerShell examples; macOS and Linux use `curl`.
@@ -108,10 +109,11 @@ This file provides strict architectural context, constraints, and learned patter
 ## 7. Runtime/Worker Constraints
 
 * **HTTP Worker Count:** The dashboard is a single static request, so the HTTP server uses one worker. Do not raise the worker pool just to support separate JS/CSS assets; fix the frontend bundle instead.
+* **Straightforward Startup:** Dashboard startup should be explicit and boring: load `/`, then hydrate through the frontend client. Do not add hidden browser-storage restore flows that call mutation APIs during startup. The current worker-level startup responses exist only to avoid the reproduced picoserve generic serve crash on the Pico 2 W; do not expand them beyond the known startup surface without hardware verification.
 * **Build Ordering:** `cargo check`/`cargo build` include `dist/index.html.gz`. Run `npm --prefix web run build` first when the artifact may be missing or stale.
 * **Small Bootstrap Required:** `/api/bootstrap` must stay a small fixed `Json<T>` response. Do not add LittleFS reads, payload text, file tables, run history, validation, or other variable-sized fields back into bootstrap.
 * **Chunk Only Where Needed:** `JsonChunkBuffer` is for payload reads and similar variable-sized JSON bodies. Do not use chunking for fixed metadata endpoints just because they are JSON.
-* **Static Asset Writes:** Keep dashboard write slices below the TCP tx buffer size. If `src/runners.rs` tx buffer changes, verify `HTML_WRITE_CHUNK` in `src/net/http/assets.rs` remains safely smaller.
+* **Static Asset Writes:** Keep dashboard write slices below the TCP tx buffer size. If the HTTP worker tx buffer in `src/runners.rs` changes, verify the static dashboard chunk size remains safely smaller.
 
 ---
 

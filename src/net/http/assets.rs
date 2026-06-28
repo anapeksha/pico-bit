@@ -33,6 +33,7 @@ async fn stream_html() -> impl IntoResponse {
         .into_response()
         .with_header("Content-Encoding", "gzip")
         .with_header("Vary", "Accept-Encoding")
+        .with_header("Cache-Control", "no-store")
         .with_status_code(StatusCode::OK)
 }
 

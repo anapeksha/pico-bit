@@ -312,7 +312,7 @@ fn classify_startup_request(bytes: &[u8]) -> StartupRequest {
         return StartupRequest::Options;
     }
 
-    if request_starts_with(bytes, b"POST /api/keyboard-layout ") {
+    if request_starts_with(bytes, b"POST /api/keyboard/layout ") {
         return StartupRequest::KeyboardTarget;
     }
 
@@ -334,6 +334,7 @@ async fn serve_root_asset(socket: &mut TcpSocket<'_>) -> Result<(), embassy_net:
 Content-Type: text/html\r\n\
 Content-Encoding: gzip\r\n\
 Vary: Accept-Encoding\r\n\
+Cache-Control: no-store\r\n\
 Transfer-Encoding: chunked\r\n\
 Connection: close\r\n\
 \r\n",
@@ -383,7 +384,11 @@ async fn serve_bootstrap(socket: &mut TcpSocket<'_>) -> Result<(), embassy_net::
 
     let (keyboard_os, keyboard_layout) = crate::net::active_keyboard_target_codes();
 
-    write_http_chunk(socket, b"{\"ap_password\":\"PicoBit24Net\",\"ap_ssid\":\"PicoBit\",\"host_hid_active\":true,\"keyboard_layout\":").await?;
+    write_http_chunk(socket, b"{\"ap_password\":").await?;
+    write_json_string_bytes(socket, crate::net::wifi_ap_password().as_bytes()).await?;
+    write_http_chunk(socket, b",\"ap_ssid\":").await?;
+    write_json_string_bytes(socket, crate::net::wifi_ap_ssid().as_bytes()).await?;
+    write_http_chunk(socket, b",\"host_hid_active\":true,\"keyboard_layout\":").await?;
     write_json_string_bytes(socket, keyboard_layout.as_bytes()).await?;
     write_http_chunk(socket, b",\"keyboard_os\":").await?;
     write_json_string_bytes(socket, keyboard_os.as_bytes()).await?;
@@ -556,6 +561,7 @@ async fn write_json_headers(socket: &mut TcpSocket<'_>) -> Result<(), embassy_ne
         .write_all(
             b"HTTP/1.1 200 OK\r\n\
 Content-Type: application/json\r\n\
+Cache-Control: no-store\r\n\
 Transfer-Encoding: chunked\r\n\
 Connection: close\r\n\
 \r\n",

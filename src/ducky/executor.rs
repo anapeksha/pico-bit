@@ -307,6 +307,12 @@ impl<'a> DuckyExecutor<'a> {
     }
 }
 
+impl<'a> Default for DuckyExecutor<'a> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub trait StatefulWriter {
     fn write_report<'a>(&'a mut self, report: &'a KeyboardReport) -> impl Future<Output = ()> + 'a;
     fn clear_report(&mut self) -> impl Future<Output = ()> + '_;

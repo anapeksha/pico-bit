@@ -104,7 +104,7 @@ if (shouldMock) {
       });
     }
 
-    if (url === '/api/keyboard-layout' && method === 'POST') {
+    if (url === '/api/keyboard/layout' && method === 'POST') {
       const data = requestJson(options.body);
       keyboardLayout = stringField(data, 'layout') || keyboardLayout;
       keyboardOs = stringField(data, 'os') || keyboardOs;
