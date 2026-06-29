@@ -10,14 +10,32 @@ struct KeyMapping {
     keycode: u8,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum KeyboardLayout {
+    Us = 0,
+    Uk = 1,
+    De = 2,
+    Fr = 3,
+}
+
 impl DuckyKeyboard {
-    fn lookup_char(c: char) -> Option<KeyMapping> {
+    fn lookup_char(c: char, layout: KeyboardLayout) -> Option<KeyMapping> {
         if !c.is_ascii() {
             return None;
         }
 
         let ascii = c as u8;
 
+        match layout {
+            KeyboardLayout::Us => Self::lookup_us_char(ascii),
+            KeyboardLayout::Uk => Self::lookup_uk_char(ascii),
+            KeyboardLayout::De => Self::lookup_de_char(ascii),
+            KeyboardLayout::Fr => Self::lookup_fr_char(ascii),
+        }
+    }
+
+    fn lookup_us_char(ascii: u8) -> Option<KeyMapping> {
         match ascii {
             // Lowercase alphanumeric mappings
             b'a'..=b'z' => Some(KeyMapping {
@@ -192,6 +210,268 @@ impl DuckyKeyboard {
         }
     }
 
+    fn lookup_uk_char(ascii: u8) -> Option<KeyMapping> {
+        match ascii {
+            b'"' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x1F,
+            }),
+            b'@' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x34,
+            }),
+            b'#' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x32,
+            }),
+            b'~' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x32,
+            }),
+            b'\\' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x64,
+            }),
+            b'|' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x64,
+            }),
+            _ => Self::lookup_us_char(ascii),
+        }
+    }
+
+    fn lookup_de_char(ascii: u8) -> Option<KeyMapping> {
+        match ascii {
+            b'y' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x1D,
+            }),
+            b'Y' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x1D,
+            }),
+            b'z' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x1C,
+            }),
+            b'Z' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x1C,
+            }),
+            b'"' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x1F,
+            }),
+            b'&' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x23,
+            }),
+            b'/' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x24,
+            }),
+            b'(' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x25,
+            }),
+            b')' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x26,
+            }),
+            b'=' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x27,
+            }),
+            b'?' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x2D,
+            }),
+            b'\\' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x2D,
+            }),
+            b'@' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x14,
+            }),
+            b'{' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x24,
+            }),
+            b'[' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x25,
+            }),
+            b']' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x26,
+            }),
+            b'}' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x27,
+            }),
+            b';' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x36,
+            }),
+            b':' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x37,
+            }),
+            b'-' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x38,
+            }),
+            b'_' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x38,
+            }),
+            b'+' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x30,
+            }),
+            b'*' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x30,
+            }),
+            b'#' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x32,
+            }),
+            b'\'' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x32,
+            }),
+            _ => Self::lookup_us_char(ascii),
+        }
+    }
+
+    fn lookup_fr_char(ascii: u8) -> Option<KeyMapping> {
+        match ascii {
+            b'a' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x14,
+            }),
+            b'A' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x14,
+            }),
+            b'q' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x04,
+            }),
+            b'Q' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x04,
+            }),
+            b'w' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x1D,
+            }),
+            b'W' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x1D,
+            }),
+            b'z' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x1A,
+            }),
+            b'Z' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x1A,
+            }),
+            b'm' => Some(KeyMapping {
+                modifier: modifiers::NONE,
+                keycode: 0x33,
+            }),
+            b'M' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x33,
+            }),
+            b'1' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x1E,
+            }),
+            b'2' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x1F,
+            }),
+            b'3' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x20,
+            }),
+            b'4' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x21,
+            }),
+            b'5' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x22,
+            }),
+            b'6' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x23,
+            }),
+            b'7' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x24,
+            }),
+            b'8' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x25,
+            }),
+            b'9' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x26,
+            }),
+            b'0' => Some(KeyMapping {
+                modifier: modifiers::LEFT_SHIFT,
+                keycode: 0x27,
+            }),
+            b'@' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x27,
+            }),
+            b'#' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x20,
+            }),
+            b'[' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x22,
+            }),
+            b'|' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x23,
+            }),
+            b'`' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x24,
+            }),
+            b'\\' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x25,
+            }),
+            b'^' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x26,
+            }),
+            b']' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x2D,
+            }),
+            b'}' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x2E,
+            }),
+            b'{' => Some(KeyMapping {
+                modifier: modifiers::RIGHT_ALT,
+                keycode: 0x21,
+            }),
+            _ => Self::lookup_us_char(ascii),
+        }
+    }
+
     pub fn parse_token_sequence(line: &str) -> Result<KeySequence, DuckyError> {
         let mut sequence = KeySequence::default();
         let mut key_idx = 0;
@@ -249,8 +529,11 @@ impl DuckyKeyboard {
         Ok(sequence)
     }
 
-    pub fn character_to_sequence(c: char) -> Result<KeySequence, DuckyError> {
-        let mapping = Self::lookup_char(c).ok_or(DuckyError::InvalidKey)?;
+    pub(crate) fn character_to_sequence_for_layout(
+        c: char,
+        layout: KeyboardLayout,
+    ) -> Result<KeySequence, DuckyError> {
+        let mapping = Self::lookup_char(c, layout).ok_or(DuckyError::InvalidKey)?;
 
         let mut sequence = KeySequence::default();
         sequence.report.modifier = mapping.modifier;
@@ -262,21 +545,24 @@ impl DuckyKeyboard {
 
 #[cfg(test)]
 mod tests {
-    use super::DuckyKeyboard;
+    use super::{DuckyKeyboard, KeyboardLayout};
     use crate::ducky::errors::DuckyError;
     use crate::ducky::types::modifiers;
 
     #[test]
     fn maps_lowercase_uppercase_and_symbols_to_hid_reports() {
-        let lower = DuckyKeyboard::character_to_sequence('a').unwrap();
+        let lower =
+            DuckyKeyboard::character_to_sequence_for_layout('a', KeyboardLayout::Us).unwrap();
         assert_eq!(lower.report.modifier, modifiers::NONE);
         assert_eq!(lower.report.keycodes[0], 0x04);
 
-        let upper = DuckyKeyboard::character_to_sequence('A').unwrap();
+        let upper =
+            DuckyKeyboard::character_to_sequence_for_layout('A', KeyboardLayout::Us).unwrap();
         assert_eq!(upper.report.modifier, modifiers::LEFT_SHIFT);
         assert_eq!(upper.report.keycodes[0], 0x04);
 
-        let bang = DuckyKeyboard::character_to_sequence('!').unwrap();
+        let bang =
+            DuckyKeyboard::character_to_sequence_for_layout('!', KeyboardLayout::Us).unwrap();
         assert_eq!(bang.report.modifier, modifiers::LEFT_SHIFT);
         assert_eq!(bang.report.keycodes[0], 0x1E);
     }
@@ -284,9 +570,43 @@ mod tests {
     #[test]
     fn rejects_non_ascii_characters() {
         assert_eq!(
-            DuckyKeyboard::character_to_sequence('é').unwrap_err(),
+            DuckyKeyboard::character_to_sequence_for_layout('é', KeyboardLayout::Us).unwrap_err(),
             DuckyError::InvalidKey
         );
+    }
+
+    #[test]
+    fn maps_uk_specific_symbols() {
+        let at = DuckyKeyboard::character_to_sequence_for_layout('@', KeyboardLayout::Uk).unwrap();
+        assert_eq!(at.report.modifier, modifiers::LEFT_SHIFT);
+        assert_eq!(at.report.keycodes[0], 0x34);
+
+        let quote =
+            DuckyKeyboard::character_to_sequence_for_layout('"', KeyboardLayout::Uk).unwrap();
+        assert_eq!(quote.report.modifier, modifiers::LEFT_SHIFT);
+        assert_eq!(quote.report.keycodes[0], 0x1F);
+    }
+
+    #[test]
+    fn maps_german_qwertz_and_altgr_symbols() {
+        let z = DuckyKeyboard::character_to_sequence_for_layout('z', KeyboardLayout::De).unwrap();
+        assert_eq!(z.report.modifier, modifiers::NONE);
+        assert_eq!(z.report.keycodes[0], 0x1C);
+
+        let at = DuckyKeyboard::character_to_sequence_for_layout('@', KeyboardLayout::De).unwrap();
+        assert_eq!(at.report.modifier, modifiers::RIGHT_ALT);
+        assert_eq!(at.report.keycodes[0], 0x14);
+    }
+
+    #[test]
+    fn maps_french_azerty_letters_and_digits() {
+        let a = DuckyKeyboard::character_to_sequence_for_layout('a', KeyboardLayout::Fr).unwrap();
+        assert_eq!(a.report.modifier, modifiers::NONE);
+        assert_eq!(a.report.keycodes[0], 0x14);
+
+        let one = DuckyKeyboard::character_to_sequence_for_layout('1', KeyboardLayout::Fr).unwrap();
+        assert_eq!(one.report.modifier, modifiers::LEFT_SHIFT);
+        assert_eq!(one.report.keycodes[0], 0x1E);
     }
 
     #[test]

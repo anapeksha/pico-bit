@@ -23,13 +23,5 @@ export function createResourceCache<T>(fetcher: () => Promise<T>) {
   return {
     get: () => read(false),
     refresh: () => read(true),
-    set(next: T) {
-      data = next;
-      loaded = true;
-    },
-    peek: () => data,
-    invalidate() {
-      loaded = false;
-    },
   };
 }

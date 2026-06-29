@@ -1,5 +1,4 @@
 export type NoticeTone = 'quiet' | 'success' | 'error' | 'warning';
-export type TargetOs = 'windows' | 'linux' | 'macos';
 
 export type SelectOption = {
   code: string;
@@ -31,30 +30,8 @@ export type ValidationState = {
   warning_count?: number;
 };
 
-export type NcmLinkState = {
-  address?: string;
-  active?: boolean;
-  available?: boolean;
-  filename?: string;
-  gateway?: string;
-  has_binary?: boolean;
-  interface?: string;
-  message?: string;
-  root_url?: string;
-  state?: string;
-  transport?: string;
-};
-
-export type HostHidState = {
-  active?: boolean;
-  available?: boolean;
-  message?: string;
-  state?: string;
-};
-
 export type RunHistoryItem = {
-  message?: string;
-  notice?: NoticeTone | string;
+  ok?: boolean;
   preview?: string;
   sequence?: number;
   source?: string;
@@ -79,25 +56,21 @@ export type LittleFsFile = {
 };
 
 export type ArmoryFile = {
-  kind?: string;
+  kind: string;
   name: string;
   path?: string;
   size: number;
-  url: string;
+  url?: string;
 };
 
 export type ArmoryListResponse = {
   files: ArmoryFile[];
   has_binary: boolean;
-  max_upload_bytes?: number;
-  message: string;
-  notice: NoticeTone;
 };
 
 export type ArmoryMutationResponse = {
   filename: string;
   has_binary: boolean;
-  max_upload_bytes?: number;
   message: string;
   notice: NoticeTone;
 };
@@ -107,8 +80,20 @@ export type KeyboardTargetRequest = {
   os?: string;
 };
 
+export type KeyboardTargetResponse = {
+  keyboard_layout: string;
+  keyboard_os: string;
+  message: string;
+  notice: NoticeTone;
+};
+
 export type PayloadReadResponse = {
   code: string;
+};
+
+export type RunsResponse = {
+  run_history: RunHistoryItem[];
+  seeded: boolean;
 };
 
 export type PayloadWriteRequest = {
@@ -124,32 +109,28 @@ export type PayloadMutationResponse = {
 };
 
 export type PayloadRunResponse = {
+  error_line?: number | null;
   message: string;
   success: boolean;
+  validation?: ValidationState;
 };
 
 export type BootstrapState = {
   ap_password?: string;
   ap_ssid?: string;
-  files?: LittleFsFile[];
-  has_binary?: boolean;
-  host_hid?: HostHidState;
+  host_hid_active?: boolean;
   keyboard_layout?: string;
-  keyboard_layout_hint?: string;
-  keyboard_layout_label?: string;
-  keyboard_layouts?: SelectOption[];
   keyboard_os?: string;
-  keyboard_os_label?: string;
-  keyboard_oses?: SelectOption[];
-  keyboard_target_label?: string;
-  max_upload_bytes?: number;
-  message?: string;
-  notice?: NoticeTone;
+  ncm_active?: boolean;
+  ncm_url?: string;
+  seeded?: boolean;
+};
+
+export type HydratedBootstrapState = BootstrapState & {
+  files?: LittleFsFile[];
   payload?: string;
   payload_file?: string;
   run_history?: RunHistoryItem[];
-  seeded?: boolean;
-  ncm_link?: NcmLinkState;
 };
 
 export type RequestFailure = Error & {

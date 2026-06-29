@@ -5,44 +5,33 @@ const BOOTSTRAP_DATA = {
   ap_ssid: 'TestNet',
   ap_password: 'pass123',
   seeded: false,
-  has_binary: true,
+  keyboard_layout: 'US',
+  keyboard_os: 'WIN',
+  host_hid_active: true,
+  ncm_active: true,
+  ncm_url: 'http://192.168.7.1',
+};
+
+const ARMORY_DATA = {
   files: [
     {
       kind: 'asset',
       name: 'payload.bin',
       path: '/armory/payload.bin',
       size: 4096,
+      url: '/armory/payload.bin',
     },
   ],
+  has_binary: true,
+};
+
+const PAYLOAD_DATA = {
+  code: 'STRING Hello',
+};
+
+const RUNS_DATA = {
   run_history: [],
-  payload: 'STRING Hello',
-  keyboard_layout: 'en-US',
-  keyboard_os: 'windows',
-  keyboard_layouts: [{ code: 'en-US', label: 'English (US)' }],
-  keyboard_oses: [{ code: 'windows', label: 'Windows' }],
-  keyboard_layout_label: 'English (US)',
-  keyboard_os_label: 'Windows',
-  keyboard_target_label: 'Windows / English (US)',
-  keyboard_layout_hint: '',
-  host_hid: {
-    active: true,
-    available: true,
-    message: 'Host HID ready',
-    state: 'active',
-  },
-  ncm_link: {
-    active: true,
-    address: '192.168.7.1',
-    available: true,
-    filename: 'payload.bin',
-    gateway: '192.168.7.1',
-    has_binary: true,
-    interface: 'usb-ncm',
-    message: 'NCM ready',
-    root_url: 'http://192.168.7.1',
-    state: 'active',
-    transport: 'ncm',
-  },
+  seeded: false,
 };
 
 describe('loadBootstrap', () => {
@@ -73,7 +62,7 @@ describe('loadBootstrap', () => {
     return { stores, loadBootstrap };
   }
 
-  it('distributes ap_ssid and ap_password to ap store', async () => {
+  function mockHydration() {
     vi.mocked(fetch)
       .mockResolvedValueOnce({
         ok: true,
@@ -81,10 +70,29 @@ describe('loadBootstrap', () => {
         json: vi.fn().mockResolvedValue(BOOTSTRAP_DATA),
       } as unknown as Response)
       .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(ARMORY_DATA),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(PAYLOAD_DATA),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(RUNS_DATA),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
         ok: false,
         status: 404,
         json: vi.fn().mockResolvedValue({}),
       } as unknown as Response);
+  }
+
+  it('distributes ap_ssid and ap_password to ap store', async () => {
+    mockHydration();
 
     const { stores, loadBootstrap } = await setup();
     await loadBootstrap();
@@ -93,37 +101,8 @@ describe('loadBootstrap', () => {
     expect(get(stores.ap.apPassword)).toBe('pass123');
   });
 
-  it('sets hasBinary from bootstrap data', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue(BOOTSTRAP_DATA),
-      } as unknown as Response)
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: vi.fn().mockResolvedValue({}),
-      } as unknown as Response);
-
-    const { stores, loadBootstrap } = await setup();
-    await loadBootstrap();
-
-    expect(get(stores.binary.hasBinary)).toBe(true);
-  });
-
-  it('hydrates armory files and staged filename from bootstrap data', async () => {
-    vi.mocked(fetch)
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: vi.fn().mockResolvedValue(BOOTSTRAP_DATA),
-      } as unknown as Response)
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: vi.fn().mockResolvedValue({}),
-      } as unknown as Response);
+  it('hydrates armory files from bootstrap data', async () => {
+    mockHydration();
 
     const { stores, loadBootstrap } = await setup();
     await loadBootstrap();
@@ -137,7 +116,6 @@ describe('loadBootstrap', () => {
         url: '/armory/payload.bin',
       },
     ]);
-    expect(get(stores.binary.stagedBinaryName)).toBe('payload.bin');
   });
 
   it('throws when /api/bootstrap returns a non-ok response', async () => {
@@ -160,9 +138,19 @@ describe('loadBootstrap', () => {
         json: vi.fn().mockResolvedValue(minimal),
       } as unknown as Response)
       .mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: vi.fn().mockResolvedValue({}),
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(ARMORY_DATA),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(PAYLOAD_DATA),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(RUNS_DATA),
       } as unknown as Response);
 
     const { stores, loadBootstrap } = await setup();

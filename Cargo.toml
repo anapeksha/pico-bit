@@ -70,6 +70,9 @@ picoserve = { version = "0.18.0", features = ["defmt", "embassy", "json"], optio
 serde = { version = "1.0.228", default-features = false, features = ["derive"], optional = true }
 littlefs2 = { version = "0.7.2", optional = true }
 
+[dev-dependencies]
+serde_json = "1.0"
+
 [profile.release]
 opt-level = "z"
 lto = true

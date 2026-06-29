@@ -9,6 +9,14 @@ static WIFI_NET_STACK: StaticCell<Stack> = StaticCell::new();
 static USB_NET_RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
 static WIFI_NET_RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
 
+pub fn wifi_ap_ssid() -> &'static str {
+    option_env!("AP_SSID").unwrap_or("PicoBit")
+}
+
+pub fn wifi_ap_password() -> &'static str {
+    option_env!("AP_PASSWORD").unwrap_or("PicoBit24Net")
+}
+
 pub fn init_usb_network<D: Driver + 'static>(
     device: D,
     seed: u64,
@@ -34,10 +42,9 @@ pub async fn init_wifi_network<D: Driver + 'static>(
     device: D,
     seed: u64,
 ) -> (&'static Stack<'static>, Runner<'static, D>) {
-    let wifi_ssid = option_env!("AP_SSID").unwrap_or("PicoBit");
-    let wifi_password = option_env!("AP_PASSWORD").unwrap_or("PicoBit24Net");
-
-    control.start_ap_wpa2(wifi_ssid, wifi_password, 6).await;
+    control
+        .start_ap_wpa2(wifi_ap_ssid(), wifi_ap_password(), 6)
+        .await;
 
     let config = Config::ipv4_static(StaticConfigV4 {
         address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 4, 1), 24),

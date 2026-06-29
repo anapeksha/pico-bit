@@ -1,7 +1,6 @@
 /**
  * Shared UI state that does not belong to any single domain:
- * top-bar notice toasts, the validation error modal, and the active
- * accordion panel in the middle column.
+ * top-bar notice toasts and the validation error modal.
  */
 import { writable } from 'svelte/store';
 
@@ -23,9 +22,6 @@ export const notice = writable<{ message: string; tone: NoticeTone; visible: boo
 
 /** Whether the validation-error detail modal is open. */
 export const validationModalOpen = writable(false);
-
-/** Which editor accordion is currently expanded — `'ducky'` or `'armory'`. */
-export const activeAccordion = writable<'ducky' | 'armory'>('ducky');
 
 /**
  * Display a top-bar notice toast and auto-dismiss it after 2 seconds.

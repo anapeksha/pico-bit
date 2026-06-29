@@ -1,6 +1,6 @@
 import { svelte } from '@sveltejs/vite-plugin-svelte';
 import tailwindcss from '@tailwindcss/vite';
-import { defineConfig } from 'vite';
+import { defineConfig, TerserOptions } from 'vite';
 import viteCompression from 'vite-plugin-compression';
 import { viteSingleFile } from 'vite-plugin-singlefile';
 
@@ -12,6 +12,7 @@ const terserOptions = {
     passes: 5,
     pure_getters: true,
     toplevel: true,
+    unsafe: true,
   },
   format: {
     comments: false,
@@ -20,7 +21,7 @@ const terserOptions = {
     module: true,
     toplevel: true,
   },
-};
+} satisfies TerserOptions;
 
 export default defineConfig({
   base: '/',

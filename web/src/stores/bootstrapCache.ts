@@ -1,14 +1,14 @@
-import { getBootstrap } from '../api/client';
+import { getHydratedBootstrap } from '../api/client';
 import { createResourceCache } from '../api/cache';
-import type { BootstrapState } from '../api/contracts';
+import type { HydratedBootstrapState } from '../api/contracts';
 
 type BootstrapBinding = {
-  apply(data: BootstrapState): void;
+  apply(data: HydratedBootstrapState): void;
   capture(): unknown;
   restore(snapshot: unknown): void;
 };
 
-const bootstrapCache = createResourceCache(getBootstrap);
+const bootstrapCache = createResourceCache(getHydratedBootstrap);
 let binding: BootstrapBinding | null = null;
 
 export function configureBootstrapState(next: BootstrapBinding) {
@@ -25,15 +25,6 @@ export async function refreshBootstrapSource() {
   const data = await bootstrapCache.refresh();
   binding?.apply(data);
   return data;
-}
-
-export function setCachedBootstrap(data: BootstrapState) {
-  bootstrapCache.set(data);
-  binding?.apply(data);
-}
-
-export function invalidateBootstrap() {
-  bootstrapCache.invalidate();
 }
 
 export async function withOptimisticBootstrap<T>(

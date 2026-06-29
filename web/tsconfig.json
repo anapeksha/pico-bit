@@ -7,8 +7,8 @@
     "noImplicitAny": false,
     "strict": false,
     "target": "ES2022",
-    "types": ["node", "svelte", "vite/client"]
+    "types": ["node", "svelte", "vite/client"],
   },
   "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts"],
-  "exclude": ["node_modules", "../.build", "src/**/*.test.ts"]
+  "exclude": ["node_modules", "../.build", "src/**/*.test.ts"],
 }

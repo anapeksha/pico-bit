@@ -8,7 +8,6 @@
 </script>
 
 <div class="animate-pulse grid gap-4">
-  <!-- TopSection: 4 stat cards matching TopSection.svelte layout -->
   <div class="flex flex-wrap justify-around gap-2">
     {#each statCards as card, i (i)}
       <div
@@ -20,16 +19,13 @@
     {/each}
   </div>
 
-  <!-- Three-column grid matching App.svelte layout -->
   <div
     class="grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_17rem] xl:grid-cols-[15rem_minmax(0,1fr)_17rem]"
   >
-    <!-- Left: About + Status panels -->
     <div
       class="lg:order-3 lg:col-span-full lg:grid lg:grid-cols-2 lg:gap-4 xl:order-0 xl:col-span-1 xl:block"
     >
       <div class="flex flex-col gap-3.5 xl:w-60">
-        <!-- About panel -->
         <div class="rounded-xl border border-picobit-border bg-picobit-surface px-4 py-4">
           <div class="mb-3 h-3 w-10 rounded bg-picobit-border-strong opacity-60"></div>
           <div class="flex flex-col gap-2">
@@ -41,7 +37,6 @@
           </div>
         </div>
 
-        <!-- Status panel -->
         <div class="rounded-xl border border-picobit-border bg-picobit-surface px-4 py-4">
           <div class="mb-3 h-3 w-10 rounded bg-picobit-border-strong opacity-60"></div>
           <div class="flex items-center justify-between border-b border-picobit-border pb-2">
@@ -62,7 +57,6 @@
     <div
       class="flex min-h-0 flex-col overflow-hidden rounded-xl border border-picobit-border bg-picobit-surface lg:order-1 xl:order-0"
     >
-      <!-- DuckyEditor skeleton: toolbar + code lines -->
       <div class="flex items-center justify-between border-b border-picobit-border px-3.5 py-2.5">
         <div class="h-2.5 w-24 rounded bg-picobit-border opacity-60"></div>
         <div class="flex gap-2">
@@ -83,7 +77,6 @@
         </div>
       </div>
 
-      <!-- Armory skeleton: header bar -->
       <div
         class="flex items-center border-t border-picobit-border bg-picobit-surface-2 px-3.5 py-2.5"
       >
@@ -91,10 +84,8 @@
       </div>
     </div>
 
-    <!-- Right: Layout + Recent Runs panels -->
     <div class="lg:order-2 xl:order-0">
       <div class="flex flex-col gap-3.5 xl:w-68">
-        <!-- Layout panel -->
         <div class="rounded-xl border border-picobit-border bg-picobit-surface px-4 py-4">
           <div class="mb-3 h-3 w-12 rounded bg-picobit-border-strong opacity-60"></div>
           <div class="mb-3 flex flex-col gap-1.5">
@@ -107,7 +98,6 @@
           </div>
         </div>
 
-        <!-- Recent Runs panel -->
         <div class="rounded-xl border border-picobit-border bg-picobit-surface px-4 py-4">
           <div class="mb-3 h-3 w-20 rounded bg-picobit-border-strong opacity-60"></div>
           <div class="flex flex-col gap-2">

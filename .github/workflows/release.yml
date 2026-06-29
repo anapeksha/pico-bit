@@ -46,6 +46,11 @@ jobs:
         with:
           targets: ${{ env.FIRMWARE_TARGET }}
 
+      - name: Install ARM C toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi
+
       - name: Install firmware tools
         run: |
           cargo install flip-link --locked

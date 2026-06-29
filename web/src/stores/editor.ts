@@ -1,23 +1,21 @@
 /**
- * DuckyScript editor state: payload text, explicit validation, and save actions.
+ * DuckyScript editor state: payload text and save actions.
  *
- * Validation is intentionally async and cancellable. It is only invoked by
- * explicit actions such as save or a manual validation control, not on typing.
+ * Validation is performed by the firmware as part of save and run requests.
  *
  * `canSave` is a derived read-only store — do not write to it.
  */
 import { derived, get, writable } from 'svelte/store';
 
-import {
-  runPayload as runPayloadApi,
-  savePayload as savePayloadApi,
-  validatePayload,
-} from '../api/client';
-import type { PayloadMutationResponse, RequestFailure, ValidationState } from '../api/contracts';
+import { runPayload as runPayloadApi, savePayload as savePayloadApi } from '../api/client';
+import type {
+  PayloadMutationResponse,
+  PayloadRunResponse,
+  RequestFailure,
+  ValidationState,
+} from '../api/contracts';
 import { refreshBootstrapSource } from './bootstrapCache';
 import { showNotice, validationModalOpen } from './ui';
-
-let validationRequest = 0;
 
 /** The current payload text bound to the editor textarea. */
 export const payload = writable('');
@@ -28,16 +26,21 @@ export const payloadState = writable('Saved on device');
 /** Most recent validation result from the device, or `null` before the first check. */
 export const validation = writable<ValidationState | null>(null);
 
-/** `true` while a validation request is in flight. */
-export const validating = writable(false);
-
 /** `true` while a save request is in flight. */
 export const saving = writable(false);
 
-/** `true` when a save request can be submitted. Save performs validation server-side. */
-export const canSave = derived(saving, ($saving) => !$saving);
+/** `true` while a run request is in flight. */
+export const running = writable(false);
 
-function validationFromFirmware(data: PayloadMutationResponse): ValidationState {
+/** `true` when a save request can be submitted. Save performs validation server-side. */
+export const canSave = derived([saving, running], ([$saving, $running]) => !$saving && !$running);
+
+/** `true` when the persisted payload can be run. Run performs validation server-side. */
+export const canRun = derived([saving, running], ([$saving, $running]) => !$saving && !$running);
+
+function validationFromFirmware(
+  data: PayloadMutationResponse | PayloadRunResponse,
+): ValidationState {
   if (data.validation) return data.validation;
 
   const message = data.message || (data.success ? 'Script is valid.' : 'Syntax validation failed.');
@@ -66,25 +69,12 @@ function validationFromFirmware(data: PayloadMutationResponse): ValidationState 
   };
 }
 
-/**
- * POST the given script (defaults to the current `payload`) to `/api/payload/validate`
- * and update `validation`.  Stale responses from superseded requests are
- * silently dropped.
- */
-export async function validatePayloadDraft(script = get(payload)) {
-  const requestId = ++validationRequest;
-  validating.set(true);
-  try {
-    const data = await validatePayload({ code: script });
-    if (requestId === validationRequest) {
-      validation.set(validationFromFirmware(data));
-    }
-  } finally {
-    if (requestId === validationRequest) validating.set(false);
-  }
+function applyValidationFailure(data: PayloadMutationResponse | PayloadRunResponse) {
+  validation.set(validationFromFirmware(data));
+  validationModalOpen.set(true);
 }
 
-/** Save the current payload. If firmware validation passes, immediately trigger execution. */
+/** Save the current payload to payload.dd after firmware validation passes. */
 export async function savePayload() {
   saving.set(true);
   try {
@@ -94,21 +84,48 @@ export async function savePayload() {
     validation.set(nextValidation);
 
     if (!data.success) {
-      validationModalOpen.set(true);
+      applyValidationFailure(data);
       showNotice(data.message || 'Syntax validation failed.', 'error');
       return;
     }
 
     validation.set(null);
     payloadState.set('Saved on device');
-    const run = await runPayloadApi();
     await refreshBootstrapSource();
-    showNotice(run.message || data.message || 'Payload saved and run.', 'success');
+    showNotice(data.message || 'Payload saved to payload.dd.', 'success');
   } catch (error: unknown) {
     const failure = error as RequestFailure;
-    if (failure.data?.validation) validation.set(failure.data.validation as ValidationState);
+    if (failure.data) {
+      applyValidationFailure(failure.data as PayloadMutationResponse);
+    }
     showNotice(error instanceof Error ? error.message : 'Save failed.', 'error');
   } finally {
     saving.set(false);
+  }
+}
+
+/** Run the saved payload.dd after firmware validation passes. */
+export async function runPayload() {
+  running.set(true);
+  try {
+    const data = await runPayloadApi();
+
+    if (!data.success) {
+      applyValidationFailure(data);
+      showNotice(data.message || 'Syntax validation failed.', 'error');
+      return;
+    }
+
+    validation.set(null);
+    await refreshBootstrapSource();
+    showNotice(data.message || 'Payload run started.', 'success');
+  } catch (error: unknown) {
+    const failure = error as RequestFailure;
+    if (failure.data) {
+      applyValidationFailure(failure.data as PayloadRunResponse);
+    }
+    showNotice(error instanceof Error ? error.message : 'Run failed.', 'error');
+  } finally {
+    running.set(false);
   }
 }

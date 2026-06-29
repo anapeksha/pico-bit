@@ -6,6 +6,10 @@ use picoserve::routing::{PathRouter, get};
 
 static INDEX_HTML: &[u8] = include_bytes!("../../../dist/index.html.gz");
 
+pub(crate) fn compressed_index_html() -> &'static [u8] {
+    INDEX_HTML
+}
+
 #[derive(Copy, Clone)]
 struct HtmlAsset;
 impl Chunks for HtmlAsset {
@@ -29,6 +33,7 @@ async fn stream_html() -> impl IntoResponse {
         .into_response()
         .with_header("Content-Encoding", "gzip")
         .with_header("Vary", "Accept-Encoding")
+        .with_header("Cache-Control", "no-store")
         .with_status_code(StatusCode::OK)
 }
 

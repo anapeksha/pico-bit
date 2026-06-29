@@ -8,7 +8,6 @@ permissions:
 
 env:
   FIRMWARE_TARGET: thumbv8m.main-none-eabihf
-  HOST_TEST_TARGET: x86_64-unknown-linux-gnu
 
 jobs:
   frontend:
@@ -70,6 +69,11 @@ jobs:
           components: clippy, rustfmt
           targets: ${{ env.FIRMWARE_TARGET }}
 
+      - name: Install ARM C toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 
@@ -80,4 +84,4 @@ jobs:
         run: cargo clippy --target "$FIRMWARE_TARGET" --no-deps -- -D warnings -A clippy::new_without_default
 
       - name: Host unit tests
-        run: cargo test --lib --no-default-features --target "$HOST_TEST_TARGET"
+        run: cargo test --lib --no-default-features --target x86_64-unknown-linux-gnu

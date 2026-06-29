@@ -1,5 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { deleteBinaryFile, requestJson, uploadBinaryFile } from './client';
+import {
+  deleteBinaryFile,
+  requestJson,
+  savePayload,
+  updateKeyboardTarget,
+  uploadBinaryFile,
+} from './client';
 import type { RequestFailure } from './contracts';
 
 function okResponse(body: unknown): Response {
@@ -221,6 +227,51 @@ describe('deleteBinaryFile', () => {
     expect(fetch).toHaveBeenCalledWith('/api/armory/agent.elf', {
       headers: { 'Content-Type': 'application/json' },
       method: 'DELETE',
+    });
+  });
+});
+
+describe('savePayload', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('posts editor content to the payload save route only', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(okResponse({ success: true }));
+
+    await savePayload({ code: 'STRING Ready' });
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch).toHaveBeenCalledWith('/api/payload', {
+      body: JSON.stringify({ code: 'STRING Ready' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
+    });
+  });
+});
+
+describe('updateKeyboardTarget', () => {
+  beforeEach(() => {
+    vi.stubGlobal('fetch', vi.fn());
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('posts selected OS and layout to the keyboard target route', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(okResponse({ message: 'updated' }));
+
+    await updateKeyboardTarget({ layout: 'DE', os: 'LINUX' });
+
+    expect(fetch).toHaveBeenCalledWith('/api/keyboard/layout', {
+      body: JSON.stringify({ layout: 'DE', os: 'LINUX' }),
+      headers: { 'Content-Type': 'application/json' },
+      method: 'POST',
     });
   });
 });

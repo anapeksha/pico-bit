@@ -1,6 +1,6 @@
 /**
  * Wi-Fi access-point configuration surfaced from `/api/bootstrap`.
- * These values are display-only — they cannot be changed from the portal.
+ * These values are display-only and cannot be changed from the dashboard.
  */
 import { writable } from 'svelte/store';
 
