@@ -28,15 +28,15 @@ export default tseslint.config(
   },
   {
     rules: {
-      'no-console': 'warn',
-      '@typescript-eslint/no-explicit-any': 'warn',
+      'no-console': 'error',
+      '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
-      'svelte/no-at-html-tags': 'warn',
-      'svelte/no-unused-svelte-ignore': 'warn',
+      'svelte/no-at-html-tags': 'error',
+      'svelte/no-unused-svelte-ignore': 'error',
       'svelte/require-each-key': 'error',
       'svelte/valid-each-key': 'error',
       'svelte/no-reactive-reassign': 'error',
-      'svelte/button-has-type': 'warn',
+      'svelte/button-has-type': 'error',
     },
   },
   {

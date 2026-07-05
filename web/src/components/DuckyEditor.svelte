@@ -473,7 +473,7 @@
                             class="inline-flex size-7 items-center justify-center rounded-md border border-picobit-border bg-picobit-surface-2 text-picobit-text transition-colors hover:bg-picobit-surface-3"
                             type="button"
                             title="Copy payload local fetch link"
-                            onclick={() => copyToClipboard(file.url, index)}
+                            onclick={() => copyToClipboard(downloadUrl(file.name), index)}
                           >
                             {#if copiedIndex === index}
                               <Check size={13} class="text-picobit-success" />
