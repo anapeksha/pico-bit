@@ -9,6 +9,8 @@ permissions:
 
 env:
   FIRMWARE_TARGET: thumbv8m.main-none-eabihf
+  PICOTOOL_VERSION: 2.3.0
+  PICOTOOL_RELEASE_TAG: v2.3.0-0
 
 jobs:
   package:
@@ -49,13 +51,45 @@ jobs:
       - name: Install ARM C toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates \
+            curl \
+            gcc-arm-none-eabi \
+            libnewlib-arm-none-eabi \
+            libusb-1.0-0
 
       - name: Install firmware tools
         run: |
           cargo install cargo-chef --locked
           cargo install flip-link --locked
           cargo install elf2uf2-rs --locked
+
+      - name: Install picotool
+        run: |
+          case "$(uname -m)" in
+            x86_64)
+              asset="picotool-${PICOTOOL_VERSION}-x86_64-lin.tar.gz"
+              sha256="d8222dbb04e83427bcaef8466fe6e76b0e0193c3a140029934bd365dae49f61f"
+              ;;
+            aarch64)
+              asset="picotool-${PICOTOOL_VERSION}-aarch64-lin.tar.gz"
+              sha256="90fc7e939a68f33b286f9fc4eaa58c11b49c4251c472d541c73d211ec28b8922"
+              ;;
+            *)
+              echo "Unsupported runner architecture: $(uname -m)"
+              exit 1
+              ;;
+          esac
+
+          curl -fsSL \
+            "https://github.com/raspberrypi/pico-sdk-tools/releases/download/${PICOTOOL_RELEASE_TAG}/${asset}" \
+            -o "$RUNNER_TEMP/$asset"
+          echo "$sha256  $RUNNER_TEMP/$asset" | sha256sum --check
+
+          mkdir -p "$RUNNER_TEMP/picotool"
+          tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP/picotool"
+          echo "$RUNNER_TEMP/picotool/picotool" >> "$GITHUB_PATH"
+          echo "picotool_DIR=$RUNNER_TEMP/picotool/picotool" >> "$GITHUB_ENV"
 
       - name: Prepare Cargo dependency recipe
         run: cargo chef prepare --recipe-path recipe.json
@@ -71,17 +105,46 @@ jobs:
           restore-keys: |
             cargo-release-${{ runner.os }}-${{ env.FIRMWARE_TARGET }}-
 
-      - name: Build cached release dependencies
-        run: cargo chef cook --release --target "$FIRMWARE_TARGET" --recipe-path recipe.json
+      - name: Build cached release dependency graph
+        run: cargo chef cook --release --recipe-path recipe.json
 
       - name: Build release firmware
         run: cargo build --release --target "$FIRMWARE_TARGET"
 
-      - name: Package UF2
+      - name: Sign and package firmware
         env:
           RELEASE_TAG: ${{ github.event.release.tag_name }}
+          PICOBIT_SIGNING_PRIVATE_KEY_B64: ${{ secrets.PICOBIT_SIGNING_PRIVATE_KEY_B64 }}
+          PICOBIT_SIGNING_PUBLIC_KEY_B64: ${{ secrets.PICOBIT_SIGNING_PUBLIC_KEY_B64 }}
         run: |
-          cp "target/$FIRMWARE_TARGET/release/pico-bit" "firmware-$RELEASE_TAG.elf"
+          if [[ -z "$PICOBIT_SIGNING_PRIVATE_KEY_B64" ]]; then
+            echo "Missing required GitHub secret: PICOBIT_SIGNING_PRIVATE_KEY_B64"
+            exit 1
+          fi
+          if [[ -z "$PICOBIT_SIGNING_PUBLIC_KEY_B64" ]]; then
+            echo "Missing required GitHub secret: PICOBIT_SIGNING_PUBLIC_KEY_B64"
+            exit 1
+          fi
+
+          umask 077
+          printf '%s' "$PICOBIT_SIGNING_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/picobit-signing-private.pem"
+          printf '%s' "$PICOBIT_SIGNING_PUBLIC_KEY_B64" | base64 --decode > "$RUNNER_TEMP/picobit-signing-public.pem"
+          trap 'rm -f "$RUNNER_TEMP/picobit-signing-private.pem" "$RUNNER_TEMP/picobit-signing-public.pem" "$RUNNER_TEMP/picobit-signing-public-derived.pem"' EXIT
+
+          openssl ec \
+            -in "$RUNNER_TEMP/picobit-signing-private.pem" \
+            -pubout \
+            -out "$RUNNER_TEMP/picobit-signing-public-derived.pem"
+          cmp "$RUNNER_TEMP/picobit-signing-public.pem" "$RUNNER_TEMP/picobit-signing-public-derived.pem"
+
+          picotool seal \
+            --hash \
+            --sign \
+            "target/$FIRMWARE_TARGET/release/pico-bit" \
+            "firmware-$RELEASE_TAG.elf" \
+            "$RUNNER_TEMP/picobit-signing-private.pem" \
+            "$RUNNER_TEMP/firmware-$RELEASE_TAG.otp.json"
+
           elf2uf2-rs "firmware-$RELEASE_TAG.elf" "firmware-$RELEASE_TAG.uf2"
 
       - name: Upload workflow artifact

@@ -93,8 +93,8 @@ jobs:
           restore-keys: |
             cargo-${{ runner.os }}-${{ env.FIRMWARE_TARGET }}-
 
-      - name: Build cached firmware dependencies
-        run: cargo chef cook --target "$FIRMWARE_TARGET" --recipe-path recipe.json
+      - name: Build cached dependency graph
+        run: cargo chef cook --recipe-path recipe.json
 
       - name: Check formatting
         run: cargo fmt --all -- --check
