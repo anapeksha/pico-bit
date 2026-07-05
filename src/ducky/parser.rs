@@ -1,11 +1,23 @@
 use crate::ducky::errors::DuckyError;
-use crate::ducky::keyboard::DuckyKeyboard;
+use crate::ducky::keyboard::{DuckyKeyboard, KeyboardOs};
 use crate::ducky::types::{AssignOp, BinaryOp, DuckyCommand, Expression};
 
+/// Line-oriented DuckyScript parser used by validation and runtime execution.
 pub struct DuckyParser;
 
 impl DuckyParser {
+    /// Parses a single DuckyScript line using Windows key alias semantics.
+    #[allow(dead_code)]
     pub fn parse_line(line: &str) -> Result<DuckyCommand<'_>, DuckyError> {
+        Self::parse_line_for_os(line, KeyboardOs::Windows)
+    }
+
+    /// Parses a single DuckyScript line for the active host operating system.
+    ///
+    /// Printable text is handled later by the executor using the selected
+    /// keyboard layout. This parser-level OS is used for key-chord aliases such
+    /// as `COMMAND`, `OPTION`, and `WINDOWS`.
+    pub fn parse_line_for_os(line: &str, os: KeyboardOs) -> Result<DuckyCommand<'_>, DuckyError> {
         let trimmed = line.trim();
 
         if trimmed.is_empty() {
@@ -111,7 +123,7 @@ impl DuckyParser {
                     let name = trimmed.trim_end_matches('(').trim_end_matches(')').trim();
                     Ok(DuckyCommand::FunctionCall { name })
                 } else {
-                    let sequence = DuckyKeyboard::parse_token_sequence(trimmed)?;
+                    let sequence = DuckyKeyboard::parse_token_sequence_for_os(trimmed, os)?;
                     Ok(DuckyCommand::KeySequence(sequence))
                 }
             }
@@ -205,6 +217,7 @@ impl DuckyParser {
 mod tests {
     use super::DuckyParser;
     use crate::ducky::errors::DuckyError;
+    use crate::ducky::keyboard::KeyboardOs;
     use crate::ducky::types::{AssignOp, BinaryOp, DuckyCommand, Expression, modifiers};
 
     #[test]
@@ -286,5 +299,16 @@ mod tests {
             modifiers::LEFT_CTRL | modifiers::LEFT_ALT
         );
         assert_eq!(sequence.report.keycodes[0], 0x4C);
+    }
+
+    #[test]
+    fn parses_key_sequences_for_selected_os() {
+        let command = DuckyParser::parse_line_for_os("COMMAND SPACE", KeyboardOs::MacOs).unwrap();
+        let DuckyCommand::KeySequence(sequence) = command else {
+            panic!("expected key sequence");
+        };
+
+        assert_eq!(sequence.report.modifier, modifiers::LEFT_GUI);
+        assert_eq!(sequence.report.keycodes[0], 0x2C);
     }
 }

@@ -9,12 +9,16 @@ use embassy_rp::{
 
 use crate::Irqs;
 
+/// CYW43 PIO/SPI resources required by the Wi-Fi runner.
 pub struct PioManager {
+    /// PIO SPI bus connected to the wireless chip.
     pub spi: PioSpi<'static, PIO0, 0>,
+    /// Wireless chip power control pin.
     pub pwr: Output<'static>,
 }
 
 impl PioManager {
+    /// Claims PIO, pins, and DMA resources for the CYW43 bus.
     pub fn new(
         mut pio: Pio<'static, PIO0>,
         pin_23: Peri<'static, PIN_23>,   // WL_ON

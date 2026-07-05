@@ -1,4 +1,4 @@
-use embassy_rp::{peripherals::USB, usb::Driver};
+use embassy_rp::{otp, peripherals::USB, usb::Driver};
 use embassy_usb::class::cdc_ncm::{
     CdcNcmClass, State as NcmState,
     embassy_net::{Device as NetDevice, Runner as NetRunner, State as NetState},
@@ -20,21 +20,77 @@ static MSOS_DESCRIPTOR_BUF: StaticCell<[u8; 256]> = StaticCell::new();
 static CONTROL_BUF: StaticCell<[u8; 64]> = StaticCell::new();
 static NCM_STATIC: StaticCell<NcmState> = StaticCell::new();
 static NET_STATE: StaticCell<NetState<MTU, N_RX, N_TX>> = StaticCell::new();
+static USB_SERIAL_NUMBER: StaticCell<UsbSerialNumber> = StaticCell::new();
 
+struct UsbSerialNumber {
+    bytes: [u8; 64],
+    len: usize,
+}
+
+impl UsbSerialNumber {
+    fn new(chip_id: u64) -> Self {
+        let mut serial = Self {
+            bytes: [0u8; 64],
+            len: 0,
+        };
+
+        serial.push_str("PICOBIT.");
+        serial.push_str(env!("CARGO_PKG_VERSION"));
+        serial.push_byte(b'.');
+        serial.push_hex_u64(chip_id);
+
+        serial
+    }
+
+    fn as_str(&self) -> &str {
+        core::str::from_utf8(&self.bytes[..self.len]).unwrap_or("PICOBIT")
+    }
+
+    fn push_str(&mut self, value: &str) {
+        for byte in value.as_bytes() {
+            self.push_byte(*byte);
+        }
+    }
+
+    fn push_byte(&mut self, byte: u8) {
+        if self.len < self.bytes.len() {
+            self.bytes[self.len] = byte;
+            self.len += 1;
+        }
+    }
+
+    fn push_hex_u64(&mut self, value: u64) {
+        const HEX: &[u8; 16] = b"0123456789ABCDEF";
+
+        for shift in (0..64).step_by(4).rev() {
+            let nibble = ((value >> shift) & 0x0f) as usize;
+            self.push_byte(HEX[nibble]);
+        }
+    }
+}
+
+/// Composite USB device bundle: HID keyboard plus CDC-NCM networking.
 pub struct UsbManager {
+    /// Built USB device task target.
     pub device: UsbDevice<'static, Driver<'static, USB>>,
+    /// HID boot-keyboard writer used by the Ducky executor.
     pub hid: HidWriter<'static, Driver<'static, USB>, 8>,
+    /// CDC-NCM class runner.
     pub net_runner: NetRunner<'static, Driver<'static, USB>, MTU>,
+    /// Embassy-net device created from the CDC-NCM class.
     pub net_device: NetDevice<'static, MTU>,
 }
 
 impl UsbManager {
+    /// Builds the composite USB descriptor and class state from the RP USB driver.
     pub fn new(driver: Driver<'static, USB>) -> Self {
         let mut usb_config = UsbConfig::new(0x0001, 0x0001);
+        let serial_number =
+            USB_SERIAL_NUMBER.init(UsbSerialNumber::new(otp::get_chipid().unwrap()));
 
         usb_config.manufacturer = Some("Pico Bit");
         usb_config.product = Some("Pico Bit");
-        usb_config.serial_number = Some("12345");
+        usb_config.serial_number = Some(serial_number.as_str());
         usb_config.device_class = 0xEF; // Miscellaneous Device Class
         usb_config.device_sub_class = 0x02; // Common Class
         usb_config.device_protocol = 0x01; // Interface Association Descriptor (IAD)

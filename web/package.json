@@ -2,7 +2,7 @@
   "name": "pico-bit-web",
   "private": true,
   "type": "module",
-  "version": "0.0.2.dev0",
+  "version": "0.1.0",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",

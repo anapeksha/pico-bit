@@ -17,9 +17,9 @@ const ARMORY_DATA = {
     {
       kind: 'asset',
       name: 'payload.bin',
-      path: '/armory/payload.bin',
+      path: '/api/armory/payload.bin',
       size: 4096,
-      url: '/armory/payload.bin',
+      url: '/api/armory/payload.bin',
     },
   ],
   has_binary: true,
@@ -111,9 +111,9 @@ describe('loadBootstrap', () => {
       {
         kind: 'asset',
         name: 'payload.bin',
-        path: '/armory/payload.bin',
+        path: '/api/armory/payload.bin',
         size: 4096,
-        url: '/armory/payload.bin',
+        url: '/api/armory/payload.bin',
       },
     ]);
   });

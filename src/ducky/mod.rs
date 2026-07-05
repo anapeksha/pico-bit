@@ -6,5 +6,5 @@ mod types;
 
 pub use errors::{DuckyError, ErrorDiagnostic};
 pub use executor::{DuckyExecutor, StatefulWriter};
-pub use keyboard::KeyboardLayout;
+pub use keyboard::{KeyboardLayout, KeyboardOs};
 pub use parser::DuckyParser;

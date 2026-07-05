@@ -1,8 +1,7 @@
-// src/ducky/keyboard.rs
-
 use crate::ducky::errors::DuckyError;
 use crate::ducky::types::{KeySequence, modifiers};
 
+/// Stateless helpers for translating DuckyScript key tokens into HID reports.
 pub struct DuckyKeyboard;
 
 struct KeyMapping {
@@ -10,6 +9,11 @@ struct KeyMapping {
     keycode: u8,
 }
 
+/// Supported host keyboard layouts for typed `STRING` content.
+///
+/// The firmware maps ASCII characters to physical HID key positions for the
+/// selected host layout. This does not change the USB HID descriptor; it changes
+/// the report generated for each character.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum KeyboardLayout {
@@ -17,6 +21,18 @@ pub enum KeyboardLayout {
     Uk = 1,
     De = 2,
     Fr = 3,
+}
+
+/// Supported host operating-system targets for DuckyScript key aliases.
+///
+/// Layout controls printable character mapping, while OS controls how semantic
+/// modifier aliases such as `COMMAND`, `WINDOWS`, and `OPTION` are interpreted.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[repr(u8)]
+pub enum KeyboardOs {
+    Windows = 0,
+    MacOs = 1,
+    Linux = 2,
 }
 
 impl DuckyKeyboard {
@@ -472,22 +488,27 @@ impl DuckyKeyboard {
         }
     }
 
+    /// Parses a DuckyScript key chord using Windows-compatible modifier aliases.
+    #[allow(dead_code)]
     pub fn parse_token_sequence(line: &str) -> Result<KeySequence, DuckyError> {
+        Self::parse_token_sequence_for_os(line, KeyboardOs::Windows)
+    }
+
+    /// Parses a DuckyScript key chord for a specific host operating system.
+    ///
+    /// The HID usage IDs are the same across operating systems, but common
+    /// script aliases are not. This keeps `COMMAND`/`OPTION` natural on macOS
+    /// while preserving `WINDOWS`/`GUI` behavior for Windows and Linux targets.
+    pub fn parse_token_sequence_for_os(
+        line: &str,
+        os: KeyboardOs,
+    ) -> Result<KeySequence, DuckyError> {
         let mut sequence = KeySequence::default();
         let mut key_idx = 0;
 
         for token in line.split_whitespace() {
-            if matches!(
-                token,
-                "CTRL" | "CONTROL" | "SHIFT" | "ALT" | "GUI" | "WINDOWS"
-            ) {
-                sequence.report.modifier |= match token {
-                    "CTRL" | "CONTROL" => modifiers::LEFT_CTRL,
-                    "SHIFT" => modifiers::LEFT_SHIFT,
-                    "ALT" => modifiers::LEFT_ALT,
-                    "GUI" | "WINDOWS" => modifiers::LEFT_GUI,
-                    _ => modifiers::NONE,
-                };
+            if let Some(modifier) = modifier_for_token(token, os) {
+                sequence.report.modifier |= modifier;
             } else {
                 // Check for action/structural keys
                 let code = match token {
@@ -529,6 +550,7 @@ impl DuckyKeyboard {
         Ok(sequence)
     }
 
+    /// Converts a printable character into a HID report using the selected layout.
     pub(crate) fn character_to_sequence_for_layout(
         c: char,
         layout: KeyboardLayout,
@@ -543,9 +565,31 @@ impl DuckyKeyboard {
     }
 }
 
+fn modifier_for_token(token: &str, os: KeyboardOs) -> Option<u8> {
+    match token {
+        "CTRL" | "CONTROL" => Some(modifiers::LEFT_CTRL),
+        "SHIFT" => Some(modifiers::LEFT_SHIFT),
+        "ALT" => Some(modifiers::LEFT_ALT),
+        "GUI" | "META" => Some(modifiers::LEFT_GUI),
+        "WINDOWS" | "WIN" => match os {
+            KeyboardOs::MacOs => None,
+            KeyboardOs::Windows | KeyboardOs::Linux => Some(modifiers::LEFT_GUI),
+        },
+        "COMMAND" | "CMD" => match os {
+            KeyboardOs::MacOs => Some(modifiers::LEFT_GUI),
+            KeyboardOs::Windows | KeyboardOs::Linux => None,
+        },
+        "OPTION" => match os {
+            KeyboardOs::MacOs => Some(modifiers::LEFT_ALT),
+            KeyboardOs::Windows | KeyboardOs::Linux => None,
+        },
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DuckyKeyboard, KeyboardLayout};
+    use super::{DuckyKeyboard, KeyboardLayout, KeyboardOs};
     use crate::ducky::errors::DuckyError;
     use crate::ducky::types::modifiers;
 
@@ -618,6 +662,32 @@ mod tests {
             modifiers::LEFT_CTRL | modifiers::LEFT_ALT
         );
         assert_eq!(sequence.report.keycodes[0], 0x4C);
+    }
+
+    #[test]
+    fn parses_os_specific_modifier_aliases() {
+        let mac =
+            DuckyKeyboard::parse_token_sequence_for_os("COMMAND SPACE", KeyboardOs::MacOs).unwrap();
+        assert_eq!(mac.report.modifier, modifiers::LEFT_GUI);
+        assert_eq!(mac.report.keycodes[0], 0x2C);
+
+        assert_eq!(
+            DuckyKeyboard::parse_token_sequence_for_os("COMMAND SPACE", KeyboardOs::Windows)
+                .unwrap_err(),
+            DuckyError::InvalidKey
+        );
+
+        let windows =
+            DuckyKeyboard::parse_token_sequence_for_os("WINDOWS SPACE", KeyboardOs::Windows)
+                .unwrap();
+        assert_eq!(windows.report.modifier, modifiers::LEFT_GUI);
+        assert_eq!(windows.report.keycodes[0], 0x2C);
+
+        assert_eq!(
+            DuckyKeyboard::parse_token_sequence_for_os("WINDOWS SPACE", KeyboardOs::MacOs)
+                .unwrap_err(),
+            DuckyError::InvalidKey
+        );
     }
 
     #[test]

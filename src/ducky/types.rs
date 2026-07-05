@@ -1,6 +1,7 @@
 use defmt::{Format, Formatter, write};
 use usbd_hid::descriptor::KeyboardReport;
 
+/// Parsed DuckyScript command with borrowed script text where possible.
 #[derive(Debug, PartialEq, Clone, Format)]
 pub enum DuckyCommand<'a> {
     Comment,
@@ -57,6 +58,7 @@ pub enum DuckyCommand<'a> {
     KeySequence(KeySequence),
 }
 
+/// Numeric expression used by variables and control-flow conditions.
 #[derive(Debug, PartialEq, Clone, Format)]
 pub enum Expression<'a> {
     Literal(u32),
@@ -68,6 +70,7 @@ pub enum Expression<'a> {
     },
 }
 
+/// Binary operators supported by the embedded expression evaluator.
 #[derive(Debug, PartialEq, Clone, Format)]
 pub enum BinaryOp {
     Add,
@@ -85,6 +88,7 @@ pub enum BinaryOp {
     Or,
 }
 
+/// Assignment operators supported by variable statements.
 #[derive(Debug, PartialEq, Clone, Format)]
 pub enum AssignOp {
     Equal,
@@ -100,8 +104,10 @@ pub enum AssignOp {
     ShiftRightEqual,
 }
 
+/// USB keyboard report wrapper produced by key sequence parsing.
 #[derive(Debug, PartialEq, Clone)]
 pub struct KeySequence {
+    /// HID boot-keyboard report ready to send through `usbd-hid`.
     pub report: KeyboardReport,
 }
 
@@ -129,6 +135,7 @@ impl Format for KeySequence {
 }
 
 #[allow(dead_code)]
+/// HID modifier bit masks used by generated keyboard reports.
 pub mod modifiers {
     pub const NONE: u8 = 0x00;
     pub const LEFT_CTRL: u8 = 0x01;

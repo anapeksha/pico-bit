@@ -29,9 +29,11 @@ use panic_probe as _;
 // Defmt Logging
 use defmt_rtt as _;
 
-use net::{init_usb_dhcp, init_usb_network};
+use net::{AppRouter, init_usb_dhcp, init_usb_network};
 use pio::PioManager;
-use runners::{dhcp_task, hid_task, ncm_task, net_task, usb_task, wifi_task};
+use runners::{
+    HttpSurface, dhcp_task, hid_task, http_task, ncm_task, net_task, usb_task, wifi_task,
+};
 use static_cell::StaticCell;
 use storage::{FlashDriver, StorageManager};
 use usb::UsbManager;
@@ -51,6 +53,7 @@ static LFS_ALLOCATION: StaticCell<Allocation<FlashDriver>> = StaticCell::new();
 static LFS_DRIVER: StaticCell<FlashDriver> = StaticCell::new();
 static STORAGE_MANAGER: StaticCell<Mutex<CriticalSectionRawMutex, StorageManager>> =
     StaticCell::new();
+static APP_ROUTER: StaticCell<AppRouter> = StaticCell::new();
 
 /// # Safety
 ///
@@ -98,6 +101,7 @@ async fn main(spawner: Spawner) {
     let lfs_driver = LFS_DRIVER.init(FlashDriver { flash });
     let storage_manager =
         STORAGE_MANAGER.init(Mutex::new(StorageManager::new(lfs_driver, lfs_alloc)));
+    let app_router = APP_ROUTER.init(AppRouter);
 
     storage::GLOBAL_STORAGE.store(storage_manager as *mut _, Ordering::Release);
 
@@ -108,12 +112,22 @@ async fn main(spawner: Spawner) {
             pio_manager.spi,
             pio_manager.pwr,
             spawner,
+            app_router,
             storage_manager,
         ))
         .unwrap();
     spawner.spawn(usb_task(usb_manager.device)).unwrap();
     spawner.spawn(ncm_task(usb_manager.net_runner)).unwrap();
     spawner.spawn(net_task(usb_net_runner)).unwrap();
+    spawner
+        .spawn(http_task(
+            "NCM",
+            HttpSurface::Ncm,
+            usb_net_stack,
+            app_router,
+            storage_manager,
+        ))
+        .unwrap();
     spawner
         .spawn(hid_task(usb_manager.hid, storage_manager))
         .unwrap();

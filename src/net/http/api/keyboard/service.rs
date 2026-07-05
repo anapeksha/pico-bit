@@ -1,9 +1,10 @@
-use crate::ducky::KeyboardLayout;
+use crate::ducky::{KeyboardLayout, KeyboardOs};
 use core::sync::atomic::{AtomicU8, Ordering};
 use picoserve::response::{IntoResponse, Json, StatusCode};
 use serde::Serialize;
 use serde::{Deserialize, Deserializer};
 
+/// Response returned after keyboard target mutations.
 #[derive(Serialize)]
 pub(crate) struct KeyboardResponse {
     pub(crate) keyboard_layout: &'static str,
@@ -13,6 +14,7 @@ pub(crate) struct KeyboardResponse {
 }
 
 impl KeyboardResponse {
+    /// Whether the update request failed validation.
     pub(super) fn is_error(&self) -> bool {
         self.notice == "error"
     }
@@ -29,18 +31,11 @@ pub(super) fn update_response(request: KeyboardTargetRequest) -> impl IntoRespon
     Json(response).into_response().with_status_code(status)
 }
 
+/// Deserialized keyboard target update request.
 pub(super) struct KeyboardTargetRequest {
     layout: Option<KeyboardLayout>,
     os: Option<KeyboardOs>,
     valid: bool,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-#[repr(u8)]
-enum KeyboardOs {
-    Windows = 0,
-    MacOs = 1,
-    Linux = 2,
 }
 
 static ACTIVE_LAYOUT: AtomicU8 = AtomicU8::new(KeyboardLayout::Us as u8);
@@ -147,11 +142,13 @@ fn decode_os(value: u8) -> KeyboardOs {
     }
 }
 
+/// Active layout used for printable character mapping.
 pub(crate) fn active_layout() -> KeyboardLayout {
     decode_layout(ACTIVE_LAYOUT.load(Ordering::Acquire))
 }
 
-fn active_os() -> KeyboardOs {
+/// Active OS target used for key alias parsing.
+pub(crate) fn active_os() -> KeyboardOs {
     decode_os(ACTIVE_OS.load(Ordering::Acquire))
 }
 
@@ -172,10 +169,12 @@ fn response(message: &'static str, notice: &'static str) -> KeyboardResponse {
     }
 }
 
+/// Active target represented as compact `(os, layout)` API codes.
 pub(crate) fn active_target_codes() -> (&'static str, &'static str) {
     (os_code(active_os()), layout_code(active_layout()))
 }
 
+/// Updates the active target from compact API codes.
 pub(crate) fn update_target_codes(os_code_value: &str, layout_code_value: &str) -> bool {
     let Some(os) = os_from_code(os_code_value) else {
         return false;

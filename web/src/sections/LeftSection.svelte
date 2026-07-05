@@ -13,7 +13,7 @@
     <div class={panelClass}>
       <p class={titleClass}>About</p>
       <p class="m-0 mb-2.5 text-xs leading-relaxed text-(--text-3)">
-        Pico Bit manages the device payload file and staged Armory assets from the browser.
+        Pico Bit manages the device payload file and one staged Armory binary from the browser.
       </p>
       <ul class="m-0 list-disc pl-4 text-xs leading-7 text-(--text-3)">
         <li>
@@ -21,9 +21,10 @@
           or run with firmware validation
         </li>
         <li>
-          <strong>Binary Armory</strong> - upload, download, copy links, or delete files stored in littlefs2
+          <strong>Binary Armory</strong> - upload, download, copy link, or delete the staged binary
+          stored in littlefs2
         </li>
-        <li>NCM link exposes staged files to the host while Host HID handles typed payload runs</li>
+        <li>NCM link exposes the staged binary to the host while Host HID handles typed payload runs</li>
       </ul>
     </div>
 

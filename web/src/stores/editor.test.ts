@@ -61,12 +61,28 @@ describe('editor store savePayload', () => {
     expect(get(validation)).toBeNull();
   });
 
-  it('runs the saved payload without saving the editor draft', async () => {
+  it('saves the editor draft before triggering run', async () => {
     await runPayload();
 
+    expect(savePayloadApi).toHaveBeenCalledWith({ code: 'STRING Ready' });
     expect(runPayloadApi).toHaveBeenCalledTimes(1);
-    expect(savePayloadApi).not.toHaveBeenCalled();
     expect(refreshBootstrapSource).toHaveBeenCalledTimes(1);
+    expect(get(payloadState)).toBe('Saved on device');
     expect(get(validation)).toBeNull();
+  });
+
+  it('does not trigger run when save validation fails', async () => {
+    vi.mocked(savePayloadApi).mockResolvedValueOnce({
+      error_line: 1,
+      message: 'Syntax validation failed.',
+      success: false,
+    });
+
+    await runPayload();
+
+    expect(savePayloadApi).toHaveBeenCalledWith({ code: 'STRING Ready' });
+    expect(runPayloadApi).not.toHaveBeenCalled();
+    expect(refreshBootstrapSource).not.toHaveBeenCalled();
+    expect(get(validation)?.blocking).toBe(true);
   });
 });

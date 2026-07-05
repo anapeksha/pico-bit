@@ -1,5 +1,6 @@
 use defmt::{Format, error};
 
+/// Error category emitted by the DuckyScript parser or executor.
 #[derive(Debug, Format, PartialEq, Clone)]
 pub enum DuckyError {
     EmptyLine,
@@ -10,6 +11,7 @@ pub enum DuckyError {
     TooManyKeys,
 }
 
+/// Line-oriented validation diagnostic for editor and run feedback.
 #[derive(Debug, PartialEq, Clone)]
 pub struct ErrorDiagnostic<'a> {
     pub line_number: usize,
@@ -18,6 +20,7 @@ pub struct ErrorDiagnostic<'a> {
 }
 
 impl<'a> ErrorDiagnostic<'a> {
+    /// Creates a diagnostic with the original script line preserved.
     pub fn new(line_number: usize, error: DuckyError, raw_line: &'a str) -> Self {
         Self {
             line_number,
@@ -26,6 +29,7 @@ impl<'a> ErrorDiagnostic<'a> {
         }
     }
 
+    /// Emits the diagnostic through defmt for firmware-side debugging.
     pub fn log_diagnostic(&self) {
         error!(
             "DuckyScript Error on Line {}: {:?} -> \"{}\"",

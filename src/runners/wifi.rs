@@ -14,14 +14,13 @@ use static_cell::StaticCell;
 use crate::net::{AppRouter, init_wifi_dhcp, init_wifi_network};
 use crate::storage::StorageManager;
 
-use super::http::server_task;
+use super::http::{HttpSurface, http_task};
 
 static FW_BUF: &Aligned<A4, [u8]> = aligned_bytes!("../../firmware/43439A0.bin");
 static CLM_BUF: &Aligned<A4, [u8]> = aligned_bytes!("../../firmware/43439A0_clm.bin");
 static NVRAM_BUF: &Aligned<A4, [u8]> = aligned_bytes!("../../firmware/nvram_rp2040.bin");
 
 static STATE_STATIC: StaticCell<State> = StaticCell::new();
-static ROUTER: StaticCell<AppRouter> = StaticCell::new();
 
 #[embassy_executor::task]
 async fn raw_wifi_runner(
@@ -40,11 +39,13 @@ async fn wifi_dhcp_task(mut server: DhcpServer<32, 4>, stack: &'static Stack<'st
     server.run(*stack).await;
 }
 
+/// Brings up the CYW43 AP, Wi-Fi DHCP, and portal HTTP worker.
 #[embassy_executor::task]
 pub async fn wifi_task(
     spi: PioSpi<'static, PIO0, 0>,
     pwr: Output<'static>,
     spawner: Spawner,
+    router: &'static AppRouter,
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
 ) {
     let state = STATE_STATIC.init(cyw43::State::new());
@@ -52,8 +53,6 @@ pub async fn wifi_task(
         cyw43::new(state, pwr, spi, FW_BUF, NVRAM_BUF).await;
 
     spawner.spawn(raw_wifi_runner(wifi_runner)).unwrap();
-
-    let router = ROUTER.init(AppRouter);
 
     control.init(CLM_BUF).await;
     control.set_power_management(Performance).await;
@@ -68,6 +67,12 @@ pub async fn wifi_task(
         .spawn(wifi_dhcp_task(wifi_dhcp, wifi_net_stack))
         .unwrap();
     spawner
-        .spawn(server_task(wifi_net_stack, router, storage))
+        .spawn(http_task(
+            "Wi-Fi",
+            HttpSurface::Portal,
+            wifi_net_stack,
+            router,
+            storage,
+        ))
         .unwrap();
 }

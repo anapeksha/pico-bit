@@ -1,6 +1,7 @@
 use embassy_net::Ipv4Address;
 use leasehund::{DhcpConfigBuilder, DhcpServer};
 
+/// Builds the DHCP server for the USB NCM point-to-point link.
 pub fn init_usb_dhcp() -> DhcpServer<32, 4> {
     let config = DhcpConfigBuilder::new()
         .server_ip(Ipv4Address::new(192, 168, 7, 1))
@@ -19,6 +20,7 @@ pub fn init_usb_dhcp() -> DhcpServer<32, 4> {
     DhcpServer::<32, 4>::with_config(config)
 }
 
+/// Builds the DHCP server for clients joining the Pico Wi-Fi AP.
 pub fn init_wifi_dhcp() -> DhcpServer<32, 4> {
     let config = DhcpConfigBuilder::new()
         .server_ip(Ipv4Address::new(192, 168, 4, 1))
