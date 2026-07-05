@@ -56,6 +56,7 @@ jobs:
             curl \
             gcc-arm-none-eabi \
             libnewlib-arm-none-eabi \
+            libudev-dev \
             libusb-1.0-0
 
       - name: Install firmware tools
