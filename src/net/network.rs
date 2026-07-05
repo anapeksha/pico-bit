@@ -9,20 +9,23 @@ static WIFI_NET_STACK: StaticCell<Stack> = StaticCell::new();
 static USB_NET_RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
 static WIFI_NET_RESOURCES: StaticCell<StackResources<8>> = StaticCell::new();
 
+/// Wi-Fi AP SSID compiled into the firmware, with a local default.
 pub fn wifi_ap_ssid() -> &'static str {
     option_env!("AP_SSID").unwrap_or("PicoBit")
 }
 
+/// Wi-Fi AP password compiled into the firmware, with a local default.
 pub fn wifi_ap_password() -> &'static str {
     option_env!("AP_PASSWORD").unwrap_or("PicoBit24Net")
 }
 
+/// Initializes the static USB NCM network at `192.168.7.1/24`.
 pub fn init_usb_network<D: Driver + 'static>(
     device: D,
     seed: u64,
 ) -> (&'static Stack<'static>, Runner<'static, D>) {
     let config = Config::ipv4_static(StaticConfigV4 {
-        address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 137, 1), 24),
+        address: Ipv4Cidr::new(Ipv4Address::new(192, 168, 7, 1), 24),
         dns_servers: Vec::new(),
         gateway: Some(Ipv4Address::new(0, 0, 0, 0)),
     });
@@ -37,6 +40,7 @@ pub fn init_usb_network<D: Driver + 'static>(
     (USB_NET_STACK.init(stack), runner)
 }
 
+/// Starts the CYW43 AP and initializes the portal network at `192.168.4.1/24`.
 pub async fn init_wifi_network<D: Driver + 'static>(
     mut control: Control<'static>,
     device: D,

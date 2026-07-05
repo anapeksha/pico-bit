@@ -44,7 +44,10 @@ export function applyArmoryState(data: Pick<HydratedBootstrapState, 'files'>) {
       kind: file.kind,
       path: file.path,
       size: file.size,
-      url: file.path || file.name,
+      url:
+        file.kind === 'ducky'
+          ? `/api/armory/${encodeURIComponent(file.name)}`
+          : file.path || `/api/armory/${encodeURIComponent(file.name)}`,
     })),
   );
 }
@@ -60,13 +63,13 @@ export async function uploadBinary(file: File) {
       () => {
         setArmoryNotice('Uploading...', 'quiet');
         armoryFiles.update((files) => [
-          ...files.filter((item) => item.name !== file.name),
+          ...files.filter((item) => item.kind === 'ducky'),
           {
             kind: 'asset',
             name: file.name,
-            path: `/armory/${file.name}`,
+            path: `/api/armory/${encodeURIComponent(file.name)}`,
             size: file.size,
-            url: `/armory/${file.name}`,
+            url: `/api/armory/${encodeURIComponent(file.name)}`,
           },
         ]);
       },

@@ -1,5 +1,3 @@
-// src/ducky/executor.rs
-
 use crate::ducky::errors::DuckyError;
 use crate::ducky::keyboard::{DuckyKeyboard, KeyboardLayout};
 use crate::ducky::types::{AssignOp, BinaryOp, DuckyCommand, Expression};
@@ -23,6 +21,10 @@ enum ConditionalState {
     ConditionMet,
 }
 
+/// Bounded DuckyScript runtime for one payload execution.
+///
+/// The executor owns variable/control-flow state and converts parsed commands
+/// into HID reports through a caller-provided writer.
 pub struct DuckyExecutor<'a> {
     variables: [Option<Variable<'a>>; MAX_VARIABLES],
     if_stack: [Option<ConditionalState>; MAX_STACK_DEPTH],
@@ -34,6 +36,7 @@ pub struct DuckyExecutor<'a> {
 }
 
 impl<'a> DuckyExecutor<'a> {
+    /// Creates an executor with empty state and US keyboard layout.
     pub fn new() -> Self {
         Self {
             variables: [None; MAX_VARIABLES],
@@ -46,6 +49,7 @@ impl<'a> DuckyExecutor<'a> {
         }
     }
 
+    /// Sets the layout used when typing printable `STRING` characters.
     pub fn set_keyboard_layout(&mut self, layout: KeyboardLayout) {
         self.keyboard_layout = layout;
     }
@@ -124,6 +128,7 @@ impl<'a> DuckyExecutor<'a> {
         }
     }
 
+    /// Executes one parsed command and returns an optional delay requested by it.
     pub async fn execute_command<W>(
         &mut self,
         command: DuckyCommand<'a>,
@@ -313,9 +318,13 @@ impl<'a> Default for DuckyExecutor<'a> {
     }
 }
 
+/// Minimal async HID writer interface required by the executor.
 pub trait StatefulWriter {
+    /// Sends a non-empty keyboard report.
     fn write_report<'a>(&'a mut self, report: &'a KeyboardReport) -> impl Future<Output = ()> + 'a;
+    /// Releases all pressed keys.
     fn clear_report(&mut self) -> impl Future<Output = ()> + '_;
+    /// Waits for host-visible key timing.
     fn delay_ms(&mut self, ms: u32) -> impl Future<Output = ()> + '_;
 }
 

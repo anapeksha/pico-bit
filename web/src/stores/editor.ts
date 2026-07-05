@@ -104,10 +104,19 @@ export async function savePayload() {
   }
 }
 
-/** Run the saved payload.dd after firmware validation passes. */
+/** Save the current editor draft, then run payload.dd after firmware validation passes. */
 export async function runPayload() {
   running.set(true);
   try {
+    const draft = get(payload);
+    const saved = await savePayloadApi({ code: draft });
+
+    if (!saved.success) {
+      applyValidationFailure(saved);
+      showNotice(saved.message || 'Syntax validation failed.', 'error');
+      return;
+    }
+
     const data = await runPayloadApi();
 
     if (!data.success) {
@@ -117,6 +126,7 @@ export async function runPayload() {
     }
 
     validation.set(null);
+    payloadState.set('Saved on device');
     await refreshBootstrapSource();
     showNotice(data.message || 'Payload run started.', 'success');
   } catch (error: unknown) {

@@ -15,7 +15,7 @@ use picoserve::routing::RequestHandlerService;
 use serde::ser::{SerializeSeq, SerializeStruct};
 use serde::{Serialize, Serializer};
 
-pub(super) const MAX_ARMORY_UPLOAD_BYTES: usize = 500 * 1024;
+pub(super) const MAX_ARMORY_UPLOAD_BYTES: usize = 750 * 1024;
 
 const ARMORY_DIR: &str = "/armory";
 const ARMORY_PREFIX: &str = "/armory/";
@@ -71,10 +71,21 @@ impl ArmoryFileList {
     fn replace_from_listed(&mut self, files: &[ListedFile]) {
         *self = Self::empty();
         let mut index = 0;
+        let mut has_asset = false;
 
-        while index < files.len() && index < MAX_ARMORY_FILES {
-            self.entries[index] = ArmoryFile::from_listed(&files[index]);
+        for file in files {
+            let kind = file_kind(file.name(), file.path());
+            if kind == "asset" && has_asset {
+                continue;
+            }
+
+            self.entries[index] = ArmoryFile::from_listed(file);
+            has_asset |= kind == "asset";
             index += 1;
+
+            if index >= MAX_ARMORY_FILES {
+                break;
+            }
         }
 
         self.len = index;
@@ -246,7 +257,7 @@ impl ArmoryError {
             Self::ProtectedPayload => "payload.dd is managed by the editor and cannot be deleted.",
             Self::Storage => "littlefs2 storage operation failed.",
             Self::StorageUnavailable => "littlefs2 storage is not initialized.",
-            Self::TooLarge => "Upload exceeds 500 KB capacity limit.",
+            Self::TooLarge => "Upload exceeds 750 KB capacity limit.",
         }
     }
 }
@@ -498,6 +509,7 @@ pub(super) async fn begin_upload_result(filename: &str) -> Result<(), ArmoryErro
     storage_guard
         .ensure_dir(ARMORY_DIR)
         .map_err(|_| ArmoryError::Storage)?;
+    remove_existing_armory_files(&storage_guard)?;
     storage_guard
         .truncate(path)
         .map_err(|_| ArmoryError::Storage)
@@ -554,4 +566,23 @@ async fn delete_file_result(filename: &str) -> Result<(), ArmoryError> {
     let path = armory_path(filename, &mut path_buffer)?;
     let storage_guard = storage.lock().await;
     storage_guard.erase(path).map_err(|_| ArmoryError::Storage)
+}
+
+fn remove_existing_armory_files(
+    storage: &crate::storage::StorageManager,
+) -> Result<(), ArmoryError> {
+    let mut listed = [ListedFile::empty(); MAX_ARMORY_FILES];
+    let count = storage
+        .list_files(&mut listed)
+        .map_err(|_| ArmoryError::Storage)?
+        .min(MAX_ARMORY_FILES);
+
+    for file in &listed[..count] {
+        let path = file.path();
+        if path.starts_with(ARMORY_PREFIX) {
+            storage.erase(path).map_err(|_| ArmoryError::Storage)?;
+        }
+    }
+
+    Ok(())
 }

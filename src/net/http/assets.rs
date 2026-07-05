@@ -6,6 +6,7 @@ use picoserve::routing::{PathRouter, get};
 
 static INDEX_HTML: &[u8] = include_bytes!("../../../dist/index.html.gz");
 
+/// Returns the embedded gzipped single-file dashboard artifact.
 pub(crate) fn compressed_index_html() -> &'static [u8] {
     INDEX_HTML
 }
@@ -37,6 +38,7 @@ async fn stream_html() -> impl IntoResponse {
         .with_status_code(StatusCode::OK)
 }
 
+/// Adds the dashboard root route to the picoserve router.
 pub fn build<R: PathRouter>(router: Router<R, ()>) -> Router<impl PathRouter, ()> {
     router.route("/", get(stream_html))
 }

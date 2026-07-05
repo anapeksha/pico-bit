@@ -2,12 +2,12 @@
   "name": "pico-bit-web",
   "private": true,
   "type": "module",
-  "version": "0.0.2.dev0",
+  "version": "0.1.0",
   "scripts": {
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "check": "tsc --noEmit -p tsconfig.json && svelte-check --tsconfig ./tsconfig.json",
-    "lint": "eslint src",
+    "lint": "eslint src --max-warnings=0",
     "format": "prettier --write src",
     "format:check": "prettier --check src",
     "test": "vitest run"

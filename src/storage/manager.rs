@@ -8,9 +8,12 @@ use littlefs2::fs::{Allocation, Filesystem};
 use littlefs2::io::{Error, Result, SeekFrom};
 use littlefs2::path::Path;
 
+/// Maximum filename bytes copied into fixed listing entries.
 pub const LISTED_FILE_NAME_MAX: usize = 64;
+/// Maximum absolute LittleFS path bytes copied into fixed listing entries.
 pub const LISTED_FILE_PATH_MAX: usize = 128;
 
+/// Fixed-size file metadata returned by LittleFS directory scans.
 #[derive(Clone, Copy)]
 pub struct ListedFile {
     name: [u8; LISTED_FILE_NAME_MAX],
@@ -21,6 +24,7 @@ pub struct ListedFile {
 }
 
 impl ListedFile {
+    /// Creates an empty listing slot for stack/static arrays.
     pub const fn empty() -> Self {
         Self {
             name: [0u8; LISTED_FILE_NAME_MAX],
@@ -38,14 +42,17 @@ impl ListedFile {
         Ok(())
     }
 
+    /// File basename as reported by LittleFS.
     pub fn name(&self) -> &str {
         core::str::from_utf8(&self.name[..self.name_len]).unwrap_or("")
     }
 
+    /// Absolute LittleFS path for the listed file.
     pub fn path(&self) -> &str {
         core::str::from_utf8(&self.path[..self.path_len]).unwrap_or("")
     }
 
+    /// File size in bytes.
     pub fn size(&self) -> usize {
         self.size
     }
@@ -62,11 +69,13 @@ fn copy_str(value: &str, target: &mut [u8]) -> Result<usize> {
     Ok(bytes.len())
 }
 
+/// Thin LittleFS manager over the reserved flash partition.
 pub struct StorageManager {
     fs: Filesystem<'static, FlashDriver>,
 }
 
 impl StorageManager {
+    /// Mounts LittleFS, formatting if necessary, and ensures required files exist.
     pub fn new(
         driver: &'static mut FlashDriver,
         alloc: &'static mut Allocation<FlashDriver>,
@@ -106,6 +115,7 @@ impl StorageManager {
         f(p)
     }
 
+    /// Reads a whole file into the caller-provided buffer.
     pub fn read<'a>(&self, path: &str, buffer: &'a mut [u8]) -> Result<&'a [u8]> {
         self.with_path(path, |p| {
             self.fs.open_file_and_then(p, |file| {
@@ -115,6 +125,7 @@ impl StorageManager {
         })
     }
 
+    /// Reads a file slice starting at `offset` for streaming responses.
     pub fn read_at(&self, path: &str, offset: usize, buffer: &mut [u8]) -> Result<usize> {
         self.with_path(path, |p| {
             self.fs.open_file_and_then(p, |file| {
@@ -124,6 +135,7 @@ impl StorageManager {
         })
     }
 
+    /// Replaces a file with the provided bytes.
     pub fn write(&self, path: &str, data: &[u8]) -> Result<()> {
         self.with_path(path, |p| {
             self.fs.open_file_with_options_and_then(
@@ -139,6 +151,7 @@ impl StorageManager {
         })
     }
 
+    /// Appends bytes to a file, creating it if needed.
     pub fn append(&self, path: &str, data: &[u8]) -> Result<()> {
         self.with_path(path, |p| {
             self.fs.open_file_with_options_and_then(
@@ -154,6 +167,7 @@ impl StorageManager {
         })
     }
 
+    /// Ensures a directory path exists.
     pub fn ensure_dir(&self, path: &str) -> Result<()> {
         self.with_path(path, |p| self.fs.create_dir_all(p))
     }
@@ -167,6 +181,7 @@ impl StorageManager {
         }
     }
 
+    /// Truncates or creates an empty file.
     pub fn truncate(&self, path: &str) -> Result<()> {
         self.with_path(path, |p| {
             self.fs.open_file_with_options_and_then(
@@ -178,10 +193,12 @@ impl StorageManager {
     }
 
     #[allow(dead_code)]
+    /// Removes a file from LittleFS.
     pub fn erase(&self, path: &str) -> Result<()> {
         self.with_path(path, |p| self.fs.remove(p))
     }
 
+    /// Lists files from the root and Armory directories into a bounded array.
     pub fn list_files<const N: usize>(&self, entries: &mut [ListedFile; N]) -> Result<usize> {
         let mut count = 0;
 
@@ -229,6 +246,8 @@ impl StorageManager {
     }
 }
 
+/// Shared LittleFS manager guarded by an Embassy mutex.
 pub type SharedStorage = Mutex<CriticalSectionRawMutex, StorageManager>;
 
+/// Global storage pointer used by API services after boot-time initialization.
 pub static GLOBAL_STORAGE: AtomicPtr<SharedStorage> = AtomicPtr::new(core::ptr::null_mut());

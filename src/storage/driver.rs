@@ -6,12 +6,16 @@ use littlefs2::consts::{U32, U512};
 use littlefs2::driver::Storage;
 use littlefs2::io::{Error, Result};
 
+/// Total onboard flash bytes on the target Pico 2 W.
 pub const FLASH_SIZE: usize = 4 * 1024 * 1024;
+/// Bytes reserved for LittleFS at the end of flash.
 pub const FS_SIZE: usize = 1024 * 1024;
+/// LittleFS partition start address inside onboard flash.
 pub const FS_START: usize = FLASH_SIZE - FS_SIZE;
 
+/// `littlefs2` storage driver backed by the RP flash peripheral.
 pub struct FlashDriver {
-    // CHANGE: Use FLASH_SIZE here so the driver accepts addresses up to 4MB
+    /// Full flash peripheral; the driver offsets operations into the FS region.
     pub flash: Flash<'static, FLASH, Async, FLASH_SIZE>,
 }
 

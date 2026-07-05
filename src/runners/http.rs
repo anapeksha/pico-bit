@@ -10,11 +10,15 @@ use picoserve::{Config, DisconnectionInfo, EmbassyRuntime, Server, Timeouts};
 use crate::net::AppRouter;
 use crate::storage::StorageManager;
 
+/// Bytes read up front to classify browser startup requests safely.
 pub(super) const HTTP_PREFLIGHT_BYTES: usize = 64;
 const HTTP_PREFLIGHT_TIMEOUT_MS: u64 = 300;
 
-#[embassy_executor::task]
-pub(super) async fn server_task(
+/// Accepts HTTP sockets for either the Wi-Fi portal or restricted NCM surface.
+#[embassy_executor::task(pool_size = 2)]
+pub async fn http_task(
+    link: &'static str,
+    surface: HttpSurface,
     stack: &'static Stack<'static>,
     router: &'static AppRouter,
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
@@ -30,18 +34,18 @@ pub(super) async fn server_task(
     let mut tx_buffer = [0u8; 1024];
     let mut picoserve_buffer = [0u8; 2048];
 
-    info!("HTTP worker initialised...");
+    info!("{} HTTP worker initialised...", link);
 
     loop {
         let mut socket = TcpSocket::new(*stack, &mut rx_buffer, &mut tx_buffer);
 
         if let Err(e) = socket.accept(80).await {
-            warn!("[Worker] Accept failed: {:?}", e);
+            warn!("[{} Worker] Accept failed: {:?}", link, e);
             continue;
         }
 
         let remote_address = socket.remote_endpoint();
-        info!("[Worker] Connected to {}", remote_address);
+        info!("[{} Worker] Connected to {}", link, remote_address);
 
         let mut prefix = [0u8; HTTP_PREFLIGHT_BYTES];
         let prefix_len = match with_timeout(
@@ -51,87 +55,121 @@ pub(super) async fn server_task(
         .await
         {
             Ok(Ok(0)) => {
-                info!("[Worker] Empty HTTP preflight; closing socket.");
+                info!("[{} Worker] Empty HTTP preflight; closing socket.", link);
                 continue;
             }
             Ok(Ok(len)) => len,
             Ok(Err(e)) => {
-                warn!("[Worker] HTTP preflight read failed: {:?}", e);
+                warn!("[{} Worker] HTTP preflight read failed: {:?}", link, e);
                 continue;
             }
             Err(_) => {
-                info!("[Worker] Idle HTTP preflight timed out; closing socket.");
+                info!(
+                    "[{} Worker] Idle HTTP preflight timed out; closing socket.",
+                    link
+                );
                 continue;
             }
         };
 
         if !looks_like_http_request(&prefix[..prefix_len]) {
-            warn!("[Worker] Non-HTTP preflight rejected.");
+            warn!("[{} Worker] Non-HTTP preflight rejected.", link);
             continue;
         }
 
         let request = classify_startup_request(&prefix[..prefix_len]);
+        if !surface.allows(request) {
+            info!("[{} Worker] Route is not enabled on this surface.", link);
+            if let Err(e) = serve_empty_not_found(&mut socket).await {
+                warn!("[{} Worker] Disabled route response failed: {:?}", link, e);
+            }
+            continue;
+        }
+
         match request {
             StartupRequest::Root => {
-                info!("[Worker] Serving root asset.");
+                info!("[{} Worker] Serving root asset.", link);
                 if let Err(e) = serve_root_asset(&mut socket).await {
-                    warn!("[Worker] Root asset response failed: {:?}", e);
+                    warn!("[{} Worker] Root asset response failed: {:?}", link, e);
                 }
                 continue;
             }
             StartupRequest::Bootstrap => {
-                info!("[Worker] Serving bootstrap.");
+                info!("[{} Worker] Serving bootstrap.", link);
                 if let Err(e) = serve_bootstrap(&mut socket).await {
-                    warn!("[Worker] Bootstrap response failed: {:?}", e);
+                    warn!("[{} Worker] Bootstrap response failed: {:?}", link, e);
                 }
                 continue;
             }
             StartupRequest::Armory => {
-                info!("[Worker] Serving armory.");
-                if let Err(e) = serve_armory(&mut socket, storage).await {
-                    warn!("[Worker] Armory response failed: {:?}", e);
+                info!("[{} Worker] Serving armory.", link);
+                if let Err(e) = serve_armory(&mut socket, storage, surface).await {
+                    warn!("[{} Worker] Armory response failed: {:?}", link, e);
+                }
+                continue;
+            }
+            StartupRequest::ArmoryAsset => {
+                info!("[{} Worker] Serving armory asset.", link);
+                if let Err(e) =
+                    serve_armory_asset(&mut socket, storage, surface, &prefix[..prefix_len]).await
+                {
+                    warn!("[{} Worker] Armory asset response failed: {:?}", link, e);
                 }
                 continue;
             }
             StartupRequest::Payload => {
-                info!("[Worker] Serving payload.");
+                info!("[{} Worker] Serving payload.", link);
                 if let Err(e) = serve_payload(&mut socket, storage).await {
-                    warn!("[Worker] Payload response failed: {:?}", e);
+                    warn!("[{} Worker] Payload response failed: {:?}", link, e);
+                }
+                continue;
+            }
+            StartupRequest::PayloadSave => {
+                info!("[{} Worker] Saving payload.", link);
+                if let Err(e) = serve_payload_save(&mut socket, &prefix[..prefix_len]).await {
+                    warn!("[{} Worker] Payload save response failed: {:?}", link, e);
+                }
+                continue;
+            }
+            StartupRequest::PayloadRun => {
+                info!("[{} Worker] Running payload.", link);
+                if let Err(e) = serve_payload_run(&mut socket).await {
+                    warn!("[{} Worker] Payload run response failed: {:?}", link, e);
                 }
                 continue;
             }
             StartupRequest::Runs => {
-                info!("[Worker] Serving runs.");
+                info!("[{} Worker] Serving runs.", link);
                 if let Err(e) = serve_runs(&mut socket).await {
-                    warn!("[Worker] Runs response failed: {:?}", e);
+                    warn!("[{} Worker] Runs response failed: {:?}", link, e);
                 }
                 continue;
             }
             StartupRequest::IgnoredBrowserProbe => {
-                info!("[Worker] Serving browser probe.");
+                info!("[{} Worker] Serving browser probe.", link);
                 if let Err(e) = serve_empty_not_found(&mut socket).await {
-                    warn!("[Worker] Browser probe response failed: {:?}", e);
+                    warn!("[{} Worker] Browser probe response failed: {:?}", link, e);
                 }
                 continue;
             }
             StartupRequest::OtherGet => {
-                info!("[Worker] Serving unhandled browser GET.");
+                info!("[{} Worker] Serving unhandled browser GET.", link);
                 if let Err(e) = serve_empty_not_found(&mut socket).await {
-                    warn!("[Worker] Unhandled GET response failed: {:?}", e);
+                    warn!("[{} Worker] Unhandled GET response failed: {:?}", link, e);
                 }
                 continue;
             }
             StartupRequest::Options => {
-                info!("[Worker] Serving OPTIONS.");
+                info!("[{} Worker] Serving OPTIONS.", link);
                 if let Err(e) = serve_no_content(&mut socket).await {
-                    warn!("[Worker] OPTIONS response failed: {:?}", e);
+                    warn!("[{} Worker] OPTIONS response failed: {:?}", link, e);
                 }
                 continue;
             }
             StartupRequest::KeyboardTarget => {
-                info!("[Worker] Serving keyboard target.");
+                info!("[{} Worker] Serving keyboard target.", link);
                 if let Err(e) = serve_keyboard_target(&mut socket, &prefix[..prefix_len]).await {
-                    warn!("[Worker] Keyboard target response failed: {:?}", e);
+                    warn!("[{} Worker] Keyboard target response failed: {:?}", link, e);
                 }
                 continue;
             }
@@ -140,7 +178,7 @@ pub(super) async fn server_task(
 
         let socket = PrefilteredSocket::new(socket, prefix, prefix_len);
 
-        info!("[Worker] Starting HTTP serve...");
+        info!("[{} Worker] Starting HTTP serve...", link);
         match Server::new(&router, &config, &mut picoserve_buffer)
             .serve(socket)
             .await
@@ -150,15 +188,36 @@ pub(super) async fn server_task(
                 ..
             }) => {
                 info!(
-                    "Successfully handled {} requests before closing.",
-                    handled_requests_count
+                    "{} worker handled {} requests before closing.",
+                    link, handled_requests_count
                 );
             }
             Err(err) => {
-                error!("Picoserve engine processing error: {:?}", err);
+                error!("{} picoserve processing error: {:?}", link, err);
             }
         }
-        info!("[Worker] HTTP serve returned.");
+        info!("[{} Worker] HTTP serve returned.", link);
+    }
+}
+
+/// HTTP route surface enabled for a worker instance.
+#[derive(Clone, Copy, PartialEq)]
+pub enum HttpSurface {
+    /// Full Wi-Fi dashboard and API surface.
+    Portal,
+    /// USB NCM surface restricted to Armory binary delivery.
+    Ncm,
+}
+
+impl HttpSurface {
+    fn allows(self, request: StartupRequest) -> bool {
+        match self {
+            Self::Portal => true,
+            Self::Ncm => matches!(
+                request,
+                StartupRequest::Armory | StartupRequest::ArmoryAsset | StartupRequest::Options
+            ),
+        }
     }
 }
 
@@ -167,7 +226,10 @@ enum StartupRequest {
     Root,
     Bootstrap,
     Armory,
+    ArmoryAsset,
     Payload,
+    PayloadSave,
+    PayloadRun,
     Runs,
     IgnoredBrowserProbe,
     OtherGet,
@@ -189,8 +251,22 @@ fn classify_startup_request(bytes: &[u8]) -> StartupRequest {
         return StartupRequest::Armory;
     }
 
+    if request_starts_with(bytes, b"GET /api/armory/")
+        || request_starts_with(bytes, b"HEAD /api/armory/")
+    {
+        return StartupRequest::ArmoryAsset;
+    }
+
     if request_starts_with(bytes, b"GET /api/payload ") {
         return StartupRequest::Payload;
+    }
+
+    if request_starts_with(bytes, b"POST /api/payload ") {
+        return StartupRequest::PayloadSave;
+    }
+
+    if request_starts_with(bytes, b"POST /api/payload/run ") {
+        return StartupRequest::PayloadRun;
     }
 
     if request_starts_with(bytes, b"GET /api/runs ") {
@@ -245,7 +321,7 @@ fn is_get_or_head_request(bytes: &[u8]) -> bool {
     request_starts_with(bytes, b"GET ") || request_starts_with(bytes, b"HEAD ")
 }
 
-use crate::storage::ListedFile;
+use crate::storage::{LISTED_FILE_NAME_MAX, LISTED_FILE_PATH_MAX, ListedFile};
 const STARTUP_FILE_LIMIT: usize = 16;
 
 static STARTUP_LISTED_FILES: Mutex<CriticalSectionRawMutex, [ListedFile; STARTUP_FILE_LIMIT]> =
@@ -334,11 +410,31 @@ pub(super) async fn serve_bootstrap(
     body.json_string(crate::net::wifi_ap_password().as_bytes());
     body.raw(b",\"ap_ssid\":");
     body.json_string(crate::net::wifi_ap_ssid().as_bytes());
-    body.raw(b",\"host_hid_active\":true,\"keyboard_layout\":");
+    body.raw(b",\"host_hid_active\":");
+    body.raw(if crate::net::host_hid_active() {
+        b"true"
+    } else {
+        b"false"
+    });
+    body.raw(b",\"keyboard_layout\":");
     body.json_string(keyboard_layout.as_bytes());
     body.raw(b",\"keyboard_os\":");
     body.json_string(keyboard_os.as_bytes());
-    body.raw(b",\"ncm_active\":true,\"ncm_url\":\"http://192.168.7.1\",\"seeded\":false}");
+    body.raw(b",\"ncm_active\":");
+    body.raw(if crate::net::ncm_active() {
+        b"true"
+    } else {
+        b"false"
+    });
+    body.raw(b",\"ncm_url\":");
+    body.json_string(crate::net::ncm_url().as_bytes());
+    body.raw(b",\"seeded\":");
+    body.raw(if crate::net::seeded_this_boot() {
+        b"true"
+    } else {
+        b"false"
+    });
+    body.raw(b"}");
 
     if body.overflowed() {
         return serve_empty_internal_error(socket).await;
@@ -403,6 +499,51 @@ impl<const N: usize> FixedBody<N> {
 
         self.raw(b"\"");
     }
+
+    fn usize_value(&mut self, value: usize) {
+        let mut digits = [0u8; 20];
+        let mut index = digits.len();
+        let mut remaining = value;
+
+        if remaining == 0 {
+            self.raw(b"0");
+            return;
+        }
+
+        while remaining > 0 {
+            index -= 1;
+            digits[index] = b'0' + (remaining % 10) as u8;
+            remaining /= 10;
+        }
+
+        self.raw(&digits[index..]);
+    }
+}
+
+#[derive(Clone, Copy)]
+enum PayloadBodyError {
+    MissingCode,
+    InvalidJson,
+    TooLarge,
+    InvalidUtf8,
+}
+
+impl PayloadBodyError {
+    fn message(self) -> &'static str {
+        match self {
+            Self::MissingCode => "Missing payload code.",
+            Self::InvalidJson => "Invalid payload request body.",
+            Self::TooLarge => "Payload content exceeds 2048 bytes.",
+            Self::InvalidUtf8 => "Invalid UTF-8 sequence sent in payload body.",
+        }
+    }
+
+    fn status(self) -> HttpStatus {
+        match self {
+            Self::TooLarge => HttpStatus::PayloadTooLarge,
+            _ => HttpStatus::BadRequest,
+        }
+    }
 }
 
 pub(super) async fn serve_keyboard_target(
@@ -443,13 +584,128 @@ pub(super) async fn serve_keyboard_target(
     write_final_chunk(socket).await
 }
 
+fn decode_payload_code<'a>(body: &[u8], output: &'a mut [u8]) -> Result<&'a str, PayloadBodyError> {
+    let key = b"\"code\"";
+    let key_index = body
+        .windows(key.len())
+        .position(|window| window == key)
+        .ok_or(PayloadBodyError::MissingCode)?;
+    let mut index = key_index + key.len();
+
+    index = skip_json_whitespace(body, index);
+    if body.get(index) != Some(&b':') {
+        return Err(PayloadBodyError::InvalidJson);
+    }
+    index += 1;
+    index = skip_json_whitespace(body, index);
+    if body.get(index) != Some(&b'"') {
+        return Err(PayloadBodyError::InvalidJson);
+    }
+    index += 1;
+
+    let mut len = 0usize;
+    while index < body.len() {
+        let byte = body[index];
+        index += 1;
+
+        if byte == b'"' {
+            return core::str::from_utf8(&output[..len]).map_err(|_| PayloadBodyError::InvalidUtf8);
+        }
+
+        let decoded = if byte == b'\\' {
+            if index >= body.len() {
+                return Err(PayloadBodyError::InvalidJson);
+            }
+
+            let escaped = body[index];
+            index += 1;
+            match escaped {
+                b'"' => b'"',
+                b'\\' => b'\\',
+                b'/' => b'/',
+                b'b' => 0x08,
+                b'f' => 0x0c,
+                b'n' => b'\n',
+                b'r' => b'\r',
+                b't' => b'\t',
+                b'u' => {
+                    if index + 4 > body.len() {
+                        return Err(PayloadBodyError::InvalidJson);
+                    }
+                    let value = json_hex_word(&body[index..index + 4])
+                        .ok_or(PayloadBodyError::InvalidJson)?;
+                    index += 4;
+                    if value > 0x7f {
+                        return Err(PayloadBodyError::InvalidUtf8);
+                    }
+                    value as u8
+                }
+                _ => return Err(PayloadBodyError::InvalidJson),
+            }
+        } else {
+            byte
+        };
+
+        if len >= output.len() {
+            return Err(PayloadBodyError::TooLarge);
+        }
+
+        output[len] = decoded;
+        len += 1;
+    }
+
+    Err(PayloadBodyError::InvalidJson)
+}
+
+fn skip_json_whitespace(bytes: &[u8], mut index: usize) -> usize {
+    while index < bytes.len() && matches!(bytes[index], b' ' | b'\n' | b'\r' | b'\t') {
+        index += 1;
+    }
+
+    index
+}
+
+fn json_hex_word(bytes: &[u8]) -> Option<u16> {
+    let mut value = 0u16;
+
+    for byte in bytes {
+        let digit = match *byte {
+            b'0'..=b'9' => *byte - b'0',
+            b'a'..=b'f' => *byte - b'a' + 10,
+            b'A'..=b'F' => *byte - b'A' + 10,
+            _ => return None,
+        };
+        value = (value << 4) | digit as u16;
+    }
+
+    Some(value)
+}
+
 pub(super) async fn serve_runs(socket: &mut TcpSocket<'_>) -> Result<(), embassy_net::tcp::Error> {
+    let runs = crate::net::runs_snapshot();
+
     write_json_headers(socket).await?;
-    write_http_chunk(
-        socket,
-        b"{\"run_history\":[{\"ok\":true,\"preview\":\"payload.dd\",\"sequence\":1,\"source\":\"bootstrap\"}],\"seeded\":false}",
-    )
-    .await?;
+    write_http_chunk(socket, b"{\"run_history\":[").await?;
+
+    for (index, entry) in runs.entries().iter().enumerate() {
+        if index > 0 {
+            write_http_chunk(socket, b",").await?;
+        }
+
+        write_http_chunk(socket, b"{\"ok\":").await?;
+        write_http_chunk(socket, if entry.ok() { b"true" } else { b"false" }).await?;
+        write_http_chunk(socket, b",\"preview\":").await?;
+        write_json_string_bytes(socket, entry.preview().as_bytes()).await?;
+        write_http_chunk(socket, b",\"sequence\":").await?;
+        write_json_usize(socket, entry.sequence()).await?;
+        write_http_chunk(socket, b",\"source\":").await?;
+        write_json_string_bytes(socket, entry.source().as_bytes()).await?;
+        write_http_chunk(socket, b"}").await?;
+    }
+
+    write_http_chunk(socket, b"],\"seeded\":").await?;
+    write_http_chunk(socket, if runs.seeded() { b"true" } else { b"false" }).await?;
+    write_http_chunk(socket, b"}").await?;
     write_final_chunk(socket).await
 }
 
@@ -475,9 +731,36 @@ pub(super) async fn serve_payload(
     write_final_chunk(socket).await
 }
 
+pub(super) async fn serve_payload_save(
+    socket: &mut TcpSocket<'_>,
+    prefix: &[u8],
+) -> Result<(), embassy_net::tcp::Error> {
+    let mut request = [0u8; 4096];
+    let request_len = socket_read_prefetched_request(socket, prefix, &mut request).await;
+    let body = request_body(&request[..request_len]).unwrap_or(&[]);
+    let mut code = [0u8; 2048];
+
+    let result = match decode_payload_code(body, &mut code) {
+        Ok(code) => crate::net::save_payload_code(code).await,
+        Err(error) => {
+            return write_payload_error_response(socket, error.message(), error.status()).await;
+        }
+    };
+
+    write_payload_action_response(socket, result).await
+}
+
+pub(super) async fn serve_payload_run(
+    socket: &mut TcpSocket<'_>,
+) -> Result<(), embassy_net::tcp::Error> {
+    let result = crate::net::trigger_payload_run().await;
+    write_payload_action_response(socket, result).await
+}
+
 pub(super) async fn serve_armory(
     socket: &mut TcpSocket<'_>,
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
+    surface: HttpSurface,
 ) -> Result<(), embassy_net::tcp::Error> {
     let file_count = {
         let storage_guard = storage.lock().await;
@@ -492,6 +775,7 @@ pub(super) async fn serve_armory(
 
     let mut has_binary = false;
     let mut written = 0usize;
+    let mut wrote_asset = false;
 
     write_http_chunk(socket, b"{\"files\":[").await?;
 
@@ -513,6 +797,14 @@ pub(super) async fn serve_armory(
             continue;
         }
 
+        if surface == HttpSurface::Ncm && is_payload {
+            continue;
+        }
+
+        if !is_payload && wrote_asset {
+            continue;
+        }
+
         if written > 0 {
             write_http_chunk(socket, b",").await?;
         }
@@ -520,6 +812,7 @@ pub(super) async fn serve_armory(
 
         if !is_payload {
             has_binary = true;
+            wrote_asset = true;
         }
 
         write_http_chunk(socket, b"{\"kind\":\"").await?;
@@ -536,6 +829,52 @@ pub(super) async fn serve_armory(
     write_http_chunk(socket, b"}").await?;
 
     write_final_chunk(socket).await
+}
+
+pub(super) async fn serve_armory_asset(
+    socket: &mut TcpSocket<'_>,
+    storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
+    surface: HttpSurface,
+    prefix: &[u8],
+) -> Result<(), embassy_net::tcp::Error> {
+    let mut request = [0u8; 512];
+    let request_len = socket_read_prefetched_request(socket, prefix, &mut request).await;
+    let Some(target) = armory_asset_target(&request[..request_len]) else {
+        return serve_empty_not_found(socket).await;
+    };
+
+    if surface == HttpSurface::Ncm && target.is_payload() {
+        return serve_empty_not_found(socket).await;
+    }
+
+    let mut offset = 0usize;
+    let mut buffer = [0u8; 1024];
+
+    match read_armory_asset_chunk(storage, &target, offset, &mut buffer).await {
+        Ok(0) => {
+            write_binary_headers(socket).await?;
+            write_final_chunk(socket).await
+        }
+        Ok(read) => {
+            write_binary_headers(socket).await?;
+            write_http_chunk(socket, &buffer[..read]).await?;
+            offset += read;
+
+            loop {
+                match read_armory_asset_chunk(storage, &target, offset, &mut buffer).await {
+                    Ok(0) => break,
+                    Ok(read) => {
+                        write_http_chunk(socket, &buffer[..read]).await?;
+                        offset += read;
+                    }
+                    Err(()) => break,
+                }
+            }
+
+            write_final_chunk(socket).await
+        }
+        Err(()) => serve_empty_not_found(socket).await,
+    }
 }
 
 struct StringCopy<const N: usize> {
@@ -558,16 +897,100 @@ impl<const N: usize> StringCopy<N> {
     fn as_bytes(&self) -> &[u8] {
         &self.bytes[..self.len]
     }
+
+    fn as_str(&self) -> &str {
+        core::str::from_utf8(self.as_bytes()).unwrap_or("")
+    }
+}
+
+#[derive(Clone, Copy)]
+enum HttpStatus {
+    Ok,
+    BadRequest,
+    PayloadTooLarge,
+    InternalServerError,
+}
+
+impl HttpStatus {
+    fn line(self) -> &'static [u8] {
+        match self {
+            Self::Ok => b"HTTP/1.1 200 OK\r\n",
+            Self::BadRequest => b"HTTP/1.1 400 Bad Request\r\n",
+            Self::PayloadTooLarge => b"HTTP/1.1 413 Payload Too Large\r\n",
+            Self::InternalServerError => b"HTTP/1.1 500 Internal Server Error\r\n",
+        }
+    }
+}
+
+async fn write_payload_action_response(
+    socket: &mut TcpSocket<'_>,
+    result: crate::net::PayloadActionResult,
+) -> Result<(), embassy_net::tcp::Error> {
+    let mut body = FixedBody::<384>::new();
+
+    body.raw(b"{\"success\":");
+    body.raw(if result.success() { b"true" } else { b"false" });
+    body.raw(b",\"message\":");
+    body.json_string(result.message().as_bytes());
+    body.raw(b",\"error_line\":");
+    match result.error_line() {
+        Some(line) => body.usize_value(line),
+        None => body.raw(b"null"),
+    }
+    body.raw(b"}");
+
+    let status = if result.success() {
+        HttpStatus::Ok
+    } else {
+        HttpStatus::BadRequest
+    };
+
+    if body.overflowed() {
+        return write_payload_error_response(
+            socket,
+            "Payload response exceeded fixed response buffer.",
+            HttpStatus::InternalServerError,
+        )
+        .await;
+    }
+
+    write_fixed_json_response_with_status(socket, status, body.bytes()).await
+}
+
+async fn write_payload_error_response(
+    socket: &mut TcpSocket<'_>,
+    message: &'static str,
+    status: HttpStatus,
+) -> Result<(), embassy_net::tcp::Error> {
+    let mut body = FixedBody::<256>::new();
+
+    body.raw(b"{\"success\":false,\"message\":");
+    body.json_string(message.as_bytes());
+    body.raw(b",\"error_line\":null}");
+
+    if body.overflowed() {
+        return serve_empty_internal_error(socket).await;
+    }
+
+    write_fixed_json_response_with_status(socket, status, body.bytes()).await
 }
 
 async fn write_fixed_json_response(
     socket: &mut TcpSocket<'_>,
     body: &[u8],
 ) -> Result<(), embassy_net::tcp::Error> {
+    write_fixed_json_response_with_status(socket, HttpStatus::Ok, body).await
+}
+
+async fn write_fixed_json_response_with_status(
+    socket: &mut TcpSocket<'_>,
+    status: HttpStatus,
+    body: &[u8],
+) -> Result<(), embassy_net::tcp::Error> {
+    socket.write_all(status.line()).await?;
     socket
         .write_all(
-            b"HTTP/1.1 200 OK\r\n\
-Content-Type: application/json\r\n\
+            b"Content-Type: application/json\r\n\
 Cache-Control: no-store\r\n\
 Content-Length: ",
         )
@@ -590,6 +1013,19 @@ async fn write_json_headers(socket: &mut TcpSocket<'_>) -> Result<(), embassy_ne
         .write_all(
             b"HTTP/1.1 200 OK\r\n\
 Content-Type: application/json\r\n\
+Cache-Control: no-store\r\n\
+Transfer-Encoding: chunked\r\n\
+Connection: close\r\n\
+\r\n",
+        )
+        .await
+}
+
+async fn write_binary_headers(socket: &mut TcpSocket<'_>) -> Result<(), embassy_net::tcp::Error> {
+    socket
+        .write_all(
+            b"HTTP/1.1 200 OK\r\n\
+Content-Type: application/octet-stream\r\n\
 Cache-Control: no-store\r\n\
 Transfer-Encoding: chunked\r\n\
 Connection: close\r\n\
@@ -860,6 +1296,150 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
         || haystack
             .windows(needle.len())
             .any(|window| window == needle)
+}
+
+struct ArmoryAssetTarget {
+    path: StringCopy<LISTED_FILE_PATH_MAX>,
+    payload: bool,
+}
+
+impl ArmoryAssetTarget {
+    fn path(&self) -> &str {
+        self.path.as_str()
+    }
+
+    fn is_payload(&self) -> bool {
+        self.payload
+    }
+}
+
+fn armory_asset_target(request: &[u8]) -> Option<ArmoryAssetTarget> {
+    let path = if request.starts_with(b"GET /api/armory/") {
+        request_path_after_prefix(request, b"GET /api/armory/")?
+    } else if request.starts_with(b"HEAD /api/armory/") {
+        request_path_after_prefix(request, b"HEAD /api/armory/")?
+    } else {
+        return None;
+    };
+
+    let filename = decode_armory_asset_filename(path)?;
+    let payload = filename.as_bytes() == b"payload.dd";
+    let storage_path = if payload {
+        StringCopy::from("payload.dd")
+    } else {
+        armory_storage_path(filename.as_str())?
+    };
+
+    Some(ArmoryAssetTarget {
+        path: storage_path,
+        payload,
+    })
+}
+
+fn request_path_after_prefix<'a>(request: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
+    let mut end = prefix.len();
+    while end < request.len() && request[end] != b' ' {
+        end += 1;
+    }
+
+    if end == request.len() {
+        return None;
+    }
+
+    Some(&request[prefix.len()..end])
+}
+
+fn valid_armory_asset_filename(filename: &[u8]) -> bool {
+    if filename.is_empty() || filename.len() > LISTED_FILE_NAME_MAX {
+        return false;
+    }
+
+    if filename == b"." || filename == b".." {
+        return false;
+    }
+
+    filename
+        .iter()
+        .all(|byte| *byte != b'/' && *byte != b'\\' && *byte != 0)
+}
+
+fn decode_armory_asset_filename(path: &[u8]) -> Option<StringCopy<LISTED_FILE_NAME_MAX>> {
+    let mut decoded = StringCopy::<LISTED_FILE_NAME_MAX> {
+        bytes: [0u8; LISTED_FILE_NAME_MAX],
+        len: 0,
+    };
+    let mut index = 0usize;
+
+    while index < path.len() {
+        let byte = if path[index] == b'%' {
+            if index + 2 >= path.len() {
+                return None;
+            }
+            let high = hex_digit(path[index + 1])?;
+            let low = hex_digit(path[index + 2])?;
+            index += 3;
+            (high << 4) | low
+        } else {
+            let byte = path[index];
+            index += 1;
+            byte
+        };
+
+        if decoded.len >= decoded.bytes.len() {
+            return None;
+        }
+
+        decoded.bytes[decoded.len] = byte;
+        decoded.len += 1;
+    }
+
+    if !valid_armory_asset_filename(decoded.as_bytes()) {
+        return None;
+    }
+
+    core::str::from_utf8(decoded.as_bytes()).ok()?;
+    Some(decoded)
+}
+
+fn hex_digit(byte: u8) -> Option<u8> {
+    match byte {
+        b'0'..=b'9' => Some(byte - b'0'),
+        b'a'..=b'f' => Some(byte - b'a' + 10),
+        b'A'..=b'F' => Some(byte - b'A' + 10),
+        _ => None,
+    }
+}
+
+async fn read_armory_asset_chunk(
+    storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
+    target: &ArmoryAssetTarget,
+    offset: usize,
+    buffer: &mut [u8],
+) -> Result<usize, ()> {
+    let storage_guard = storage.lock().await;
+    storage_guard
+        .read_at(target.path(), offset, buffer)
+        .map_err(|_| ())
+}
+
+fn armory_storage_path(filename: &str) -> Option<StringCopy<LISTED_FILE_PATH_MAX>> {
+    let mut path = StringCopy::<LISTED_FILE_PATH_MAX> {
+        bytes: [0u8; LISTED_FILE_PATH_MAX],
+        len: 0,
+    };
+    let prefix = b"/armory/";
+    let filename = filename.as_bytes();
+    let len = prefix.len() + filename.len();
+
+    if len > path.bytes.len() {
+        return None;
+    }
+
+    path.bytes[..prefix.len()].copy_from_slice(prefix);
+    path.bytes[prefix.len()..len].copy_from_slice(filename);
+    path.len = len;
+    core::str::from_utf8(path.as_bytes()).ok()?;
+    Some(path)
 }
 
 struct PrefilteredSocket<'socket> {

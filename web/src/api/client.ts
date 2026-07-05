@@ -79,7 +79,7 @@ export async function getHydratedBootstrap(): Promise<HydratedBootstrapState> {
     files: armory.files.map((file) => ({
       kind: file.kind,
       name: file.name,
-      path: file.kind === 'ducky' ? '/payload.dd' : `/armory/${file.name}`,
+      path: file.kind === 'ducky' ? '/payload.dd' : `/api/armory/${encodeURIComponent(file.name)}`,
       size: file.size,
     })),
     payload: payload.code,

@@ -12,6 +12,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 pub(super) static TRIGGER_RUN: AtomicBool = AtomicBool::new(false);
 
+pub(crate) fn consume_run_trigger() -> bool {
+    TRIGGER_RUN.swap(false, Ordering::AcqRel)
+}
+
 #[derive(Serialize)]
 pub(super) struct ValidationResponse {
     success: bool,
@@ -22,6 +26,18 @@ pub(super) struct ValidationResponse {
 impl ValidationResponse {
     pub(super) fn is_error(&self) -> bool {
         !self.success
+    }
+
+    pub(crate) fn success(&self) -> bool {
+        self.success
+    }
+
+    pub(crate) fn error_line(&self) -> Option<usize> {
+        self.error_line
+    }
+
+    pub(crate) fn message(&self) -> Option<&'static str> {
+        self.message
     }
 }
 
@@ -35,6 +51,18 @@ pub(super) struct RunResponse {
 impl RunResponse {
     pub(super) fn is_error(&self) -> bool {
         !self.success
+    }
+
+    pub(crate) fn success(&self) -> bool {
+        self.success
+    }
+
+    pub(crate) fn error_line(&self) -> Option<usize> {
+        self.error_line
+    }
+
+    pub(crate) fn message(&self) -> &'static str {
+        self.message
     }
 }
 
@@ -193,7 +221,8 @@ fn validate_script_bytes(bytes: &[u8]) -> Result<(), (Option<usize>, &'static st
     for (line_num, line) in (1..).zip(valid_str.lines()) {
         let trimmed = line.trim();
         if !trimmed.is_empty()
-            && let Err(ducky_err) = DuckyParser::parse_line(trimmed)
+            && let Err(ducky_err) =
+                DuckyParser::parse_line_for_os(trimmed, crate::net::active_keyboard_os())
         {
             let diagnostic = ErrorDiagnostic::new(line_num, ducky_err, line);
             diagnostic.log_diagnostic();

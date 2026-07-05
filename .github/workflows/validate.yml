@@ -74,6 +74,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends gcc-arm-none-eabi libnewlib-arm-none-eabi
 
+      - name: Install firmware build tools
+        run: |
+          cargo install flip-link --locked
+
       - name: Check formatting
         run: cargo fmt --all -- --check
 

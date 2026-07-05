@@ -1,5 +1,5 @@
 const ALLOWED_BINARY_EXTENSIONS = new Set(['appimage', 'bin', 'elf', 'exe']);
-export const MAX_ARMORY_FILE_SIZE = 500 * 1024;
+export const MAX_ARMORY_FILE_SIZE = 750 * 1024;
 const BLOCKED_FILE_TYPES = new Set([
   'application/gzip',
   'application/json',
