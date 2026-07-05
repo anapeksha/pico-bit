@@ -21,10 +21,12 @@
           or run with firmware validation
         </li>
         <li>
-          <strong>Binary Armory</strong> - upload, download, copy link, or delete the staged binary
-          stored in littlefs2
+          <strong>Binary Armory</strong> - upload, download, copy link, or delete the staged binary stored
+          in littlefs2
         </li>
-        <li>NCM link exposes the staged binary to the host while Host HID handles typed payload runs</li>
+        <li>
+          NCM link exposes the staged binary to the host while Host HID handles typed payload runs
+        </li>
       </ul>
     </div>
 
