@@ -21,7 +21,7 @@ All notable changes to Pico Bit are documented in this file.
 - Protected `payload.dd` handling: visible and downloadable on the portal, but not deletable.
 - Recent run history for boot and manual execution attempts.
 - Release workflow support for ELF and UF2 firmware artifacts.
-- Cargo dependency caching in CI with `cargo-chef`.
+- Signed release packaging for ELF and UF2 artifacts.
 
 ### Changed
 

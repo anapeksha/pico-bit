@@ -60,7 +60,6 @@ jobs:
 
       - name: Install firmware tools
         run: |
-          cargo install cargo-chef --locked
           cargo install flip-link --locked
           cargo install elf2uf2-rs --locked
 
@@ -90,23 +89,6 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP/picotool"
           echo "$RUNNER_TEMP/picotool/picotool" >> "$GITHUB_PATH"
           echo "picotool_DIR=$RUNNER_TEMP/picotool/picotool" >> "$GITHUB_ENV"
-
-      - name: Prepare Cargo dependency recipe
-        run: cargo chef prepare --recipe-path recipe.json
-
-      - name: Cache Cargo release dependencies
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cargo/git
-            ~/.cargo/registry
-            target
-          key: cargo-release-${{ runner.os }}-${{ env.FIRMWARE_TARGET }}-${{ hashFiles('recipe.json') }}
-          restore-keys: |
-            cargo-release-${{ runner.os }}-${{ env.FIRMWARE_TARGET }}-
-
-      - name: Build cached release dependency graph
-        run: cargo chef cook --release --recipe-path recipe.json
 
       - name: Build release firmware
         run: cargo build --release --target "$FIRMWARE_TARGET"
