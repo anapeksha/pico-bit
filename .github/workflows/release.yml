@@ -112,7 +112,7 @@ jobs:
           umask 077
           printf '%s' "$PICOBIT_SIGNING_PRIVATE_KEY_B64" | base64 --decode > "$RUNNER_TEMP/picobit-signing-private.pem"
           printf '%s' "$PICOBIT_SIGNING_PUBLIC_KEY_B64" | base64 --decode > "$RUNNER_TEMP/picobit-signing-public.pem"
-          trap 'rm -f "$RUNNER_TEMP/picobit-signing-private.pem" "$RUNNER_TEMP/picobit-signing-public.pem" "$RUNNER_TEMP/picobit-signing-public-derived.pem"' EXIT
+          trap 'rm -f "$RUNNER_TEMP/picobit-signing-private.pem" "$RUNNER_TEMP/picobit-signing-public.pem" "$RUNNER_TEMP/picobit-signing-public-derived.pem" "$RUNNER_TEMP/firmware-$RELEASE_TAG.unsigned.elf"' EXIT
 
           openssl ec \
             -in "$RUNNER_TEMP/picobit-signing-private.pem" \
@@ -120,10 +120,12 @@ jobs:
             -out "$RUNNER_TEMP/picobit-signing-public-derived.pem"
           cmp "$RUNNER_TEMP/picobit-signing-public.pem" "$RUNNER_TEMP/picobit-signing-public-derived.pem"
 
+          cp "target/$FIRMWARE_TARGET/release/pico-bit" "$RUNNER_TEMP/firmware-$RELEASE_TAG.unsigned.elf"
+
           picotool seal \
             --hash \
             --sign \
-            "target/$FIRMWARE_TARGET/release/pico-bit" \
+            "$RUNNER_TEMP/firmware-$RELEASE_TAG.unsigned.elf" \
             "firmware-$RELEASE_TAG.elf" \
             "$RUNNER_TEMP/picobit-signing-private.pem" \
             "$RUNNER_TEMP/firmware-$RELEASE_TAG.otp.json"
