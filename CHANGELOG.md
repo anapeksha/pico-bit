@@ -2,6 +2,22 @@
 
 All notable changes to Pico Bit are documented in this file.
 
+## v0.1.1 - 2026-07-06
+
+### Added
+
+- WS2812 RGB status LED driver for GP16 using PIO1 and DMA channel 2.
+- Queued, non-blocking LED status events for boot, Wi-Fi bring-up, USB NCM, Host HID readiness, payload execution, keyboard layout changes, Armory upload activity, and validation/storage faults.
+- Fault LED patterns repeat until a newer status event is queued, matching the intent of the MicroPython halt patterns without blocking firmware recovery paths.
+- Firmware status pattern map matching the existing MicroPython status LED timings for supported stage and error names.
+
+### Changed
+
+- Cargo package version bumped to `0.1.1`.
+- Types that derive `Debug` now also derive or implement `defmt::Format` for firmware logging.
+- Removed dead-code suppressions from parser, keyboard, storage, and status LED paths by deleting unused wrappers or wiring the underlying behavior.
+- README, PR, and release notes updated for the status LED release.
+
 ## v0.1.0 - 2026-07-05
 
 ### Added

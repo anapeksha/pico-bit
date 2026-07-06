@@ -1,7 +1,7 @@
 use cyw43::PowerManagementMode::Performance;
-use cyw43::{A4, Aligned, Runner as Cyw43Runner, State, aligned_bytes};
+use cyw43::{A4, Aligned, Control, Runner as Cyw43Runner, State, aligned_bytes};
 use cyw43_pio::PioSpi;
-use defmt::info;
+use defmt::{error, info};
 use embassy_executor::Spawner;
 use embassy_net::Stack;
 use embassy_rp::gpio::Output;
@@ -22,6 +22,9 @@ static NVRAM_BUF: &Aligned<A4, [u8]> = aligned_bytes!("../../firmware/nvram_rp20
 
 static STATE_STATIC: StaticCell<State> = StaticCell::new();
 
+static CONTROL_MUTEX: StaticCell<Mutex<CriticalSectionRawMutex, Control<'static>>> =
+    StaticCell::new();
+
 #[embassy_executor::task]
 async fn raw_wifi_runner(
     runner: Cyw43Runner<'static, cyw43::SpiBus<Output<'static>, PioSpi<'static, PIO0, 0>>>,
@@ -39,6 +42,16 @@ async fn wifi_dhcp_task(mut server: DhcpServer<32, 4>, stack: &'static Stack<'st
     server.run(*stack).await;
 }
 
+#[embassy_executor::task]
+async fn led_task(control_mutex: &'static Mutex<CriticalSectionRawMutex, Control<'static>>) {
+    loop {
+        let led_on = crate::status::LED_SIGNAL.wait().await;
+
+        let mut control = control_mutex.lock().await;
+        control.gpio_set(0, led_on).await;
+    }
+}
+
 /// Brings up the CYW43 AP, Wi-Fi DHCP, and portal HTTP worker.
 #[embassy_executor::task]
 pub async fn wifi_task(
@@ -48,25 +61,52 @@ pub async fn wifi_task(
     router: &'static AppRouter,
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
 ) {
+    crate::status::show(crate::status::Stage::SetupEntered);
+    crate::status::show(crate::status::Stage::SetupApStarting);
     let state = STATE_STATIC.init(cyw43::State::new());
     let (wifi_device, mut control, wifi_runner) =
         cyw43::new(state, pwr, spi, FW_BUF, NVRAM_BUF).await;
 
-    spawner.spawn(raw_wifi_runner(wifi_runner)).unwrap();
+    if spawner.spawn(raw_wifi_runner(wifi_runner)).is_err() {
+        crate::status::error(crate::status::Fault::SetupApFailed);
+        error!("Failed to spawn CYW43 runner.");
+        return;
+    }
 
     control.init(CLM_BUF).await;
     control.set_power_management(Performance).await;
 
-    let (wifi_net_stack, wifi_net_runner) = init_wifi_network(control, wifi_device, 5678).await;
+    let control_mutex = CONTROL_MUTEX.init(Mutex::new(control));
+
+    if spawner.spawn(led_task(control_mutex)).is_err() {
+        error!("Failed to spawn LED task.");
+        return;
+    };
+
+    let (wifi_net_stack, wifi_net_runner) = {
+        let mut control_guard = control_mutex.lock().await;
+
+        init_wifi_network(&mut *control_guard, wifi_device, 5678).await
+    };
     let wifi_dhcp = init_wifi_dhcp();
+    crate::status::show(crate::status::Stage::SetupApReady);
 
     info!("Starting network loops...");
 
-    spawner.spawn(wifi_net_task(wifi_net_runner)).unwrap();
-    spawner
+    if spawner.spawn(wifi_net_task(wifi_net_runner)).is_err() {
+        crate::status::error(crate::status::Fault::SetupApFailed);
+        error!("Failed to spawn Wi-Fi network task.");
+        return;
+    }
+    if spawner
         .spawn(wifi_dhcp_task(wifi_dhcp, wifi_net_stack))
-        .unwrap();
-    spawner
+        .is_err()
+    {
+        crate::status::error(crate::status::Fault::SetupServerFailed);
+        error!("Failed to spawn Wi-Fi DHCP task.");
+        return;
+    }
+    if spawner
         .spawn(http_task(
             "Wi-Fi",
             HttpSurface::Portal,
@@ -74,5 +114,11 @@ pub async fn wifi_task(
             router,
             storage,
         ))
-        .unwrap();
+        .is_err()
+    {
+        crate::status::error(crate::status::Fault::SetupServerFailed);
+        error!("Failed to spawn Wi-Fi HTTP task.");
+        return;
+    }
+    crate::status::show(crate::status::Stage::SetupServerReady);
 }

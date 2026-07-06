@@ -6,6 +6,7 @@ mod ducky;
 mod net;
 mod pio;
 mod runners;
+mod status;
 mod storage;
 mod usb;
 
@@ -106,6 +107,10 @@ async fn main(spawner: Spawner) {
     storage::GLOBAL_STORAGE.store(storage_manager as *mut _, Ordering::Release);
 
     info!("Spawning services...");
+
+    spawner.spawn(status::task()).unwrap();
+
+    status::show(status::Stage::Boot);
 
     spawner
         .spawn(wifi_task(

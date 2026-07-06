@@ -481,6 +481,7 @@ pub(super) async fn list() -> ArmoryListResponse {
 }
 
 pub(super) fn upload_too_large(filename: &str) -> ArmoryMutationResponse {
+    crate::status::show(crate::status::Stage::BinaryInjectFailed);
     ArmoryMutationResponse::new(filename, false, ArmoryError::TooLarge.message(), "error")
 }
 
@@ -499,6 +500,7 @@ async fn read_file_chunk(filename: &str, offset: usize, buffer: &mut [u8]) -> us
 }
 
 pub(super) async fn begin_upload_result(filename: &str) -> Result<(), ArmoryError> {
+    crate::status::show(crate::status::Stage::BinaryInjecting);
     let Some(storage) = storage() else {
         return Err(ArmoryError::StorageUnavailable);
     };
@@ -530,6 +532,7 @@ pub(super) async fn append_upload_chunk(filename: &str, chunk: &[u8]) -> Result<
 
 pub(super) async fn finish_upload(filename: &str) -> ArmoryMutationResponse {
     let has_binary = refresh_armory_files().await;
+    crate::status::show(crate::status::Stage::LootImported);
     ArmoryMutationResponse::new(
         filename,
         has_binary,
@@ -540,6 +543,7 @@ pub(super) async fn finish_upload(filename: &str) -> ArmoryMutationResponse {
 
 pub(super) async fn fail_upload(filename: &str, error: ArmoryError) -> ArmoryMutationResponse {
     let _ = delete_file_result(filename).await;
+    crate::status::show(crate::status::Stage::BinaryInjectFailed);
     ArmoryMutationResponse::new(filename, false, error.message(), "error")
 }
 

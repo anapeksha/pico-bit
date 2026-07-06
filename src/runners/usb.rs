@@ -4,7 +4,7 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb::Driver;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::Timer;
+use embassy_time::{Duration, Timer, with_timeout};
 use embassy_usb::UsbDevice;
 use embassy_usb::class::cdc_ncm::embassy_net::{Device, Runner as NcmRunner};
 use embassy_usb::class::hid::HidWriter;
@@ -27,6 +27,7 @@ pub async fn usb_task(mut usb: UsbDevice<'static, Driver<'static, USB>>) {
 #[embassy_executor::task]
 pub async fn ncm_task(runner: NcmRunner<'static, Driver<'static, USB>, MTU>) {
     crate::net::set_ncm_active(true);
+    crate::status::show(crate::status::Stage::UsbAgentMounted);
     runner.run().await;
 }
 
@@ -43,8 +44,16 @@ pub async fn hid_task(
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
 ) {
     info!("Waiting for USB HID execution layer readiness...");
-    hid.ready().await;
+    crate::status::show(crate::status::Stage::HidConstructed);
+    if with_timeout(Duration::from_secs(30), hid.ready())
+        .await
+        .is_err()
+    {
+        crate::status::error(crate::status::Fault::UsbEnumTimeout);
+        hid.ready().await;
+    }
     crate::net::set_host_hid_active(true);
+    crate::status::show(crate::status::Stage::UsbEnumerated);
     info!("USB HID Connected! Initializing runner loop...");
 
     let mut content_buffer = [0u8; 2048];
@@ -134,6 +143,7 @@ fn record_execution_result(
         }
         Err(error) => {
             error!("Script execution failed: {:?}", error);
+            crate::status::error(crate::status::Fault::ScriptError);
             crate::net::record_payload_run(source, false, "payload.dd");
         }
     }
@@ -169,12 +179,14 @@ async fn run_script_payload(
             Ok(bytes) => bytes.len(),
             Err(Error::NO_SUCH_ENTRY) => {
                 warn!("payload.dd not found in storage. Executing fallback...");
+                crate::status::error(crate::status::Fault::PayloadMissing);
                 let fallback = b"REM Stateless Fallback\nDELAY 500\n";
                 content_buffer[..fallback.len()].copy_from_slice(fallback);
                 fallback.len()
             }
             Err(_) => {
                 error!("Storage read failed due to an unexpected driver error.");
+                crate::status::error(crate::status::Fault::PayloadReadFailed);
                 return Err(crate::ducky::DuckyError::UnknownCommand);
             }
         }
@@ -185,6 +197,10 @@ async fn run_script_payload(
     let preview = PayloadPreview::from_script(script_text);
     let has_content = script_text.lines().any(|line| !line.trim().is_empty());
     let mut ok = true;
+
+    crate::status::show(crate::status::Stage::PayloadEntered);
+    crate::status::show(crate::status::Stage::PayloadReady);
+    crate::status::show(crate::status::Stage::PayloadRunning);
 
     let mut current_line_idx = 1;
     for raw_line in script_text.lines() {
@@ -204,17 +220,22 @@ async fn run_script_payload(
                 Ok(None) => {}
                 Err(e) => {
                     ok = false;
+                    crate::status::error(crate::status::Fault::ScriptError);
                     error!("Line {} Exec Error: {:?}", current_line_idx, e);
                 }
             }
         } else {
             ok = false;
+            crate::status::error(crate::status::Fault::ScriptError);
             error!("Line {} Parse Error", current_line_idx);
         }
         current_line_idx += 1;
     }
 
     info!("Payload execution loop completed.");
+    if ok {
+        crate::status::show(crate::status::Stage::PayloadComplete);
+    }
     Ok(PayloadExecution {
         has_content,
         ok,
