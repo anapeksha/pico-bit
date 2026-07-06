@@ -199,5 +199,6 @@ pub(super) fn update_target(request: KeyboardTargetRequest) -> KeyboardResponse 
     let os = request.os.unwrap_or(current_os);
 
     set_target(os, layout);
+    crate::status::show(crate::status::Stage::KeyboardLayoutChanged);
     response("Keyboard target updated.", "success")
 }

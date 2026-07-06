@@ -6,6 +6,7 @@ use embassy_usb::class::cdc_ncm::{
 use embassy_usb::class::hid::State as HidState;
 use embassy_usb::class::hid::{Config as HidConfig, HidBootProtocol, HidSubclass, HidWriter};
 use embassy_usb::{Builder, Config as UsbConfig, UsbDevice};
+use otp::get_chipid;
 use static_cell::StaticCell;
 use usbd_hid::descriptor::{KeyboardReport, SerializedDescriptor};
 
@@ -85,11 +86,11 @@ impl UsbManager {
     /// Builds the composite USB descriptor and class state from the RP USB driver.
     pub fn new(driver: Driver<'static, USB>) -> Self {
         let mut usb_config = UsbConfig::new(0x0001, 0x0001);
-        let serial_number =
-            USB_SERIAL_NUMBER.init(UsbSerialNumber::new(otp::get_chipid().unwrap()));
+        let chip_id = get_chipid().unwrap();
+        let serial_number = USB_SERIAL_NUMBER.init(UsbSerialNumber::new(chip_id));
 
         usb_config.manufacturer = Some("Pico Bit");
-        usb_config.product = Some("Pico Bit");
+        usb_config.product = Some("Pico Bit Ecosystem");
         usb_config.serial_number = Some(serial_number.as_str());
         usb_config.device_class = 0xEF; // Miscellaneous Device Class
         usb_config.device_sub_class = 0x02; // Common Class
@@ -110,7 +111,7 @@ impl UsbManager {
             report_descriptor: KeyboardReport::desc(),
             hid_subclass: HidSubclass::Boot,
             hid_boot_protocol: HidBootProtocol::Keyboard,
-            poll_ms: 60,
+            poll_ms: 10,
             max_packet_size: 8,
             request_handler: None,
         };
@@ -118,8 +119,12 @@ impl UsbManager {
 
         let ncm_state = NCM_STATIC.init(NcmState::new());
 
-        let mac_pico = [0x02, 0x00, 0x00, 0x00, 0x00, 0x01];
-        let mac_host = [0x02, 0x00, 0x00, 0x00, 0x00, 0x02];
+        let mut mac_pico = [0x02, 0x00, 0x00, 0x00, 0x00, 0x01];
+        let mut mac_host = [0x02, 0x00, 0x00, 0x00, 0x00, 0x02];
+
+        let chip_bytes = chip_id.to_le_bytes();
+        mac_pico[2..6].copy_from_slice(&chip_bytes[0..4]);
+        mac_host[2..6].copy_from_slice(&chip_bytes[4..8]);
 
         let ncm = CdcNcmClass::new(&mut builder, ncm_state, mac_host, 64);
 

@@ -192,7 +192,6 @@ impl StorageManager {
         })
     }
 
-    #[allow(dead_code)]
     /// Removes a file from LittleFS.
     pub fn erase(&self, path: &str) -> Result<()> {
         self.with_path(path, |p| self.fs.remove(p))

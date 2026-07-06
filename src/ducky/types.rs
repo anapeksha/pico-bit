@@ -134,7 +134,6 @@ impl Format for KeySequence {
     }
 }
 
-#[allow(dead_code)]
 /// HID modifier bit masks used by generated keyboard reports.
 pub mod modifiers {
     pub const NONE: u8 = 0x00;

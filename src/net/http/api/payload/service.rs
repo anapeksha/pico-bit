@@ -5,6 +5,7 @@ use core::sync::atomic::{AtomicBool, Ordering};
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex as AsyncMutex;
+use littlefs2::io::Error as LfsError;
 use picoserve::io::Write;
 use picoserve::response::chunked::{ChunkWriter, ChunkedResponse, Chunks, ChunksWritten};
 use picoserve::response::{IntoResponse, Json, StatusCode};
@@ -267,10 +268,17 @@ async fn refresh_read_buffer() {
     let storage = storage();
     let storage_guard = storage.lock().await;
     let mut scratch = READ_SCRATCH.lock().await;
-    let len = storage_guard
-        .read("payload.dd", &mut scratch[..])
-        .map(|bytes| bytes.len())
-        .unwrap_or(0);
+    let len = match storage_guard.read("payload.dd", &mut scratch[..]) {
+        Ok(bytes) => bytes.len(),
+        Err(LfsError::NO_SUCH_ENTRY) => {
+            crate::status::error(crate::status::Fault::PayloadFindFailed);
+            0
+        }
+        Err(_) => {
+            crate::status::error(crate::status::Fault::PayloadReadFailed);
+            0
+        }
+    };
 
     READ_BUFFER.lock(|read_cell| {
         let mut read = read_cell.borrow_mut();
@@ -360,6 +368,7 @@ fn json_unicode_escape(byte: u8) -> [u8; 6] {
 
 pub(super) async fn save_staged() -> ValidationResponse {
     if let Err((error_line, _)) = validate_staged_buffer() {
+        crate::status::error(crate::status::Fault::ScriptError);
         return ValidationResponse {
             success: false,
             error_line,
@@ -384,11 +393,14 @@ pub(super) async fn save_staged() -> ValidationResponse {
             error_line: None,
             message: Some("Payload updated successfully."),
         },
-        Err(_) => ValidationResponse {
-            success: false,
-            error_line: None,
-            message: Some("Error: Hardware flash partition write execution failed."),
-        },
+        Err(_) => {
+            crate::status::error(crate::status::Fault::PayloadReadFailed);
+            ValidationResponse {
+                success: false,
+                error_line: None,
+                message: Some("Error: Hardware flash partition write execution failed."),
+            }
+        }
     }
 }
 
@@ -401,6 +413,7 @@ pub(super) async fn trigger_run() -> RunResponse {
     });
 
     if let Err((error_line, message)) = validation {
+        crate::status::error(crate::status::Fault::ScriptError);
         return RunResponse {
             success: false,
             message,
@@ -409,6 +422,7 @@ pub(super) async fn trigger_run() -> RunResponse {
     }
 
     TRIGGER_RUN.store(true, Ordering::Release);
+    crate::status::show(crate::status::Stage::PayloadRunning);
     RunResponse {
         success: true,
         message: "Payload injection sequence initialized.",

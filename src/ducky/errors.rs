@@ -12,7 +12,7 @@ pub enum DuckyError {
 }
 
 /// Line-oriented validation diagnostic for editor and run feedback.
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, Format, PartialEq, Clone)]
 pub struct ErrorDiagnostic<'a> {
     pub line_number: usize,
     pub error: DuckyError,

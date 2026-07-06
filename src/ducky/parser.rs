@@ -6,12 +6,6 @@ use crate::ducky::types::{AssignOp, BinaryOp, DuckyCommand, Expression};
 pub struct DuckyParser;
 
 impl DuckyParser {
-    /// Parses a single DuckyScript line using Windows key alias semantics.
-    #[allow(dead_code)]
-    pub fn parse_line(line: &str) -> Result<DuckyCommand<'_>, DuckyError> {
-        Self::parse_line_for_os(line, KeyboardOs::Windows)
-    }
-
     /// Parses a single DuckyScript line for the active host operating system.
     ///
     /// Printable text is handled later by the executor using the selected
@@ -223,32 +217,35 @@ mod tests {
     #[test]
     fn parses_comments_and_empty_lines() {
         assert_eq!(
-            DuckyParser::parse_line("REM note"),
+            DuckyParser::parse_line_for_os("REM note", KeyboardOs::Windows),
             Ok(DuckyCommand::Comment)
         );
         assert_eq!(
-            DuckyParser::parse_line("// note"),
+            DuckyParser::parse_line_for_os("// note", KeyboardOs::Windows),
             Ok(DuckyCommand::Comment)
         );
-        assert_eq!(DuckyParser::parse_line("   "), Err(DuckyError::EmptyLine));
+        assert_eq!(
+            DuckyParser::parse_line_for_os("   ", KeyboardOs::Windows),
+            Err(DuckyError::EmptyLine)
+        );
     }
 
     #[test]
     fn parses_delays_strings_and_control_blocks() {
         assert_eq!(
-            DuckyParser::parse_line("DELAY 250"),
+            DuckyParser::parse_line_for_os("DELAY 250", KeyboardOs::Windows),
             Ok(DuckyCommand::Delay(250))
         );
         assert_eq!(
-            DuckyParser::parse_line("DEFAULT_DELAY 20"),
+            DuckyParser::parse_line_for_os("DEFAULT_DELAY 20", KeyboardOs::Windows),
             Ok(DuckyCommand::DefaultDelay(20))
         );
         assert_eq!(
-            DuckyParser::parse_line("STRING hello world"),
+            DuckyParser::parse_line_for_os("STRING hello world", KeyboardOs::Windows),
             Ok(DuckyCommand::String("hello world"))
         );
         assert_eq!(
-            DuckyParser::parse_line("IF $ready == 1"),
+            DuckyParser::parse_line_for_os("IF $ready == 1", KeyboardOs::Windows),
             Ok(DuckyCommand::IfBlock {
                 condition: Expression::BinaryOperation {
                     left: "$ready",
@@ -257,14 +254,20 @@ mod tests {
                 },
             })
         );
-        assert_eq!(DuckyParser::parse_line("ELSE"), Ok(DuckyCommand::ElseBlock));
-        assert_eq!(DuckyParser::parse_line("END_IF"), Ok(DuckyCommand::EndIf));
+        assert_eq!(
+            DuckyParser::parse_line_for_os("ELSE", KeyboardOs::Windows),
+            Ok(DuckyCommand::ElseBlock)
+        );
+        assert_eq!(
+            DuckyParser::parse_line_for_os("END_IF", KeyboardOs::Windows),
+            Ok(DuckyCommand::EndIf)
+        );
     }
 
     #[test]
     fn parses_variable_assignments_and_rejects_invalid_assignments() {
         assert_eq!(
-            DuckyParser::parse_line("VAR $count = 3"),
+            DuckyParser::parse_line_for_os("VAR $count = 3", KeyboardOs::Windows),
             Ok(DuckyCommand::VariableAssign {
                 name: "count",
                 operator: AssignOp::Equal,
@@ -273,7 +276,7 @@ mod tests {
             })
         );
         assert_eq!(
-            DuckyParser::parse_line("$count += 2"),
+            DuckyParser::parse_line_for_os("$count += 2", KeyboardOs::Windows),
             Ok(DuckyCommand::VariableAssign {
                 name: "count",
                 operator: AssignOp::AddEqual,
@@ -282,14 +285,15 @@ mod tests {
             })
         );
         assert_eq!(
-            DuckyParser::parse_line("VAR count = 1"),
+            DuckyParser::parse_line_for_os("VAR count = 1", KeyboardOs::Windows),
             Err(DuckyError::UnknownCommand)
         );
     }
 
     #[test]
     fn parses_key_sequences_as_fallback() {
-        let command = DuckyParser::parse_line("CTRL ALT DELETE").unwrap();
+        let command =
+            DuckyParser::parse_line_for_os("CTRL ALT DELETE", KeyboardOs::Windows).unwrap();
         let DuckyCommand::KeySequence(sequence) = command else {
             panic!("expected key sequence");
         };

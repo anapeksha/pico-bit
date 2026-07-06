@@ -42,7 +42,7 @@ pub fn init_usb_network<D: Driver + 'static>(
 
 /// Starts the CYW43 AP and initializes the portal network at `192.168.4.1/24`.
 pub async fn init_wifi_network<D: Driver + 'static>(
-    mut control: Control<'static>,
+    control: &mut Control<'static>,
     device: D,
     seed: u64,
 ) -> (&'static Stack<'static>, Runner<'static, D>) {

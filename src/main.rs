@@ -6,6 +6,7 @@ mod ducky;
 mod net;
 mod pio;
 mod runners;
+mod status;
 mod storage;
 mod usb;
 
@@ -13,6 +14,7 @@ use core::sync::atomic::Ordering;
 use defmt::info;
 use embassy_executor::Spawner;
 use embassy_rp::block::ImageDef;
+use embassy_rp::clocks::RoscRng;
 use embassy_rp::dma::InterruptHandler as DmaInterruptHandler;
 use embassy_rp::flash::Flash;
 use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0, USB};
@@ -83,10 +85,14 @@ pub unsafe extern "C" fn strcpy(dest: *mut u8, src: *const u8) -> *mut u8 {
 async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
+    let mut rng = RoscRng;
+    let usb_seed = rng.next_u64();
+    let wifi_seed = rng.next_u64();
+
     // USB Driver
     let usb_driver = embassy_rp::usb::Driver::new(p.USB, Irqs);
     let usb_manager = UsbManager::new(usb_driver);
-    let (usb_net_stack, usb_net_runner) = init_usb_network(usb_manager.net_device, 1234);
+    let (usb_net_stack, usb_net_runner) = init_usb_network(usb_manager.net_device, usb_seed);
     let usb_dhcp_server = init_usb_dhcp();
 
     // PIO Driver
@@ -107,6 +113,10 @@ async fn main(spawner: Spawner) {
 
     info!("Spawning services...");
 
+    spawner.spawn(status::task()).unwrap();
+
+    status::show(status::Stage::Boot);
+
     spawner
         .spawn(wifi_task(
             pio_manager.spi,
@@ -114,6 +124,7 @@ async fn main(spawner: Spawner) {
             spawner,
             app_router,
             storage_manager,
+            wifi_seed,
         ))
         .unwrap();
     spawner.spawn(usb_task(usb_manager.device)).unwrap();

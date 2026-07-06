@@ -1,5 +1,6 @@
 use crate::ducky::errors::DuckyError;
 use crate::ducky::types::{KeySequence, modifiers};
+use defmt::Format;
 
 /// Stateless helpers for translating DuckyScript key tokens into HID reports.
 pub struct DuckyKeyboard;
@@ -14,7 +15,7 @@ struct KeyMapping {
 /// The firmware maps ASCII characters to physical HID key positions for the
 /// selected host layout. This does not change the USB HID descriptor; it changes
 /// the report generated for each character.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Format, PartialEq)]
 #[repr(u8)]
 pub enum KeyboardLayout {
     Us = 0,
@@ -27,7 +28,7 @@ pub enum KeyboardLayout {
 ///
 /// Layout controls printable character mapping, while OS controls how semantic
 /// modifier aliases such as `COMMAND`, `WINDOWS`, and `OPTION` are interpreted.
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Format, PartialEq)]
 #[repr(u8)]
 pub enum KeyboardOs {
     Windows = 0,
@@ -488,12 +489,6 @@ impl DuckyKeyboard {
         }
     }
 
-    /// Parses a DuckyScript key chord using Windows-compatible modifier aliases.
-    #[allow(dead_code)]
-    pub fn parse_token_sequence(line: &str) -> Result<KeySequence, DuckyError> {
-        Self::parse_token_sequence_for_os(line, KeyboardOs::Windows)
-    }
-
     /// Parses a DuckyScript key chord for a specific host operating system.
     ///
     /// The HID usage IDs are the same across operating systems, but common
@@ -568,9 +563,13 @@ impl DuckyKeyboard {
 fn modifier_for_token(token: &str, os: KeyboardOs) -> Option<u8> {
     match token {
         "CTRL" | "CONTROL" => Some(modifiers::LEFT_CTRL),
+        "RCTRL" | "RIGHTCTRL" | "RIGHT_CONTROL" => Some(modifiers::RIGHT_CTRL),
         "SHIFT" => Some(modifiers::LEFT_SHIFT),
+        "RSHIFT" | "RIGHTSHIFT" | "RIGHT_SHIFT" => Some(modifiers::RIGHT_SHIFT),
         "ALT" => Some(modifiers::LEFT_ALT),
+        "RALT" | "RIGHTALT" | "RIGHT_ALT" | "ALTGR" => Some(modifiers::RIGHT_ALT),
         "GUI" | "META" => Some(modifiers::LEFT_GUI),
+        "RGUI" | "RIGHTGUI" | "RIGHT_GUI" => Some(modifiers::RIGHT_GUI),
         "WINDOWS" | "WIN" => match os {
             KeyboardOs::MacOs => None,
             KeyboardOs::Windows | KeyboardOs::Linux => Some(modifiers::LEFT_GUI),
@@ -655,13 +654,33 @@ mod tests {
 
     #[test]
     fn parses_modifier_and_key_sequences() {
-        let sequence = DuckyKeyboard::parse_token_sequence("CTRL ALT DELETE").unwrap();
+        let sequence =
+            DuckyKeyboard::parse_token_sequence_for_os("CTRL ALT DELETE", KeyboardOs::Windows)
+                .unwrap();
 
         assert_eq!(
             sequence.report.modifier,
             modifiers::LEFT_CTRL | modifiers::LEFT_ALT
         );
         assert_eq!(sequence.report.keycodes[0], 0x4C);
+    }
+
+    #[test]
+    fn parses_right_side_modifier_aliases() {
+        let sequence = DuckyKeyboard::parse_token_sequence_for_os(
+            "RIGHTCTRL RIGHTSHIFT RIGHTALT RIGHTGUI ENTER",
+            KeyboardOs::Windows,
+        )
+        .unwrap();
+
+        assert_eq!(
+            sequence.report.modifier,
+            modifiers::RIGHT_CTRL
+                | modifiers::RIGHT_SHIFT
+                | modifiers::RIGHT_ALT
+                | modifiers::RIGHT_GUI
+        );
+        assert_eq!(sequence.report.keycodes[0], 0x28);
     }
 
     #[test]
@@ -693,19 +712,24 @@ mod tests {
     #[test]
     fn rejects_empty_unknown_and_too_many_key_sequences() {
         assert_eq!(
-            DuckyKeyboard::parse_token_sequence("").unwrap_err(),
+            DuckyKeyboard::parse_token_sequence_for_os("", KeyboardOs::Windows).unwrap_err(),
             DuckyError::UnknownCommand
         );
         assert_eq!(
-            DuckyKeyboard::parse_token_sequence("NOPE").unwrap_err(),
+            DuckyKeyboard::parse_token_sequence_for_os("NOPE", KeyboardOs::Windows).unwrap_err(),
             DuckyError::InvalidKey
         );
         assert_eq!(
-            DuckyKeyboard::parse_token_sequence("A B C D E F G").unwrap_err(),
+            DuckyKeyboard::parse_token_sequence_for_os("A B C D E F G", KeyboardOs::Windows)
+                .unwrap_err(),
             DuckyError::InvalidKey
         );
         assert_eq!(
-            DuckyKeyboard::parse_token_sequence("ENTER ESC TAB SPACE HOME END DELETE").unwrap_err(),
+            DuckyKeyboard::parse_token_sequence_for_os(
+                "ENTER ESC TAB SPACE HOME END DELETE",
+                KeyboardOs::Windows
+            )
+            .unwrap_err(),
             DuckyError::TooManyKeys
         );
     }
