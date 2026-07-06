@@ -1,5 +1,3 @@
-//! Monochrome status LED patterns for boot, link, and payload execution states.
-
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
 use embassy_sync::signal::Signal;
