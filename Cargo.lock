@@ -1361,7 +1361,6 @@ dependencies = [
  "picoserve",
  "serde",
  "serde_json",
- "smart-leds",
  "static_cell",
  "usbd-hid",
 ]

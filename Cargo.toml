@@ -26,7 +26,6 @@ firmware = [
   "dep:picoserve",
   "dep:serde",
   "dep:littlefs2",
-  "dep:smart-leds",
 ]
 
 [dependencies]
@@ -70,7 +69,6 @@ cyw43 = { version = "0.7.0", features = ["defmt"], optional = true }
 picoserve = { version = "0.18.0", features = ["defmt", "embassy", "json"], optional = true }
 serde = { version = "1.0.228", default-features = false, features = ["derive"], optional = true }
 littlefs2 = { version = "0.7.2", optional = true }
-smart-leds = { version = "0.4.0", optional = true }
 
 [dev-dependencies]
 serde_json = "1.0"
