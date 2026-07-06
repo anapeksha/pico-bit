@@ -86,7 +86,7 @@ pub async fn wifi_task(
     let (wifi_net_stack, wifi_net_runner) = {
         let mut control_guard = control_mutex.lock().await;
 
-        init_wifi_network(&mut *control_guard, wifi_device, 5678).await
+        init_wifi_network(&mut control_guard, wifi_device, 5678).await
     };
     let wifi_dhcp = init_wifi_dhcp();
     crate::status::show(crate::status::Stage::SetupApReady);
