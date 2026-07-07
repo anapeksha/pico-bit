@@ -11,6 +11,8 @@ env:
   FIRMWARE_TARGET: thumbv8m.main-none-eabihf
   PICOTOOL_VERSION: 2.3.0
   PICOTOOL_RELEASE_TAG: v2.3.0-0
+  AP_SSID: ${{ secrets.AP_SSID }}
+  AP_PASSWORD: ${{ secrets.AP_PASSWORD }}
 
 jobs:
   package:
