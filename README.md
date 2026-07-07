@@ -1,5 +1,10 @@
 # Pico Bit
 
+[![Validate](https://github.com/anapeksha/pico-bit/actions/workflows/ci.yml/badge.svg)](https://github.com/anapeksha/pico-bit/actions/workflows/validate.yml)
+[![Release](https://github.com/anapeksha/pico-bit/actions/workflows/release.yml/badge.svg)](https://github.com/anapeksha/pico-bit/actions/workflows/release.yml)
+
+> **WARNING:** This software is strictly for authorized educational and security testing purposes; any unauthorized use or deployment is entirely at your own risk and liability.
+
 <img src="images/pico-bit.jpeg" alt="Pico Bit home">
 
 `pico-bit` is an open source Rust Embassy firmware for the Raspberry Pi Pico 2 W. It combines a USB Host HID DuckyScript runtime, USB NCM file delivery, LittleFS-backed storage, and a Wi-Fi-hosted dashboard for authorized security research, lab automation, and defensive validation.
