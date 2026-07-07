@@ -2,10 +2,16 @@
 
 All notable changes to Pico Bit are documented in this file.
 
-## Unreleased
+## v0.1.2 - 2026-07-08
 
 ### Added
+
 - Icons addition for armory buttons.
+
+### Changed
+
+- Package bump.
+- Added repository license.
 
 ## v0.1.1 - 2026-07-06
 
