@@ -1,4 +1,4 @@
-name: PR Quality Gates
+name: Validate
 
 on:
   pull_request:
