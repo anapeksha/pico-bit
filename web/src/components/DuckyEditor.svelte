@@ -9,6 +9,8 @@
   import Save from '@lucide/svelte/icons/save';
   import Play from '@lucide/svelte/icons/play';
   import Download from '@lucide/svelte/icons/download';
+  import X from '@lucide/svelte/icons/x';
+  import Upload from '@lucide/svelte/icons/upload';
   import { onMount } from 'svelte';
 
   import {
@@ -411,6 +413,7 @@
               type="button"
               onclick={() => (selectedFile = null)}
             >
+              <X size={14} />
               Cancel
             </button>
             <button
@@ -419,7 +422,8 @@
               disabled={$uploadingBinary}
               onclick={uploadSelected}
             >
-              Commit to Flash
+              <Upload size={14} />
+              Upload
             </button>
           </div>
         {/if}

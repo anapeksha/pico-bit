@@ -1,11 +1,9 @@
-use crate::storage::{
-    GLOBAL_STORAGE, LISTED_FILE_NAME_MAX, LISTED_FILE_PATH_MAX, ListedFile, SharedStorage,
-};
 use core::cell::RefCell;
 use core::sync::atomic::Ordering;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex as AsyncMutex;
+use heapless::String;
 use picoserve::ResponseSent;
 use picoserve::io::{Read, Write};
 use picoserve::request::Request;
@@ -14,6 +12,10 @@ use picoserve::response::{IntoResponse, Json, ResponseWriter, StatusCode};
 use picoserve::routing::RequestHandlerService;
 use serde::ser::{SerializeSeq, SerializeStruct};
 use serde::{Serialize, Serializer};
+
+use crate::storage::{
+    GLOBAL_STORAGE, LISTED_FILE_NAME_MAX, LISTED_FILE_PATH_MAX, ListedFile, SharedStorage,
+};
 
 pub(super) const MAX_ARMORY_UPLOAD_BYTES: usize = 750 * 1024;
 
@@ -266,7 +268,7 @@ pub(super) async fn list_response() -> impl IntoResponse {
     Json(list().await)
 }
 
-pub(super) async fn delete_response(filename: heapless::String<64>) -> impl IntoResponse {
+pub(super) async fn delete_response(filename: String<64>) -> impl IntoResponse {
     let protected_payload = filename.as_str() == "payload.dd";
     let response = delete_file(filename.as_str()).await;
     let status = if response.is_error() {
@@ -282,7 +284,7 @@ pub(super) async fn delete_response(filename: heapless::String<64>) -> impl Into
     Json(response).into_response().with_status_code(status)
 }
 
-pub(super) fn download_response(filename: heapless::String<64>) -> impl IntoResponse {
+pub(super) fn download_response(filename: String<64>) -> impl IntoResponse {
     ChunkedResponse::new(ArmoryDownloadChunks::new(filename.as_str()))
         .into_response()
         .with_header("Cache-Control", "no-store")
@@ -290,11 +292,11 @@ pub(super) fn download_response(filename: heapless::String<64>) -> impl IntoResp
 
 pub(super) struct UploadArmory;
 
-impl<State> RequestHandlerService<State, (heapless::String<64>,)> for UploadArmory {
+impl<State> RequestHandlerService<State, (String<64>,)> for UploadArmory {
     async fn call_request_handler_service<R, W>(
         &self,
         _state: &State,
-        (filename,): (heapless::String<64>,),
+        (filename,): (String<64>,),
         mut request: Request<'_, R>,
         response_writer: W,
     ) -> Result<ResponseSent, W::Error>
