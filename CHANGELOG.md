@@ -2,6 +2,24 @@
 
 All notable changes to Pico Bit are documented in this file.
 
+## v0.1.3 - 2026-07-09
+
+### Changed
+
+- Package bump.
+- Armory upload now uses `POST /api/armory/upload` and always replaces `/armory/payload.bin`.
+- Armory upload holds the LittleFS storage lock across the request stream, opens `/armory/payload.bin` once, writes bounded chunks, and closes the file exactly once to avoid RAM pressure and LittleFS metadata churn.
+- Armory upload now uses a 4 KB TCP receive/write buffer to reduce LittleFS append cycles during browser uploads.
+- Portal and NCM Armory downloads now target the fixed staged binary name `payload.bin`.
+- Armory delete now uses the bounded HTTP worker path and returns the same mutation JSON contract as upload.
+- Wi-Fi upload handling now stays on the bounded HTTP worker path instead of falling through to the generic picoserve fallback.
+
+### Fixed
+
+- Fixed frontend upload calls still targeting the old `/api/armory/upload/:filename` route.
+- Fixed firmware crash when `/api/armory/upload` reached the generic picoserve serve path.
+- Fixed Armory delete failures caused by `DELETE /api/armory/:filename` reaching the generic picoserve serve path.
+
 ## v0.1.2 - 2026-07-08
 
 ### Added

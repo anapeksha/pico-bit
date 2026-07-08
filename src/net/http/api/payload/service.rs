@@ -1,4 +1,6 @@
 use crate::ducky::{DuckyParser, ErrorDiagnostic};
+use crate::net::active_keyboard_os;
+use crate::status::{self as status_led, Fault, Stage};
 use crate::storage::{GLOBAL_STORAGE, SharedStorage};
 use core::cell::RefCell;
 use core::sync::atomic::{AtomicBool, Ordering};
@@ -222,8 +224,7 @@ fn validate_script_bytes(bytes: &[u8]) -> Result<(), (Option<usize>, &'static st
     for (line_num, line) in (1..).zip(valid_str.lines()) {
         let trimmed = line.trim();
         if !trimmed.is_empty()
-            && let Err(ducky_err) =
-                DuckyParser::parse_line_for_os(trimmed, crate::net::active_keyboard_os())
+            && let Err(ducky_err) = DuckyParser::parse_line_for_os(trimmed, active_keyboard_os())
         {
             let diagnostic = ErrorDiagnostic::new(line_num, ducky_err, line);
             diagnostic.log_diagnostic();
@@ -271,11 +272,11 @@ async fn refresh_read_buffer() {
     let len = match storage_guard.read("payload.dd", &mut scratch[..]) {
         Ok(bytes) => bytes.len(),
         Err(LfsError::NO_SUCH_ENTRY) => {
-            crate::status::error(crate::status::Fault::PayloadFindFailed);
+            status_led::error(Fault::PayloadFindFailed);
             0
         }
         Err(_) => {
-            crate::status::error(crate::status::Fault::PayloadReadFailed);
+            status_led::error(Fault::PayloadReadFailed);
             0
         }
     };
@@ -368,7 +369,7 @@ fn json_unicode_escape(byte: u8) -> [u8; 6] {
 
 pub(super) async fn save_staged() -> ValidationResponse {
     if let Err((error_line, _)) = validate_staged_buffer() {
-        crate::status::error(crate::status::Fault::ScriptError);
+        status_led::error(Fault::ScriptError);
         return ValidationResponse {
             success: false,
             error_line,
@@ -394,7 +395,7 @@ pub(super) async fn save_staged() -> ValidationResponse {
             message: Some("Payload updated successfully."),
         },
         Err(_) => {
-            crate::status::error(crate::status::Fault::PayloadReadFailed);
+            status_led::error(Fault::PayloadReadFailed);
             ValidationResponse {
                 success: false,
                 error_line: None,
@@ -413,7 +414,7 @@ pub(super) async fn trigger_run() -> RunResponse {
     });
 
     if let Err((error_line, message)) = validation {
-        crate::status::error(crate::status::Fault::ScriptError);
+        status_led::error(Fault::ScriptError);
         return RunResponse {
             success: false,
             message,
@@ -422,7 +423,7 @@ pub(super) async fn trigger_run() -> RunResponse {
     }
 
     TRIGGER_RUN.store(true, Ordering::Release);
-    crate::status::show(crate::status::Stage::PayloadRunning);
+    status_led::show(Stage::PayloadRunning);
     RunResponse {
         success: true,
         message: "Payload injection sequence initialized.",

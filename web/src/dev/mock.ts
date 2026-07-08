@@ -173,7 +173,7 @@ if (shouldMock) {
       });
     }
 
-    if (url.startsWith('/api/armory/upload/') && method === 'POST') {
+    if (url === '/api/armory/upload' && method === 'POST') {
       staged = true;
       return jsonResponse({
         filename: 'payload.bin',

@@ -193,7 +193,7 @@ describe('uploadBinaryFile', () => {
     expect(onProgress).toHaveBeenCalledWith(50);
   });
 
-  it('opens POST to filename-scoped armory upload route with correct headers', async () => {
+  it('opens POST to the fixed armory upload route with correct headers', async () => {
     xhrMock.addEventListener.mockImplementation((event: string, cb: () => void) => {
       if (event === 'load') cb();
     });
@@ -202,7 +202,7 @@ describe('uploadBinaryFile', () => {
 
     const file = new File(['data'], 'agent.elf');
     await uploadBinaryFile(file, vi.fn());
-    expect(xhrMock.open).toHaveBeenCalledWith('POST', '/api/armory/upload/agent.elf', true);
+    expect(xhrMock.open).toHaveBeenCalledWith('POST', '/api/armory/upload', true);
     expect(xhrMock.setRequestHeader).toHaveBeenCalledWith(
       'Content-Type',
       'application/octet-stream',

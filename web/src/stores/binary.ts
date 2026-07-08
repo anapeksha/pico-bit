@@ -11,6 +11,8 @@ import { deleteBinaryFile, uploadBinaryFile } from '../api/client';
 import type { ArmoryFile, HydratedBootstrapState, NoticeTone } from '../api/contracts';
 import { withOptimisticBootstrap } from './bootstrapCache';
 
+const ARMORY_BINARY_NAME = 'payload.bin';
+
 /** Files currently reported by the device armory snapshot. */
 export const armoryFiles = writable<ArmoryFile[]>([]);
 
@@ -66,10 +68,10 @@ export async function uploadBinary(file: File) {
           ...files.filter((item) => item.kind === 'ducky'),
           {
             kind: 'asset',
-            name: file.name,
-            path: `/api/armory/${encodeURIComponent(file.name)}`,
+            name: ARMORY_BINARY_NAME,
+            path: `/api/armory/${ARMORY_BINARY_NAME}`,
             size: file.size,
-            url: `/api/armory/${encodeURIComponent(file.name)}`,
+            url: `/api/armory/${ARMORY_BINARY_NAME}`,
           },
         ]);
       },

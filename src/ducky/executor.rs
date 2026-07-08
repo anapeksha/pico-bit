@@ -334,7 +334,7 @@ mod tests {
 
     use super::{DuckyExecutor, StatefulWriter};
     use crate::ducky::errors::DuckyError;
-    use crate::ducky::types::{AssignOp, DuckyCommand, Expression};
+    use crate::ducky::types::{AssignOp, BinaryOp, DuckyCommand, Expression};
     use core::future::Future;
     use core::pin::Pin;
     use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
@@ -454,7 +454,7 @@ mod tests {
                 DuckyCommand::IfBlock {
                     condition: Expression::BinaryOperation {
                         left: "$count",
-                        op: crate::ducky::types::BinaryOp::Equal,
+                        op: BinaryOp::Equal,
                         right: "6",
                     },
                 },

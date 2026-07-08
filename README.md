@@ -9,7 +9,7 @@
 
 `pico-bit` is an open source Rust Embassy firmware for the Raspberry Pi Pico 2 W. It combines a USB Host HID DuckyScript runtime, USB NCM file delivery, LittleFS-backed storage, and a Wi-Fi-hosted dashboard for authorized security research, lab automation, and defensive validation.
 
-Current release: `v0.1.1`
+Current release: `v0.1.3`
 
 ## What Works
 
@@ -22,7 +22,7 @@ Current release: `v0.1.1`
 - Protected `payload.dd` file: visible in the file table, downloadable, but not deletable
 - Recent boot/manual run history for the current boot session
 - Single replaceable Armory binary with a 750 KB upload limit enforced in both frontend and firmware
-- WS2812 RGB status LED patterns for boot, network, HID, payload, Armory, and error states
+- On-board status LED patterns for boot, network, HID, payload, Armory, and error states
 - Single gzipped Svelte 5 + Tailwind v4 dashboard artifact embedded into firmware flash
 - Release workflow that builds and attaches `firmware-{version tag}.uf2` and `firmware-{version tag}.elf`
 
@@ -32,7 +32,7 @@ Current release: `v0.1.1`
 - Firmware target: `thumbv8m.main-none-eabihf`
 - The Pico USB data port provides Host HID and USB NCM transport.
 - The Wi-Fi dashboard is exposed through the Pico AP.
-- The status LED uses a WS2812-compatible RGB LED on GP16.
+- The status LED uses the Pico 2 W on-board LED through the CYW43 controller.
 
 ## Default Access
 
@@ -42,9 +42,9 @@ Current release: `v0.1.1`
 | Wi-Fi password | `PicoBit24Net` |
 | Dashboard URL | `http://192.168.4.1` |
 | NCM file root | `http://192.168.7.1` |
-| NCM staged binary | `http://192.168.7.1/api/armory/<filename>` |
+| NCM staged binary | `http://192.168.7.1/api/armory/payload.bin` |
 
-The dashboard has no portal login in `v0.1.1`. AP credentials are firmware build-time values.
+The dashboard has no portal login in `v0.1.3`. AP credentials are firmware build-time values.
 
 ## Dashboard Scope
 
@@ -67,7 +67,7 @@ The frontend uses only these endpoints:
 |--------|------|---------|
 | `GET` | `/api/bootstrap` | Fixed startup state: AP, Host HID, NCM, keyboard target, seeded flag |
 | `GET` | `/api/armory` | Bounded LittleFS file listing |
-| `POST` | `/api/armory/upload/:filename` | Stream upload to `/armory/:filename`, replacing any existing Armory binary |
+| `POST` | `/api/armory/upload` | Stream upload to `/armory/payload.bin`, replacing any existing Armory binary |
 | `GET` | `/api/armory/:filename` | Stream file download |
 | `DELETE` | `/api/armory/:filename` | Delete Armory file, except `payload.dd` |
 | `GET` | `/api/payload` | Read current `payload.dd` |
@@ -76,7 +76,7 @@ The frontend uses only these endpoints:
 | `POST` | `/api/keyboard/layout` | Update keyboard OS/layout codes |
 | `GET` | `/api/runs` | Current-session run history |
 
-There is no status API, auth API, login/logout route, or browser-storage startup restore flow in `v0.1.1`.
+There is no status API, auth API, login/logout route, or browser-storage startup restore flow in `v0.1.3`.
 The NCM surface exposes only the Armory list and staged binary download; `payload.dd` downloads remain portal-only.
 
 ## Storage Model
@@ -85,7 +85,7 @@ The NCM surface exposes only the Armory list and staged binary download; `payloa
 - `/armory` is created automatically.
 - `payload.dd` is created automatically if missing.
 - The editor always overwrites `payload.dd`.
-- Armory stores one replaceable binary under `/armory`; a new upload removes the previous Armory binary first.
+- Armory stores one replaceable binary at `/armory/payload.bin`; a new upload removes previous Armory files, opens `payload.bin` once, then writes request chunks.
 - File listings are bounded and serialized without heap allocation.
 
 ## Limits
@@ -94,7 +94,8 @@ The NCM surface exposes only the Armory list and staged binary download; `payloa
 |-------|-------|
 | Payload editor buffer | 2 KB |
 | Armory upload limit | 750 KB |
-| Armory upload/download stream chunk | 1 KB |
+| Armory upload stream chunk | 4 KB |
+| Armory download stream chunk | 1 KB |
 | Run history | 6 entries |
 | Dashboard artifact | `dist/index.html.gz` |
 
@@ -147,8 +148,8 @@ Build release firmware:
 ```sh
 npm --prefix web run build
 cargo build --release --target thumbv8m.main-none-eabihf
-cp target/thumbv8m.main-none-eabihf/release/pico-bit firmware-v0.1.1.elf
-elf2uf2-rs firmware-v0.1.1.elf firmware-v0.1.1.uf2
+cp target/thumbv8m.main-none-eabihf/release/pico-bit firmware-v0.1.3.elf
+elf2uf2-rs firmware-v0.1.3.elf firmware-v0.1.3.uf2
 ```
 
 ## Verification
@@ -191,17 +192,17 @@ The release workflow runs when a GitHub release is published with a tag matching
 v*.*.*
 ```
 
-For `v0.1.1`, publish a GitHub release tagged:
+For `v0.1.3`, publish a GitHub release tagged:
 
 ```text
-v0.1.1
+v0.1.3
 ```
 
 The workflow builds the web dashboard, compiles release firmware, converts the ELF to UF2, uploads a workflow artifact, and attaches:
 
-- `firmware-v0.1.1.uf2`
-- `firmware-v0.1.1.elf`
+- `firmware-v0.1.3.uf2`
+- `firmware-v0.1.3.elf`
 
 ## Current Completion State
 
-`v0.1.1` is complete for the current UI scope. All frontend API calls are backed by firmware handlers, and the remaining dynamic dashboard state is sourced from runtime state or LittleFS.
+`v0.1.3` is complete for the current UI scope. All frontend API calls are backed by firmware handlers, and the remaining dynamic dashboard state is sourced from runtime state or LittleFS.

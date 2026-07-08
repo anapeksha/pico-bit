@@ -4,15 +4,25 @@ use embassy_net::tcp::TcpSocket;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, with_timeout};
+use littlefs2::fs::{File as LfsFile, FileAllocation};
 use picoserve::io::{ErrorType, Read, Socket, Write};
 use picoserve::{Config, DisconnectionInfo, EmbassyRuntime, Server, Timeouts};
 
-use crate::net::AppRouter;
-use crate::storage::StorageManager;
+use crate::net::{self as app_net, AppRouter, PayloadActionResult};
+use crate::status::{self as status_led, Stage};
+use crate::storage::{
+    FlashDriver, LISTED_FILE_NAME_MAX, LISTED_FILE_PATH_MAX, ListedFile, StorageManager,
+};
 
 /// Bytes read up front to classify browser startup requests safely.
 pub(super) const HTTP_PREFLIGHT_BYTES: usize = 64;
 const HTTP_PREFLIGHT_TIMEOUT_MS: u64 = 300;
+const ARMORY_BINARY_NAME: &str = "payload.bin";
+const ARMORY_BINARY_PATH: &str = "/armory/payload.bin";
+const ARMORY_DIR: &str = "/armory";
+const ARMORY_PREFIX: &str = "/armory/";
+const ARMORY_UPLOAD_LIMIT: usize = 750 * 1024;
+const ARMORY_STREAM_CHUNK_SIZE: usize = 4096;
 
 /// Accepts HTTP sockets for either the Wi-Fi portal or restricted NCM surface.
 #[embassy_executor::task(pool_size = 2)]
@@ -30,7 +40,7 @@ pub async fn http_task(
 
     let router = router.build();
 
-    let mut rx_buffer = [0u8; 512];
+    let mut rx_buffer = [0u8; ARMORY_STREAM_CHUNK_SIZE];
     let mut tx_buffer = [0u8; 1024];
     let mut picoserve_buffer = [0u8; 2048];
 
@@ -108,12 +118,30 @@ pub async fn http_task(
                 }
                 continue;
             }
+            StartupRequest::ArmoryUpload => {
+                info!("[{} Worker] Uploading armory binary.", link);
+                if let Err(e) =
+                    serve_armory_upload(&mut socket, storage, &prefix[..prefix_len]).await
+                {
+                    warn!("[{} Worker] Armory upload response failed: {:?}", link, e);
+                }
+                continue;
+            }
             StartupRequest::ArmoryAsset => {
                 info!("[{} Worker] Serving armory asset.", link);
                 if let Err(e) =
                     serve_armory_asset(&mut socket, storage, surface, &prefix[..prefix_len]).await
                 {
                     warn!("[{} Worker] Armory asset response failed: {:?}", link, e);
+                }
+                continue;
+            }
+            StartupRequest::ArmoryDelete => {
+                info!("[{} Worker] Deleting armory asset.", link);
+                if let Err(e) =
+                    serve_armory_delete(&mut socket, storage, &prefix[..prefix_len]).await
+                {
+                    warn!("[{} Worker] Armory delete response failed: {:?}", link, e);
                 }
                 continue;
             }
@@ -226,7 +254,9 @@ enum StartupRequest {
     Root,
     Bootstrap,
     Armory,
+    ArmoryUpload,
     ArmoryAsset,
+    ArmoryDelete,
     Payload,
     PayloadSave,
     PayloadRun,
@@ -249,6 +279,14 @@ fn classify_startup_request(bytes: &[u8]) -> StartupRequest {
 
     if request_starts_with(bytes, b"GET /api/armory ") {
         return StartupRequest::Armory;
+    }
+
+    if request_starts_with(bytes, b"POST /api/armory/upload ") {
+        return StartupRequest::ArmoryUpload;
+    }
+
+    if request_starts_with(bytes, b"DELETE /api/armory/") {
+        return StartupRequest::ArmoryDelete;
     }
 
     if request_starts_with(bytes, b"GET /api/armory/")
@@ -321,12 +359,15 @@ fn is_get_or_head_request(bytes: &[u8]) -> bool {
     request_starts_with(bytes, b"GET ") || request_starts_with(bytes, b"HEAD ")
 }
 
-use crate::storage::{LISTED_FILE_NAME_MAX, LISTED_FILE_PATH_MAX, ListedFile};
 const STARTUP_FILE_LIMIT: usize = 16;
 
 static STARTUP_LISTED_FILES: Mutex<CriticalSectionRawMutex, [ListedFile; STARTUP_FILE_LIMIT]> =
     Mutex::new([ListedFile::empty(); STARTUP_FILE_LIMIT]);
 
+/// Serves the gzipped single-file dashboard.
+///
+/// `socket` is the accepted TCP connection. Returns `Ok(())` after the chunked
+/// HTML response is written and the connection is closed.
 pub(super) async fn serve_root_asset(
     socket: &mut TcpSocket<'_>,
 ) -> Result<(), embassy_net::tcp::Error> {
@@ -343,7 +384,7 @@ Connection: close\r\n\
         )
         .await?;
 
-    for chunk in crate::net::compressed_index_html().chunks(1024) {
+    for chunk in app_net::compressed_index_html().chunks(1024) {
         write_chunk_size(socket, chunk.len()).await?;
         socket.write_all(b"\r\n").await?;
         socket.write_all(chunk).await?;
@@ -355,6 +396,10 @@ Connection: close\r\n\
     socket.flush().await
 }
 
+/// Writes a zero-length 404 response.
+///
+/// `socket` is the accepted TCP connection. Returns `Ok(())` after the response
+/// is written and the connection is closed.
 pub(super) async fn serve_empty_not_found(
     socket: &mut TcpSocket<'_>,
 ) -> Result<(), embassy_net::tcp::Error> {
@@ -370,6 +415,10 @@ Connection: close\r\n\
     socket.flush().await
 }
 
+/// Writes a zero-length 204 response for OPTIONS/preflight requests.
+///
+/// `socket` is the accepted TCP connection. Returns `Ok(())` after the response
+/// is written and the connection is closed.
 pub(super) async fn serve_no_content(
     socket: &mut TcpSocket<'_>,
 ) -> Result<(), embassy_net::tcp::Error> {
@@ -385,6 +434,10 @@ Connection: close\r\n\
     socket.flush().await
 }
 
+/// Writes a zero-length 500 response.
+///
+/// `socket` is the accepted TCP connection. Returns `Ok(())` after the response
+/// is written and the connection is closed.
 pub(super) async fn serve_empty_internal_error(
     socket: &mut TcpSocket<'_>,
 ) -> Result<(), embassy_net::tcp::Error> {
@@ -400,18 +453,22 @@ Connection: close\r\n\
     socket.flush().await
 }
 
+/// Serves the fixed bootstrap JSON snapshot.
+///
+/// `socket` is the accepted TCP connection. Returns `Ok(())` after the fixed
+/// JSON response is written and the connection is closed.
 pub(super) async fn serve_bootstrap(
     socket: &mut TcpSocket<'_>,
 ) -> Result<(), embassy_net::tcp::Error> {
-    let (keyboard_os, keyboard_layout) = crate::net::active_keyboard_target_codes();
+    let (keyboard_os, keyboard_layout) = app_net::active_keyboard_target_codes();
     let mut body = FixedBody::<512>::new();
 
     body.raw(b"{\"ap_password\":");
-    body.json_string(crate::net::wifi_ap_password().as_bytes());
+    body.json_string(app_net::wifi_ap_password().as_bytes());
     body.raw(b",\"ap_ssid\":");
-    body.json_string(crate::net::wifi_ap_ssid().as_bytes());
+    body.json_string(app_net::wifi_ap_ssid().as_bytes());
     body.raw(b",\"host_hid_active\":");
-    body.raw(if crate::net::host_hid_active() {
+    body.raw(if app_net::host_hid_active() {
         b"true"
     } else {
         b"false"
@@ -421,15 +478,15 @@ pub(super) async fn serve_bootstrap(
     body.raw(b",\"keyboard_os\":");
     body.json_string(keyboard_os.as_bytes());
     body.raw(b",\"ncm_active\":");
-    body.raw(if crate::net::ncm_active() {
+    body.raw(if app_net::ncm_active() {
         b"true"
     } else {
         b"false"
     });
     body.raw(b",\"ncm_url\":");
-    body.json_string(crate::net::ncm_url().as_bytes());
+    body.json_string(app_net::ncm_url().as_bytes());
     body.raw(b",\"seeded\":");
-    body.raw(if crate::net::seeded_this_boot() {
+    body.raw(if app_net::seeded_this_boot() {
         b"true"
     } else {
         b"false"
@@ -546,6 +603,11 @@ impl PayloadBodyError {
     }
 }
 
+/// Updates the active keyboard OS/layout target from a small JSON body.
+///
+/// `socket` is the accepted TCP connection and `prefix` contains bytes already
+/// read by request classification. Returns `Ok(())` after the mutation response
+/// is written.
 pub(super) async fn serve_keyboard_target(
     socket: &mut TcpSocket<'_>,
     prefix: &[u8],
@@ -554,12 +616,12 @@ pub(super) async fn serve_keyboard_target(
     let request_len = socket_read_prefetched_request(socket, prefix, &mut request).await;
     let body = request_body(&request[..request_len]).unwrap_or(&[]);
 
-    let (current_os, current_layout) = crate::net::active_keyboard_target_codes();
+    let (current_os, current_layout) = app_net::active_keyboard_target_codes();
     let os = keyboard_os_from_body(body).unwrap_or(current_os);
     let layout = keyboard_layout_from_body(body).unwrap_or(current_layout);
-    let ok = crate::net::update_keyboard_target_codes(os, layout);
+    let ok = app_net::update_keyboard_target_codes(os, layout);
 
-    let (response_os, response_layout) = crate::net::active_keyboard_target_codes();
+    let (response_os, response_layout) = app_net::active_keyboard_target_codes();
 
     write_json_headers(socket).await?;
     write_http_chunk(socket, b"{\"keyboard_layout\":").await?;
@@ -681,8 +743,12 @@ fn json_hex_word(bytes: &[u8]) -> Option<u16> {
     Some(value)
 }
 
+/// Serves compact current-session run history.
+///
+/// `socket` is the accepted TCP connection. Returns `Ok(())` after the chunked
+/// JSON response is written and the connection is closed.
 pub(super) async fn serve_runs(socket: &mut TcpSocket<'_>) -> Result<(), embassy_net::tcp::Error> {
-    let runs = crate::net::runs_snapshot();
+    let runs = app_net::runs_snapshot();
 
     write_json_headers(socket).await?;
     write_http_chunk(socket, b"{\"run_history\":[").await?;
@@ -709,6 +775,10 @@ pub(super) async fn serve_runs(socket: &mut TcpSocket<'_>) -> Result<(), embassy
     write_final_chunk(socket).await
 }
 
+/// Streams the current `payload.dd` editor contents as JSON.
+///
+/// `socket` is the accepted TCP connection and `storage` is the shared LittleFS
+/// manager. Returns `Ok(())` after the chunked JSON response is written.
 pub(super) async fn serve_payload(
     socket: &mut TcpSocket<'_>,
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
@@ -731,6 +801,11 @@ pub(super) async fn serve_payload(
     write_final_chunk(socket).await
 }
 
+/// Saves the posted DuckyScript body into `payload.dd`.
+///
+/// `socket` is the accepted TCP connection and `prefix` contains bytes already
+/// read by request classification. Returns `Ok(())` after the validation/write
+/// response is sent.
 pub(super) async fn serve_payload_save(
     socket: &mut TcpSocket<'_>,
     prefix: &[u8],
@@ -741,7 +816,7 @@ pub(super) async fn serve_payload_save(
     let mut code = [0u8; 2048];
 
     let result = match decode_payload_code(body, &mut code) {
-        Ok(code) => crate::net::save_payload_code(code).await,
+        Ok(code) => app_net::save_payload_code(code).await,
         Err(error) => {
             return write_payload_error_response(socket, error.message(), error.status()).await;
         }
@@ -750,13 +825,22 @@ pub(super) async fn serve_payload_save(
     write_payload_action_response(socket, result).await
 }
 
+/// Triggers execution of the saved `payload.dd` after firmware validation.
+///
+/// `socket` is the accepted TCP connection. Returns `Ok(())` after the run
+/// trigger response is written.
 pub(super) async fn serve_payload_run(
     socket: &mut TcpSocket<'_>,
 ) -> Result<(), embassy_net::tcp::Error> {
-    let result = crate::net::trigger_payload_run().await;
+    let result = app_net::trigger_payload_run().await;
     write_payload_action_response(socket, result).await
 }
 
+/// Serves the bounded Armory file listing.
+///
+/// `socket` is the accepted TCP connection, `storage` is the shared LittleFS
+/// manager, and `surface` decides whether portal-only files are exposed. Returns
+/// `Ok(())` after the chunked JSON response is written.
 pub(super) async fn serve_armory(
     socket: &mut TcpSocket<'_>,
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
@@ -831,6 +915,11 @@ pub(super) async fn serve_armory(
     write_final_chunk(socket).await
 }
 
+/// Streams an Armory asset or portal-only `payload.dd` download.
+///
+/// `socket` is the accepted TCP connection, `storage` is the shared LittleFS
+/// manager, `surface` restricts NCM access, and `prefix` contains classified
+/// request bytes. Returns `Ok(())` after the binary response is written.
 pub(super) async fn serve_armory_asset(
     socket: &mut TcpSocket<'_>,
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
@@ -877,6 +966,227 @@ pub(super) async fn serve_armory_asset(
     }
 }
 
+/// Deletes one Armory file from LittleFS.
+///
+/// `socket` is the accepted TCP connection, `storage` is the shared LittleFS
+/// manager, and `prefix` contains classified request bytes. Returns `Ok(())`
+/// after a small mutation JSON response is written.
+pub(super) async fn serve_armory_delete(
+    socket: &mut TcpSocket<'_>,
+    storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
+    prefix: &[u8],
+) -> Result<(), embassy_net::tcp::Error> {
+    let mut request = [0u8; 512];
+    let request_len = socket_read_prefetched_headers(socket, prefix, &mut request).await;
+    let Some(filename) = armory_delete_filename(&request[..request_len]) else {
+        return write_armory_mutation_response(
+            socket,
+            HttpStatus::BadRequest,
+            b"",
+            "Invalid filename.",
+            "error",
+            false,
+        )
+        .await;
+    };
+
+    if filename.as_bytes() == b"payload.dd" {
+        return write_armory_mutation_response(
+            socket,
+            HttpStatus::Forbidden,
+            filename.as_bytes(),
+            "payload.dd is managed by the editor and cannot be deleted.",
+            "error",
+            true,
+        )
+        .await;
+    }
+
+    let Some(path) = armory_storage_path_unrestricted(filename.as_str()) else {
+        return write_armory_mutation_response(
+            socket,
+            HttpStatus::BadRequest,
+            filename.as_bytes(),
+            "Invalid filename.",
+            "error",
+            false,
+        )
+        .await;
+    };
+
+    let deleted = {
+        let storage_guard = storage.lock().await;
+        storage_guard.erase(path.as_str()).is_ok()
+    };
+
+    if deleted {
+        write_armory_mutation_response(
+            socket,
+            HttpStatus::Ok,
+            filename.as_bytes(),
+            "File removed from flash.",
+            "success",
+            false,
+        )
+        .await
+    } else {
+        write_armory_mutation_response(
+            socket,
+            HttpStatus::InternalServerError,
+            filename.as_bytes(),
+            "littlefs2 storage operation failed.",
+            "error",
+            false,
+        )
+        .await
+    }
+}
+
+/// Streams the fixed Armory upload into `/armory/payload.bin`.
+///
+/// `socket` is the accepted TCP socket, `storage` is the shared LittleFS manager,
+/// and `prefix` contains bytes already consumed during request classification.
+/// The response is a small fixed JSON mutation result.
+pub(super) async fn serve_armory_upload(
+    socket: &mut TcpSocket<'_>,
+    storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
+    prefix: &[u8],
+) -> Result<(), embassy_net::tcp::Error> {
+    let mut request = [0u8; 1024];
+    let request_len = socket_read_prefetched_headers(socket, prefix, &mut request).await;
+    let Some(header_end) = header_end_index(&request[..request_len]) else {
+        return write_armory_upload_response(
+            socket,
+            HttpStatus::BadRequest,
+            "Invalid upload request.",
+            "error",
+            false,
+        )
+        .await;
+    };
+
+    let content_length = content_length(&request[..header_end]).unwrap_or(0);
+    if content_length > ARMORY_UPLOAD_LIMIT {
+        status_led::show(Stage::BinaryInjectFailed);
+        return write_armory_upload_response(
+            socket,
+            HttpStatus::PayloadTooLarge,
+            "Upload exceeds 750 KB capacity limit.",
+            "error",
+            false,
+        )
+        .await;
+    }
+
+    status_led::show(Stage::BinaryInjecting);
+    let storage_guard = storage.lock().await;
+
+    if prepare_armory_upload(&storage_guard).is_err() {
+        drop(storage_guard);
+        status_led::show(Stage::BinaryInjectFailed);
+        return write_armory_upload_response(
+            socket,
+            HttpStatus::InternalServerError,
+            "littlefs2 storage operation failed.",
+            "error",
+            false,
+        )
+        .await;
+    }
+
+    let mut file_alloc = FileAllocation::<FlashDriver>::new();
+    let file = match storage_guard.open_write_truncate(ARMORY_BINARY_PATH, &mut file_alloc) {
+        Ok(file) => file,
+        Err(_) => {
+            drop(storage_guard);
+            status_led::show(Stage::BinaryInjectFailed);
+            return write_armory_upload_response(
+                socket,
+                HttpStatus::InternalServerError,
+                "littlefs2 storage operation failed.",
+                "error",
+                false,
+            )
+            .await;
+        }
+    };
+
+    let body_start = header_end + 4;
+    let buffered_body_len = request_len.saturating_sub(body_start).min(content_length);
+    let mut received = 0usize;
+    let mut failed = false;
+
+    if buffered_body_len > 0 {
+        let buffered_body = &request[body_start..body_start + buffered_body_len];
+        if write_armory_upload_chunk(&file, buffered_body).is_err() {
+            failed = true;
+        }
+        received += buffered_body_len;
+    }
+
+    let mut buffer = [0u8; ARMORY_STREAM_CHUNK_SIZE];
+    while !failed && received < content_length {
+        let remaining = content_length - received;
+        let limit = remaining.min(buffer.len());
+
+        match socket.read(&mut buffer[..limit]).await {
+            Ok(0) => {
+                failed = true;
+            }
+            Ok(read) => {
+                if write_armory_upload_chunk(&file, &buffer[..read]).is_err() {
+                    failed = true;
+                }
+                received += read;
+            }
+            Err(_) => {
+                failed = true;
+            }
+        }
+    }
+
+    let close_failed = unsafe { file.close() }.is_err();
+
+    if failed || received != content_length {
+        let _ = storage_guard.erase(ARMORY_BINARY_PATH);
+        drop(storage_guard);
+        status_led::show(Stage::BinaryInjectFailed);
+        return write_armory_upload_response(
+            socket,
+            HttpStatus::InternalServerError,
+            "littlefs2 storage operation failed.",
+            "error",
+            false,
+        )
+        .await;
+    }
+
+    if close_failed {
+        let _ = storage_guard.erase(ARMORY_BINARY_PATH);
+        drop(storage_guard);
+        status_led::show(Stage::BinaryInjectFailed);
+        return write_armory_upload_response(
+            socket,
+            HttpStatus::InternalServerError,
+            "littlefs2 storage operation failed.",
+            "error",
+            false,
+        )
+        .await;
+    }
+
+    drop(storage_guard);
+    status_led::show(Stage::LootImported);
+    write_armory_upload_response(
+        socket,
+        HttpStatus::Ok,
+        "Upload committed to flash.",
+        "success",
+        true,
+    )
+    .await
+}
+
 struct StringCopy<const N: usize> {
     bytes: [u8; N],
     len: usize,
@@ -907,6 +1217,7 @@ impl<const N: usize> StringCopy<N> {
 enum HttpStatus {
     Ok,
     BadRequest,
+    Forbidden,
     PayloadTooLarge,
     InternalServerError,
 }
@@ -916,15 +1227,70 @@ impl HttpStatus {
         match self {
             Self::Ok => b"HTTP/1.1 200 OK\r\n",
             Self::BadRequest => b"HTTP/1.1 400 Bad Request\r\n",
+            Self::Forbidden => b"HTTP/1.1 403 Forbidden\r\n",
             Self::PayloadTooLarge => b"HTTP/1.1 413 Payload Too Large\r\n",
             Self::InternalServerError => b"HTTP/1.1 500 Internal Server Error\r\n",
         }
     }
 }
 
+/// Writes the fixed Armory upload mutation response.
+///
+/// `status` selects the HTTP status line. `message` and `notice` are compact UI
+/// fields, and `has_binary` reports whether `payload.bin` is now present.
+async fn write_armory_upload_response(
+    socket: &mut TcpSocket<'_>,
+    status: HttpStatus,
+    message: &'static str,
+    notice: &'static str,
+    has_binary: bool,
+) -> Result<(), embassy_net::tcp::Error> {
+    write_armory_mutation_response(
+        socket,
+        status,
+        ARMORY_BINARY_NAME.as_bytes(),
+        message,
+        notice,
+        has_binary,
+    )
+    .await
+}
+
+/// Writes the shared Armory mutation response.
+///
+/// `filename` is serialized into the response body. `message`, `notice`, and
+/// `has_binary` mirror the frontend Armory mutation contract. Returns `Ok(())`
+/// after the fixed JSON response is written.
+async fn write_armory_mutation_response(
+    socket: &mut TcpSocket<'_>,
+    status: HttpStatus,
+    filename: &[u8],
+    message: &'static str,
+    notice: &'static str,
+    has_binary: bool,
+) -> Result<(), embassy_net::tcp::Error> {
+    let mut body = FixedBody::<256>::new();
+
+    body.raw(b"{\"filename\":");
+    body.json_string(filename);
+    body.raw(b",\"has_binary\":");
+    body.raw(if has_binary { b"true" } else { b"false" });
+    body.raw(b",\"message\":");
+    body.json_string(message.as_bytes());
+    body.raw(b",\"notice\":");
+    body.json_string(notice.as_bytes());
+    body.raw(b"}");
+
+    if body.overflowed() {
+        return serve_empty_internal_error(socket).await;
+    }
+
+    write_fixed_json_response_with_status(socket, status, body.bytes()).await
+}
+
 async fn write_payload_action_response(
     socket: &mut TcpSocket<'_>,
-    result: crate::net::PayloadActionResult,
+    result: PayloadActionResult,
 ) -> Result<(), embassy_net::tcp::Error> {
     let mut body = FixedBody::<384>::new();
 
@@ -1202,6 +1568,34 @@ async fn socket_read_prefetched_request(
     len
 }
 
+/// Reads enough bytes to include HTTP headers, preserving any early body bytes.
+///
+/// `socket` is the active connection, `prefix` is the preflight data already
+/// consumed by the classifier, and `buffer` receives the request prefix. Returns
+/// the number of valid bytes copied into `buffer`.
+async fn socket_read_prefetched_headers(
+    socket: &mut TcpSocket<'_>,
+    prefix: &[u8],
+    buffer: &mut [u8],
+) -> usize {
+    let mut len = prefix.len().min(buffer.len());
+    buffer[..len].copy_from_slice(&prefix[..len]);
+
+    loop {
+        if header_end_index(&buffer[..len]).is_some() || len == buffer.len() {
+            break;
+        }
+
+        match with_timeout(Duration::from_millis(100), socket.read(&mut buffer[len..])).await {
+            Ok(Ok(0)) | Err(_) => break,
+            Ok(Ok(read)) => len += read,
+            Ok(Err(_)) => break,
+        }
+    }
+
+    len
+}
+
 fn request_body(request: &[u8]) -> Option<&[u8]> {
     let header_end = header_end_index(request)?;
     let body_start = header_end + 4;
@@ -1336,6 +1730,15 @@ fn armory_asset_target(request: &[u8]) -> Option<ArmoryAssetTarget> {
     })
 }
 
+/// Extracts and decodes the filename from a DELETE Armory request.
+///
+/// `request` is the buffered HTTP request prefix. Returns a fixed-copy filename
+/// when the path is valid and UTF-8.
+fn armory_delete_filename(request: &[u8]) -> Option<StringCopy<LISTED_FILE_NAME_MAX>> {
+    let path = request_path_after_prefix(request, b"DELETE /api/armory/")?;
+    decode_armory_asset_filename(path)
+}
+
 fn request_path_after_prefix<'a>(request: &'a [u8], prefix: &[u8]) -> Option<&'a [u8]> {
     let mut end = prefix.len();
     while end < request.len() && request[end] != b' ' {
@@ -1422,7 +1825,66 @@ async fn read_armory_asset_chunk(
         .map_err(|_| ())
 }
 
+/// Prepares LittleFS for a new fixed Armory upload.
+///
+/// `storage` must already be locked by the caller. The function ensures the
+/// Armory directory exists, removes stale Armory files, and truncates
+/// `/armory/payload.bin`. It returns `Ok(())` when the file is ready for chunk
+/// appends.
+fn prepare_armory_upload(storage: &StorageManager) -> Result<(), ()> {
+    storage.ensure_dir(ARMORY_DIR).map_err(|_| ())?;
+    remove_existing_armory_files(storage)
+}
+
+/// Writes one upload chunk to an already-open LittleFS file.
+///
+/// `file` is the open `/armory/payload.bin` handle and `bytes` is the received
+/// body chunk. Returns `Ok(())` only when LittleFS accepts the full chunk.
+fn write_armory_upload_chunk(file: &LfsFile<'_, '_, FlashDriver>, bytes: &[u8]) -> Result<(), ()> {
+    match file.write(bytes) {
+        Ok(written) if written == bytes.len() => Ok(()),
+        _ => Err(()),
+    }
+}
+
+/// Removes all files under `/armory` before writing the fixed binary.
+///
+/// `storage` must already be locked by the caller. This prevents stale binaries
+/// from consuming flash after a replacement upload.
+fn remove_existing_armory_files(storage: &StorageManager) -> Result<(), ()> {
+    let mut listed = [ListedFile::empty(); STARTUP_FILE_LIMIT];
+    let count = storage
+        .list_files(&mut listed)
+        .map_err(|_| ())?
+        .min(STARTUP_FILE_LIMIT);
+
+    for file in &listed[..count] {
+        let path = file.path();
+        if path.starts_with(ARMORY_PREFIX) {
+            storage.erase(path).map_err(|_| ())?;
+        }
+    }
+
+    Ok(())
+}
+
 fn armory_storage_path(filename: &str) -> Option<StringCopy<LISTED_FILE_PATH_MAX>> {
+    if filename != ARMORY_BINARY_NAME {
+        return None;
+    }
+
+    armory_storage_path_unrestricted(filename)
+}
+
+/// Builds `/armory/<filename>` for an already validated Armory filename.
+///
+/// `filename` is copied into a fixed path buffer. Returns `None` if the path
+/// would exceed the fixed LittleFS path buffer.
+fn armory_storage_path_unrestricted(filename: &str) -> Option<StringCopy<LISTED_FILE_PATH_MAX>> {
+    if !valid_armory_asset_filename(filename.as_bytes()) {
+        return None;
+    }
+
     let mut path = StringCopy::<LISTED_FILE_PATH_MAX> {
         bytes: [0u8; LISTED_FILE_PATH_MAX],
         len: 0,
