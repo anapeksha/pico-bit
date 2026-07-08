@@ -1,6 +1,6 @@
 # Pico Bit
 
-[![Validate](https://github.com/anapeksha/pico-bit/actions/workflows/ci.yml/badge.svg)](https://github.com/anapeksha/pico-bit/actions/workflows/validate.yml)
+[![Validate](https://github.com/anapeksha/pico-bit/actions/workflows/validate.yml/badge.svg)](https://github.com/anapeksha/pico-bit/actions/workflows/validate.yml)
 [![Release](https://github.com/anapeksha/pico-bit/actions/workflows/release.yml/badge.svg)](https://github.com/anapeksha/pico-bit/actions/workflows/release.yml)
 
 > **WARNING:** This software is strictly for authorized educational and security testing purposes; any unauthorized use or deployment is entirely at your own risk and liability.
