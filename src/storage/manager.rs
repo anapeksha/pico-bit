@@ -4,7 +4,7 @@ use crate::storage::FlashDriver;
 use core::sync::atomic::AtomicPtr;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use littlefs2::fs::{Allocation, Filesystem};
+use littlefs2::fs::{Allocation, File, FileAllocation, Filesystem};
 use littlefs2::io::{Error, Result, SeekFrom};
 use littlefs2::path::Path;
 
@@ -164,6 +164,25 @@ impl StorageManager {
                     Ok(())
                 },
             )
+        })
+    }
+
+    /// Opens a file once for sequential replacement writes.
+    ///
+    /// `path` is the LittleFS path and `alloc` is caller-owned file allocation
+    /// storage that must live until the returned file is explicitly closed.
+    /// Returns a write-only file handle opened with create and truncate flags.
+    pub fn open_write_truncate<'a>(
+        &'a self,
+        path: &str,
+        alloc: &'a mut FileAllocation<FlashDriver>,
+    ) -> Result<File<'static, 'a, FlashDriver>> {
+        self.with_path(path, |p| unsafe {
+            File::<FlashDriver>::with_options()
+                .write(true)
+                .create(true)
+                .truncate(true)
+                .open(&self.fs, alloc, p)
         })
     }
 

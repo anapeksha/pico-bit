@@ -115,7 +115,7 @@ export function uploadBinaryFile(
 ): Promise<ArmoryMutationResponse> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', `/api/armory/upload/${encodeURIComponent(file.name)}`, true);
+    xhr.open('POST', '/api/armory/upload', true);
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
 
     xhr.upload.addEventListener('progress', (event) => {

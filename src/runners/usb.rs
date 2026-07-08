@@ -13,6 +13,11 @@ use littlefs2::io::Error;
 use usbd_hid::descriptor::KeyboardReport;
 
 use crate::ducky::{DuckyError, DuckyExecutor, DuckyParser, StatefulWriter};
+use crate::net::{
+    RunSource, active_keyboard_layout, active_keyboard_os, consume_payload_run_trigger,
+    record_payload_run, set_host_hid_active, set_ncm_active,
+};
+use crate::status::{self as status_led, Fault, Stage};
 use crate::storage::StorageManager;
 
 use super::MTU;
@@ -26,8 +31,8 @@ pub async fn usb_task(mut usb: UsbDevice<'static, Driver<'static, USB>>) {
 /// Runs the CDC-NCM USB class and marks the NCM link active.
 #[embassy_executor::task]
 pub async fn ncm_task(runner: NcmRunner<'static, Driver<'static, USB>, MTU>) {
-    crate::net::set_ncm_active(true);
-    crate::status::show(crate::status::Stage::UsbAgentMounted);
+    set_ncm_active(true);
+    status_led::show(Stage::UsbAgentMounted);
     runner.run().await;
 }
 
@@ -44,30 +49,30 @@ pub async fn hid_task(
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
 ) {
     info!("Waiting for USB HID execution layer readiness...");
-    crate::status::show(crate::status::Stage::HidConstructed);
+    status_led::show(Stage::HidConstructed);
     if with_timeout(Duration::from_secs(30), hid.ready())
         .await
         .is_err()
     {
-        crate::status::error(crate::status::Fault::UsbEnumTimeout);
+        status_led::error(Fault::UsbEnumTimeout);
         hid.ready().await;
     }
-    crate::net::set_host_hid_active(true);
-    crate::status::show(crate::status::Stage::UsbEnumerated);
+    set_host_hid_active(true);
+    status_led::show(Stage::UsbEnumerated);
     info!("USB HID Connected! Initializing runner loop...");
 
     let mut content_buffer = [0u8; 2048];
     let mut hardware_writer = EmbassyUsbWriter { writer: &mut hid };
 
     record_execution_result(
-        crate::net::RunSource::Boot,
+        RunSource::Boot,
         run_script_payload(&mut hardware_writer, storage, &mut content_buffer).await,
     );
 
     loop {
-        if crate::net::consume_payload_run_trigger() {
+        if consume_payload_run_trigger() {
             record_execution_result(
-                crate::net::RunSource::Manual,
+                RunSource::Manual,
                 run_script_payload(&mut hardware_writer, storage, &mut content_buffer).await,
             );
         }
@@ -129,22 +134,19 @@ impl PayloadPreview {
     }
 }
 
-fn record_execution_result(
-    source: crate::net::RunSource,
-    result: Result<PayloadExecution, crate::ducky::DuckyError>,
-) {
+fn record_execution_result(source: RunSource, result: Result<PayloadExecution, DuckyError>) {
     match result {
         Ok(execution) => {
-            if matches!(source, crate::net::RunSource::Boot) && !execution.has_content {
+            if matches!(source, RunSource::Boot) && !execution.has_content {
                 return;
             }
 
-            crate::net::record_payload_run(source, execution.ok, execution.preview.as_str());
+            record_payload_run(source, execution.ok, execution.preview.as_str());
         }
         Err(error) => {
             error!("Script execution failed: {:?}", error);
-            crate::status::error(crate::status::Fault::ScriptError);
-            crate::net::record_payload_run(source, false, "payload.dd");
+            status_led::error(Fault::ScriptError);
+            record_payload_run(source, false, "payload.dd");
         }
     }
 }
@@ -169,9 +171,9 @@ async fn run_script_payload(
     writer: &mut EmbassyUsbWriter<'_>,
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
     content_buffer: &mut [u8; 2048],
-) -> Result<PayloadExecution, crate::ducky::DuckyError> {
+) -> Result<PayloadExecution, DuckyError> {
     let mut executor = DuckyExecutor::new();
-    executor.set_keyboard_layout(crate::net::active_keyboard_layout());
+    executor.set_keyboard_layout(active_keyboard_layout());
 
     let bytes_written_len = {
         let storage_guard = storage.lock().await;
@@ -179,15 +181,15 @@ async fn run_script_payload(
             Ok(bytes) => bytes.len(),
             Err(Error::NO_SUCH_ENTRY) => {
                 warn!("payload.dd not found in storage. Executing fallback...");
-                crate::status::error(crate::status::Fault::PayloadMissing);
+                status_led::error(Fault::PayloadMissing);
                 let fallback = b"REM Stateless Fallback\nDELAY 500\n";
                 content_buffer[..fallback.len()].copy_from_slice(fallback);
                 fallback.len()
             }
             Err(_) => {
                 error!("Storage read failed due to an unexpected driver error.");
-                crate::status::error(crate::status::Fault::PayloadReadFailed);
-                return Err(crate::ducky::DuckyError::UnknownCommand);
+                status_led::error(Fault::PayloadReadFailed);
+                return Err(DuckyError::UnknownCommand);
             }
         }
     };
@@ -198,9 +200,9 @@ async fn run_script_payload(
     let has_content = script_text.lines().any(|line| !line.trim().is_empty());
     let mut ok = true;
 
-    crate::status::show(crate::status::Stage::PayloadEntered);
-    crate::status::show(crate::status::Stage::PayloadReady);
-    crate::status::show(crate::status::Stage::PayloadRunning);
+    status_led::show(Stage::PayloadEntered);
+    status_led::show(Stage::PayloadReady);
+    status_led::show(Stage::PayloadRunning);
 
     let mut current_line_idx = 1;
     for raw_line in script_text.lines() {
@@ -209,9 +211,7 @@ async fn run_script_payload(
             continue;
         }
 
-        if let Ok(command) =
-            DuckyParser::parse_line_for_os(trimmed, crate::net::active_keyboard_os())
-        {
+        if let Ok(command) = DuckyParser::parse_line_for_os(trimmed, active_keyboard_os()) {
             match executor
                 .execute_command(command, current_line_idx, writer)
                 .await
@@ -220,13 +220,13 @@ async fn run_script_payload(
                 Ok(None) => {}
                 Err(e) => {
                     ok = false;
-                    crate::status::error(crate::status::Fault::ScriptError);
+                    status_led::error(Fault::ScriptError);
                     error!("Line {} Exec Error: {:?}", current_line_idx, e);
                 }
             }
         } else {
             ok = false;
-            crate::status::error(crate::status::Fault::ScriptError);
+            status_led::error(Fault::ScriptError);
             error!("Line {} Parse Error", current_line_idx);
         }
         current_line_idx += 1;
@@ -234,7 +234,7 @@ async fn run_script_payload(
 
     info!("Payload execution loop completed.");
     if ok {
-        crate::status::show(crate::status::Stage::PayloadComplete);
+        status_led::show(Stage::PayloadComplete);
     }
     Ok(PayloadExecution {
         has_content,

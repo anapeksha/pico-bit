@@ -20,10 +20,7 @@ async fn download_armory(filename: String<64>) -> impl IntoResponse {
 pub fn build<R: PathRouter>(router: Router<R, ()>) -> Router<impl PathRouter, ()> {
     router
         .route("/api/armory", get(list_armory))
-        .route(
-            ("/api/armory/upload", parse_path_segment::<String<64>>()),
-            post_service(service::UploadArmory),
-        )
+        .route("/api/armory/upload", post_service(service::UploadArmory))
         .route(
             ("/api/armory", parse_path_segment::<String<64>>()),
             get(download_armory).delete(delete_armory),

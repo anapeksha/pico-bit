@@ -12,6 +12,7 @@ use leasehund::DhcpServer;
 use static_cell::StaticCell;
 
 use crate::net::{AppRouter, init_wifi_dhcp, init_wifi_network};
+use crate::status::{self as status_led, Fault, LED_SIGNAL, Stage};
 use crate::storage::StorageManager;
 
 use super::http::{HttpSurface, http_task};
@@ -45,7 +46,7 @@ async fn wifi_dhcp_task(mut server: DhcpServer<32, 4>, stack: &'static Stack<'st
 #[embassy_executor::task]
 async fn led_task(control_mutex: &'static Mutex<CriticalSectionRawMutex, Control<'static>>) {
     loop {
-        let led_on = crate::status::LED_SIGNAL.wait().await;
+        let led_on = LED_SIGNAL.wait().await;
 
         let mut control = control_mutex.lock().await;
         control.gpio_set(0, led_on).await;
@@ -62,14 +63,14 @@ pub async fn wifi_task(
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
     seed: u64,
 ) {
-    crate::status::show(crate::status::Stage::SetupEntered);
-    crate::status::show(crate::status::Stage::SetupApStarting);
+    status_led::show(Stage::SetupEntered);
+    status_led::show(Stage::SetupApStarting);
     let state = STATE_STATIC.init(cyw43::State::new());
     let (wifi_device, mut control, wifi_runner) =
         cyw43::new(state, pwr, spi, FW_BUF, NVRAM_BUF).await;
 
     if spawner.spawn(raw_wifi_runner(wifi_runner)).is_err() {
-        crate::status::error(crate::status::Fault::SetupApFailed);
+        status_led::error(Fault::SetupApFailed);
         error!("Failed to spawn CYW43 runner.");
         return;
     }
@@ -90,12 +91,12 @@ pub async fn wifi_task(
         init_wifi_network(&mut control_guard, wifi_device, seed).await
     };
     let wifi_dhcp = init_wifi_dhcp();
-    crate::status::show(crate::status::Stage::SetupApReady);
+    status_led::show(Stage::SetupApReady);
 
     info!("Starting network loops...");
 
     if spawner.spawn(wifi_net_task(wifi_net_runner)).is_err() {
-        crate::status::error(crate::status::Fault::SetupApFailed);
+        status_led::error(Fault::SetupApFailed);
         error!("Failed to spawn Wi-Fi network task.");
         return;
     }
@@ -103,7 +104,7 @@ pub async fn wifi_task(
         .spawn(wifi_dhcp_task(wifi_dhcp, wifi_net_stack))
         .is_err()
     {
-        crate::status::error(crate::status::Fault::SetupServerFailed);
+        status_led::error(Fault::SetupServerFailed);
         error!("Failed to spawn Wi-Fi DHCP task.");
         return;
     }
@@ -117,9 +118,9 @@ pub async fn wifi_task(
         ))
         .is_err()
     {
-        crate::status::error(crate::status::Fault::SetupServerFailed);
+        status_led::error(Fault::SetupServerFailed);
         error!("Failed to spawn Wi-Fi HTTP task.");
         return;
     }
-    crate::status::show(crate::status::Stage::SetupServerReady);
+    status_led::show(Stage::SetupServerReady);
 }
