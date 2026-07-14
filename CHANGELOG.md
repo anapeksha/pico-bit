@@ -2,6 +2,12 @@
 
 All notable changes to Pico Bit are documented in this file.
 
+## Unreleased
+
+### Changed
+
+- Switched the default local firmware runner from `probe-rs run` to `cargo embed --path`, with `cargo-embed` now owning the standard flash and RTT workflow.
+
 ## v0.1.3 - 2026-07-09
 
 ### Changed
