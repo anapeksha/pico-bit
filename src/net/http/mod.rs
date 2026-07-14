@@ -1,5 +1,6 @@
 mod api;
 mod assets;
+pub(crate) mod delivery;
 
 use picoserve::Router;
 use picoserve::routing::PathRouter;
@@ -28,8 +29,23 @@ pub(crate) fn active_keyboard_target_codes() -> (&'static str, &'static str) {
 }
 
 /// Updates the active keyboard target from compact API codes.
-pub(crate) fn update_keyboard_target_codes(os: &str, layout: &str) -> bool {
-    api::keyboard::service::update_target_codes(os, layout)
+pub(crate) async fn update_keyboard_target_codes(os: &str, layout: &str) -> bool {
+    api::keyboard::service::update_target_codes(os, layout).await
+}
+
+/// Restores the keyboard target persisted in LittleFS.
+pub(crate) async fn restore_keyboard_target() {
+    api::keyboard::service::restore_target().await;
+}
+
+/// Records metrics for the latest Armory upload request.
+pub(crate) fn record_armory_upload_metrics(bytes: usize, duration_ms: u64) {
+    api::metrics::record_upload(bytes, duration_ms);
+}
+
+/// Returns the current bounded runtime metrics snapshot.
+pub(crate) async fn runtime_metrics() -> api::metrics::MetricsResponse {
+    api::metrics::snapshot().await
 }
 
 /// Atomically consumes a pending manual payload run request.
@@ -99,6 +115,7 @@ impl AppRouter {
 
         let router = api::bootstrap::controller::build(router);
         let router = api::keyboard::controller::build(router);
+        let router = api::metrics::controller::build(router);
         let router = api::armory::controller::build(router);
         let router = api::payload::controller::build(router);
         let router = api::runs::controller::build(router);

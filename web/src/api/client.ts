@@ -5,6 +5,7 @@ import type {
   HydratedBootstrapState,
   KeyboardTargetResponse,
   KeyboardTargetRequest,
+  MetricsResponse,
   PayloadReadResponse,
   PayloadMutationResponse,
   PayloadRunResponse,
@@ -68,11 +69,16 @@ export function getRuns(): Promise<RunsResponse> {
   return requestJson<RunsResponse>('/api/runs');
 }
 
+export function getMetrics(): Promise<MetricsResponse> {
+  return requestJson<MetricsResponse>('/api/metrics');
+}
+
 export async function getHydratedBootstrap(): Promise<HydratedBootstrapState> {
   const bootstrap = await getBootstrap();
   const armory = await getArmory();
   const payload = await getPayload();
   const runs = await getRuns();
+  const metrics = await getMetrics();
 
   return {
     ...bootstrap,
@@ -82,6 +88,7 @@ export async function getHydratedBootstrap(): Promise<HydratedBootstrapState> {
       path: file.kind === 'ducky' ? '/payload.dd' : `/api/armory/${encodeURIComponent(file.name)}`,
       size: file.size,
     })),
+    metrics,
     payload: payload.code,
     payload_file: 'payload.dd',
     run_history: runs.run_history,

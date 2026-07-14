@@ -12,11 +12,12 @@ import type {
   ArmoryFile,
   HydratedBootstrapState,
   KeyboardState,
+  MetricsResponse,
   NoticeTone,
   RunHistoryItem,
 } from '../api/contracts';
 import { apPassword, apSsid } from './ap';
-import { applyArmoryState, armoryFiles, armoryNotice } from './binary';
+import { applyArmoryState, armoryFiles, armoryMetrics, armoryNotice } from './binary';
 import { configureBootstrapState, loadCachedBootstrap } from './bootstrapCache';
 import { payload, payloadState } from './editor';
 import {
@@ -33,6 +34,7 @@ type BootstrapSnapshot = {
   apPassword: string;
   apSsid: string;
   armoryFiles: ArmoryFile[];
+  armoryMetrics: MetricsResponse;
   armoryNotice: {
     message: string;
     tone: NoticeTone;
@@ -71,6 +73,7 @@ function captureBootstrapSnapshot(): BootstrapSnapshot {
     apPassword: get(apPassword),
     apSsid: get(apSsid),
     armoryFiles: get(armoryFiles),
+    armoryMetrics: get(armoryMetrics),
     armoryNotice: get(armoryNotice),
     hostHid: get(hostHid),
     keyboard: get(keyboard),
@@ -88,6 +91,7 @@ function restoreBootstrapSnapshot(snapshot: unknown) {
   apPassword.set(data.apPassword);
   apSsid.set(data.apSsid);
   armoryFiles.set(data.armoryFiles);
+  armoryMetrics.set(data.armoryMetrics);
   armoryNotice.set(data.armoryNotice);
   hostHid.set(data.hostHid);
   keyboard.set(data.keyboard);

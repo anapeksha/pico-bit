@@ -69,6 +69,7 @@ export type ArmoryListResponse = {
 };
 
 export type ArmoryMutationResponse = {
+  code: string;
   filename: string;
   has_binary: boolean;
   message: string;
@@ -96,11 +97,20 @@ export type RunsResponse = {
   seeded: boolean;
 };
 
+export type MetricsResponse = {
+  last_run_code: string;
+  littlefs_free_bytes: number;
+  staged_binary_bytes: number;
+  upload_bytes: number;
+  upload_duration_ms: number;
+};
+
 export type PayloadWriteRequest = {
   code: string;
 };
 
 export type PayloadMutationResponse = {
+  code: string;
   error_line: number | null;
   message: string | null;
   notice?: NoticeTone;
@@ -109,6 +119,7 @@ export type PayloadMutationResponse = {
 };
 
 export type PayloadRunResponse = {
+  code: string;
   error_line?: number | null;
   message: string;
   success: boolean;
@@ -128,6 +139,7 @@ export type BootstrapState = {
 
 export type HydratedBootstrapState = BootstrapState & {
   files?: LittleFsFile[];
+  metrics?: MetricsResponse;
   payload?: string;
   payload_file?: string;
   run_history?: RunHistoryItem[];

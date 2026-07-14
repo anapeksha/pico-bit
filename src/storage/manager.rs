@@ -135,6 +135,16 @@ impl StorageManager {
         })
     }
 
+    /// Returns the best-effort lower bound of free LittleFS bytes.
+    pub fn available_space(&self) -> Result<usize> {
+        self.fs.available_space()
+    }
+
+    /// Returns file size from LittleFS metadata without reading file contents.
+    pub fn file_size(&self, path: &str) -> Result<usize> {
+        self.with_path(path, |p| self.fs.metadata(p).map(|metadata| metadata.len()))
+    }
+
     /// Replaces a file with the provided bytes.
     pub fn write(&self, path: &str, data: &[u8]) -> Result<()> {
         self.with_path(path, |p| {

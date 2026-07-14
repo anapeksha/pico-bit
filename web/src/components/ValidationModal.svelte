@@ -1,10 +1,15 @@
 <script lang="ts">
   import X from '@lucide/svelte/icons/x';
-  import { validation } from '../stores/editor';
+  import { navigateToEditorPosition, validation } from '../stores/editor';
   import { validationModalOpen } from '../stores/ui';
 
   function close() {
     validationModalOpen.set(false);
+  }
+
+  function navigate(line: number, column: number) {
+    navigateToEditorPosition(line, column);
+    close();
   }
 </script>
 
@@ -52,12 +57,15 @@
       <div class="grid gap-2 overflow-y-auto px-5 py-4">
         {#if $validation?.diagnostics?.length}
           {#each $validation.diagnostics as item (`${item.line}:${item.column}`)}
-            <div
-              class={`grid gap-1 rounded-lg border px-3.5 py-3 ${
+            <button
+              class={`grid cursor-pointer gap-1 rounded-lg border px-3.5 py-3 text-left ${
                 item.severity === 'error'
                   ? 'border-(--danger-border) bg-(--danger-bg)'
                   : 'border-(--warning-border) bg-(--warning-bg)'
               }`}
+              type="button"
+              title={`Go to line ${item.line}`}
+              onclick={() => navigate(item.line, item.column)}
             >
               <p
                 class={`m-0 font-mono text-[11px] font-medium tracking-[0.04em] uppercase ${
@@ -74,7 +82,7 @@
                   {item.hint}
                 </p>
               {/if}
-            </div>
+            </button>
           {/each}
         {:else}
           <p class="m-0 py-6 text-center text-xs leading-relaxed text-(--text-3)">

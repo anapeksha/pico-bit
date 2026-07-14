@@ -3,6 +3,7 @@ use core::sync::atomic::Ordering;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex as AsyncMutex;
+use embassy_time::Instant;
 use heapless::String;
 use picoserve::ResponseSent;
 use picoserve::io::{Read, Write};
@@ -13,18 +14,19 @@ use picoserve::routing::RequestHandlerService;
 use serde::ser::{SerializeSeq, SerializeStruct};
 use serde::{Serialize, Serializer};
 
+use crate::net::http::delivery::{STAGED_BINARY_NAME, STAGED_BINARY_PATH};
 use crate::status::{self as status_led, Stage};
 use crate::storage::{
     GLOBAL_STORAGE, LISTED_FILE_NAME_MAX, LISTED_FILE_PATH_MAX, ListedFile, SharedStorage,
     StorageManager,
 };
 
+use super::super::metrics;
+
 pub(super) const MAX_ARMORY_UPLOAD_BYTES: usize = 750 * 1024;
 
 const ARMORY_DIR: &str = "/armory";
 const ARMORY_PREFIX: &str = "/armory/";
-const ARMORY_BINARY_NAME: &str = "payload.bin";
-const ARMORY_BINARY_PATH: &str = "/armory/payload.bin";
 const MAX_ARMORY_FILES: usize = 16;
 const UPLOAD_CHUNK_SIZE: usize = 1024;
 pub(super) const DOWNLOAD_CHUNK_SIZE: usize = 1024;
@@ -80,6 +82,10 @@ impl ArmoryFileList {
         let mut has_asset = false;
 
         for file in files {
+            if !is_public_armory_file(file.path()) {
+                continue;
+            }
+
             let kind = file_kind(file.name(), file.path());
             if kind == "asset" && has_asset {
                 continue;
@@ -105,6 +111,7 @@ impl ArmoryFileList {
 }
 
 pub(super) struct ArmoryMutationResponse {
+    code: &'static str,
     filename: [u8; LISTED_FILE_NAME_MAX],
     filename_len: usize,
     has_binary: bool,
@@ -139,8 +146,15 @@ impl ArmoryDownloadChunks {
 }
 
 impl ArmoryMutationResponse {
-    fn new(filename: &str, has_binary: bool, message: &'static str, notice: &'static str) -> Self {
+    fn new(
+        code: &'static str,
+        filename: &str,
+        has_binary: bool,
+        message: &'static str,
+        notice: &'static str,
+    ) -> Self {
         let mut response = Self {
+            code,
             filename: [0u8; LISTED_FILE_NAME_MAX],
             filename_len: 0,
             has_binary,
@@ -170,7 +184,8 @@ impl Serialize for ArmoryMutationResponse {
     where
         S: Serializer,
     {
-        let mut state = serializer.serialize_struct("ArmoryMutationResponse", 4)?;
+        let mut state = serializer.serialize_struct("ArmoryMutationResponse", 5)?;
+        state.serialize_field("code", self.code)?;
         state.serialize_field("filename", self.filename())?;
         state.serialize_field("has_binary", &self.has_binary)?;
         state.serialize_field("message", self.message)?;
@@ -257,6 +272,16 @@ pub(super) enum ArmoryError {
 }
 
 impl ArmoryError {
+    fn code(self) -> &'static str {
+        match self {
+            Self::InvalidFilename => "invalid_filename",
+            Self::ProtectedPayload => "protected_payload",
+            Self::Storage => "storage_error",
+            Self::StorageUnavailable => "storage_unavailable",
+            Self::TooLarge => "too_large",
+        }
+    }
+
     fn message(self) -> &'static str {
         match self {
             Self::InvalidFilename => "Invalid filename.",
@@ -311,9 +336,10 @@ impl<State> RequestHandlerService<State, ()> for UploadArmory {
         let content_length = request.body_connection.content_length();
 
         let (status, response) = if content_length > MAX_ARMORY_UPLOAD_BYTES {
+            metrics::record_upload(0, 0);
             (
                 StatusCode::PAYLOAD_TOO_LARGE,
-                upload_too_large(ARMORY_BINARY_NAME),
+                upload_too_large(STAGED_BINARY_NAME),
             )
         } else {
             upload_stream(&mut request).await?
@@ -330,8 +356,10 @@ impl<State> RequestHandlerService<State, ()> for UploadArmory {
 async fn upload_stream<R: Read>(
     request: &mut Request<'_, R>,
 ) -> Result<(StatusCode, ArmoryMutationResponse), R::Error> {
+    let started = Instant::now();
     let Some(storage) = storage() else {
         let error = ArmoryError::StorageUnavailable;
+        metrics::record_upload(0, started.elapsed().as_millis());
         return Ok((status_for_error(error), fail_upload(error).await));
     };
 
@@ -340,6 +368,7 @@ async fn upload_stream<R: Read>(
 
     if let Err(error) = begin_upload(&storage_guard) {
         drop(storage_guard);
+        metrics::record_upload(0, started.elapsed().as_millis());
         return Ok((status_for_error(error), fail_upload(error).await));
     }
 
@@ -368,13 +397,14 @@ async fn upload_stream<R: Read>(
 
     let result = match failure {
         Some(error) => {
-            let _ = storage_guard.erase(ARMORY_BINARY_PATH);
+            let _ = storage_guard.erase(STAGED_BINARY_PATH);
             Err(error)
         }
         None => Ok(()),
     };
 
     drop(storage_guard);
+    metrics::record_upload(received, started.elapsed().as_millis());
 
     Ok(match result {
         Ok(()) => (StatusCode::OK, finish_upload().await),
@@ -406,6 +436,10 @@ fn file_kind(name: &str, path: &str) -> &'static str {
     } else {
         "asset"
     }
+}
+
+fn is_public_armory_file(path: &str) -> bool {
+    path == "/payload.dd" || path.starts_with(ARMORY_PREFIX)
 }
 
 fn storage() -> Option<&'static SharedStorage> {
@@ -507,7 +541,13 @@ pub(super) async fn list() -> ArmoryListResponse {
 
 pub(super) fn upload_too_large(filename: &str) -> ArmoryMutationResponse {
     status_led::show(Stage::BinaryInjectFailed);
-    ArmoryMutationResponse::new(filename, false, ArmoryError::TooLarge.message(), "error")
+    ArmoryMutationResponse::new(
+        ArmoryError::TooLarge.code(),
+        filename,
+        false,
+        ArmoryError::TooLarge.message(),
+        "error",
+    )
 }
 
 async fn read_file_chunk(filename: &str, offset: usize, buffer: &mut [u8]) -> usize {
@@ -530,13 +570,13 @@ fn begin_upload(storage: &StorageManager) -> Result<(), ArmoryError> {
         .map_err(|_| ArmoryError::Storage)?;
     remove_existing_armory_files(storage)?;
     storage
-        .truncate(ARMORY_BINARY_PATH)
+        .truncate(STAGED_BINARY_PATH)
         .map_err(|_| ArmoryError::Storage)
 }
 
 fn append_upload_chunk(storage: &StorageManager, chunk: &[u8]) -> Result<(), ArmoryError> {
     storage
-        .append(ARMORY_BINARY_PATH, chunk)
+        .append(STAGED_BINARY_PATH, chunk)
         .map_err(|_| ArmoryError::Storage)
 }
 
@@ -544,7 +584,8 @@ pub(super) async fn finish_upload() -> ArmoryMutationResponse {
     let has_binary = refresh_armory_files().await;
     status_led::show(Stage::LootImported);
     ArmoryMutationResponse::new(
-        ARMORY_BINARY_NAME,
+        "ok",
+        STAGED_BINARY_NAME,
         has_binary,
         "Upload committed to flash.",
         "success",
@@ -553,16 +594,30 @@ pub(super) async fn finish_upload() -> ArmoryMutationResponse {
 
 pub(super) async fn fail_upload(error: ArmoryError) -> ArmoryMutationResponse {
     status_led::show(Stage::BinaryInjectFailed);
-    ArmoryMutationResponse::new(ARMORY_BINARY_NAME, false, error.message(), "error")
+    ArmoryMutationResponse::new(
+        error.code(),
+        STAGED_BINARY_NAME,
+        false,
+        error.message(),
+        "error",
+    )
 }
 
 pub(super) async fn delete_file(filename: &str) -> ArmoryMutationResponse {
     match delete_file_result(filename).await {
         Ok(()) => {
             let has_binary = refresh_armory_files().await;
-            ArmoryMutationResponse::new(filename, has_binary, "File removed from flash.", "success")
+            ArmoryMutationResponse::new(
+                "ok",
+                filename,
+                has_binary,
+                "File removed from flash.",
+                "success",
+            )
         }
-        Err(error) => ArmoryMutationResponse::new(filename, false, error.message(), "error"),
+        Err(error) => {
+            ArmoryMutationResponse::new(error.code(), filename, false, error.message(), "error")
+        }
     }
 }
 

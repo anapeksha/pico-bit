@@ -15,7 +15,7 @@
 
 <div class="flex flex-wrap justify-around gap-2">
   <dl class={`${statClass} m-0`}>
-    <dt class={labelClass}>Access point</dt>
+    <dt class={labelClass}>Wi-Fi control</dt>
     <dd class={`${valueClass} m-0`}>{$apSsid}</dd>
   </dl>
 
@@ -46,7 +46,7 @@
   </dl>
 
   <dl class={`${statClass} m-0`}>
-    <dt class={labelClass}>Host HID</dt>
+    <dt class={labelClass}>Host HID execution</dt>
     <dd class={`${valueClass} m-0`} aria-live="polite">{$hidState}</dd>
   </dl>
 
@@ -55,7 +55,7 @@
       $ncmLink.active ? 'border-picobit-success-border bg-picobit-success-bg' : ''
     }`}
   >
-    <dt class={labelClass}>NCM Link</dt>
+    <dt class={labelClass}>NCM delivery</dt>
     <dd
       class={`${valueClass} m-0 ${$ncmLink.active ? 'text-picobit-success' : ''}`}
       aria-live="polite"

@@ -3,12 +3,18 @@ mod service;
 
 /// Compact result shared by direct HTTP paths and the HID runner trigger flow.
 pub(crate) struct PayloadActionResult {
+    code: &'static str,
     success: bool,
     error_line: Option<usize>,
     message: &'static str,
 }
 
 impl PayloadActionResult {
+    /// Compact machine-readable action result code.
+    pub(crate) fn code(&self) -> &'static str {
+        self.code
+    }
+
     /// Whether validation/save/run preparation succeeded.
     pub(crate) fn success(&self) -> bool {
         self.success
@@ -36,6 +42,7 @@ pub(crate) async fn save_code(code: &str) -> PayloadActionResult {
     let response = service::save_staged().await;
 
     PayloadActionResult {
+        code: response.code(),
         success: response.success(),
         error_line: response.error_line(),
         message: response.message().unwrap_or(if response.success() {
@@ -51,6 +58,7 @@ pub(crate) async fn trigger_run() -> PayloadActionResult {
     let response = service::trigger_run().await;
 
     PayloadActionResult {
+        code: response.code(),
         success: response.success(),
         error_line: response.error_line(),
         message: response.message(),

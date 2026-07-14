@@ -1,5 +1,6 @@
 use crate::ducky::{KeyboardLayout, KeyboardOs};
 use crate::status::{self as status_led, Stage};
+use crate::storage::{GLOBAL_STORAGE, SharedStorage};
 use core::sync::atomic::{AtomicU8, Ordering};
 use picoserve::response::{IntoResponse, Json, StatusCode};
 use serde::Serialize;
@@ -21,8 +22,8 @@ impl KeyboardResponse {
     }
 }
 
-pub(super) fn update_response(request: KeyboardTargetRequest) -> impl IntoResponse {
-    let response = update_target(request);
+pub(super) async fn update_response(request: KeyboardTargetRequest) -> impl IntoResponse {
+    let response = update_target(request).await;
     let status = if response.is_error() {
         StatusCode::BAD_REQUEST
     } else {
@@ -41,6 +42,9 @@ pub(super) struct KeyboardTargetRequest {
 
 static ACTIVE_LAYOUT: AtomicU8 = AtomicU8::new(KeyboardLayout::Us as u8);
 static ACTIVE_OS: AtomicU8 = AtomicU8::new(KeyboardOs::Windows as u8);
+
+const KEYBOARD_TARGET_PATH: &str = "/keyboard.cfg";
+const KEYBOARD_TARGET_BUFFER_SIZE: usize = 16;
 
 impl<'de> Deserialize<'de> for KeyboardTargetRequest {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -158,6 +162,36 @@ fn set_target(os: KeyboardOs, layout: KeyboardLayout) {
     ACTIVE_LAYOUT.store(layout as u8, Ordering::Release);
 }
 
+fn storage() -> Option<&'static SharedStorage> {
+    let ptr = GLOBAL_STORAGE.load(Ordering::Acquire);
+    if ptr.is_null() {
+        None
+    } else {
+        Some(unsafe { &*ptr })
+    }
+}
+
+async fn persist_target(os: KeyboardOs, layout: KeyboardLayout) -> bool {
+    let Some(storage) = storage() else {
+        return false;
+    };
+
+    let os = os_code(os).as_bytes();
+    let layout = layout_code(layout).as_bytes();
+    let mut config = [0u8; KEYBOARD_TARGET_BUFFER_SIZE];
+    let len = os.len() + 1 + layout.len();
+
+    config[..os.len()].copy_from_slice(os);
+    config[os.len()] = b'\n';
+    config[os.len() + 1..len].copy_from_slice(layout);
+
+    storage
+        .lock()
+        .await
+        .write(KEYBOARD_TARGET_PATH, &config[..len])
+        .is_ok()
+}
+
 fn response(message: &'static str, notice: &'static str) -> KeyboardResponse {
     let layout = active_layout();
     let os = active_os();
@@ -176,7 +210,7 @@ pub(crate) fn active_target_codes() -> (&'static str, &'static str) {
 }
 
 /// Updates the active target from compact API codes.
-pub(crate) fn update_target_codes(os_code_value: &str, layout_code_value: &str) -> bool {
+pub(crate) async fn update_target_codes(os_code_value: &str, layout_code_value: &str) -> bool {
     let Some(os) = os_from_code(os_code_value) else {
         return false;
     };
@@ -184,11 +218,20 @@ pub(crate) fn update_target_codes(os_code_value: &str, layout_code_value: &str) 
         return false;
     };
 
+    let previous_os = active_os();
+    let previous_layout = active_layout();
     set_target(os, layout);
-    true
+
+    if persist_target(os, layout).await {
+        status_led::show(Stage::KeyboardLayoutChanged);
+        true
+    } else {
+        set_target(previous_os, previous_layout);
+        false
+    }
 }
 
-pub(super) fn update_target(request: KeyboardTargetRequest) -> KeyboardResponse {
+pub(super) async fn update_target(request: KeyboardTargetRequest) -> KeyboardResponse {
     let current_layout = active_layout();
     let current_os = active_os();
 
@@ -199,7 +242,37 @@ pub(super) fn update_target(request: KeyboardTargetRequest) -> KeyboardResponse 
     let layout = request.layout.unwrap_or(current_layout);
     let os = request.os.unwrap_or(current_os);
 
-    set_target(os, layout);
-    status_led::show(Stage::KeyboardLayoutChanged);
-    response("Keyboard target updated.", "success")
+    if update_target_codes(os_code(os), layout_code(layout)).await {
+        response("Keyboard target updated.", "success")
+    } else {
+        response("Keyboard target could not be saved.", "error")
+    }
+}
+
+/// Restores the persisted keyboard target, using Windows/US when unavailable.
+pub(crate) async fn restore_target() {
+    let default_os = KeyboardOs::Windows;
+    let default_layout = KeyboardLayout::Us;
+    let Some(storage) = storage() else {
+        set_target(default_os, default_layout);
+        return;
+    };
+
+    let mut buffer = [0u8; KEYBOARD_TARGET_BUFFER_SIZE];
+    let guard = storage.lock().await;
+    let restored = guard
+        .read(KEYBOARD_TARGET_PATH, &mut buffer)
+        .ok()
+        .and_then(|bytes| core::str::from_utf8(bytes).ok())
+        .and_then(|config| config.split_once('\n'))
+        .and_then(|(os, layout)| Some((os_from_code(os)?, layout_from_code(layout)?)));
+    drop(guard);
+
+    match restored {
+        Some((os, layout)) => set_target(os, layout),
+        None => {
+            set_target(default_os, default_layout);
+            let _ = persist_target(default_os, default_layout).await;
+        }
+    }
 }

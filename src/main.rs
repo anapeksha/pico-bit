@@ -31,7 +31,7 @@ use panic_probe as _;
 // Defmt Logging
 use defmt_rtt as _;
 
-use net::{AppRouter, init_usb_dhcp, init_usb_network};
+use net::{AppRouter, init_usb_dhcp, init_usb_network, restore_keyboard_target};
 use pio::PioManager;
 use runners::{
     HttpSurface, dhcp_task, hid_task, http_task, ncm_task, net_task, usb_task, wifi_task,
@@ -110,6 +110,7 @@ async fn main(spawner: Spawner) {
     let app_router = APP_ROUTER.init(AppRouter);
 
     storage::GLOBAL_STORAGE.store(storage_manager as *mut _, Ordering::Release);
+    restore_keyboard_target().await;
 
     info!("Spawning services...");
 
