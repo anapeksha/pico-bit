@@ -34,6 +34,14 @@ const RUNS_DATA = {
   seeded: false,
 };
 
+const METRICS_DATA = {
+  last_run_code: 'none',
+  littlefs_free_bytes: 900_000,
+  staged_binary_bytes: 4096,
+  upload_bytes: 4096,
+  upload_duration_ms: 120,
+};
+
 describe('loadBootstrap', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', vi.fn());
@@ -85,9 +93,9 @@ describe('loadBootstrap', () => {
         json: vi.fn().mockResolvedValue(RUNS_DATA),
       } as unknown as Response)
       .mockResolvedValueOnce({
-        ok: false,
-        status: 404,
-        json: vi.fn().mockResolvedValue({}),
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(METRICS_DATA),
       } as unknown as Response);
   }
 
@@ -116,6 +124,7 @@ describe('loadBootstrap', () => {
         url: '/api/armory/payload.bin',
       },
     ]);
+    expect(get(stores.binary.armoryMetrics)).toEqual(METRICS_DATA);
   });
 
   it('throws when /api/bootstrap returns a non-ok response', async () => {
@@ -151,6 +160,11 @@ describe('loadBootstrap', () => {
         ok: true,
         status: 200,
         json: vi.fn().mockResolvedValue(RUNS_DATA),
+      } as unknown as Response)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: vi.fn().mockResolvedValue(METRICS_DATA),
       } as unknown as Response);
 
     const { stores, loadBootstrap } = await setup();

@@ -4,9 +4,29 @@ All notable changes to Pico Bit are documented in this file.
 
 ## Unreleased
 
+## v0.2.0 - 2026-07-15
+
+### Added
+
+- Persistent keyboard OS and layout configuration in the internal `/keyboard.cfg` LittleFS file.
+- Portal-only `GET /api/metrics` endpoint for LittleFS capacity, staged binary size, last run result, and latest upload transfer metrics.
+- Explicit NCM delivery policy limiting the USB network surface to staged binary metadata and `/api/armory/payload.bin` download.
+- Bounded frontend activity timeline for payload, Armory, and keyboard target actions.
+- Staged binary delivery details, including exact size, NCM availability, and direct NCM URL.
+- Clickable validation diagnostics that focus the matching editor line and column.
+
 ### Changed
 
 - Switched the default local firmware runner from `probe-rs run` to `cargo embed --path`, with `cargo-embed` now owning the standard flash and RTT workflow.
+- Keyboard target changes now persist in firmware storage instead of relying on browser state.
+- Armory upload, delete, and payload save/run responses now expose short machine-readable result codes.
+- Dashboard transport state now distinguishes Wi-Fi control, Host HID execution, and NCM binary delivery.
+- Editor actions remain visible in a sticky toolbar and show the active OS/layout target beside the script.
+- Release packaging now verifies signed ELF and UF2 artifacts, reports package and programmed flash sizes, and enforces the 2 MiB firmware flash budget from `memory.x`.
+
+### Fixed
+
+- Kept hardware-sensitive dashboard hydration and Armory transfers on the bounded HTTP worker path after generic picoserve routing reproduced RP2350 firmware faults under Safari.
 
 ## v0.1.3 - 2026-07-09
 

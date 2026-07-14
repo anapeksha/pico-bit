@@ -8,13 +8,28 @@
 import { writable } from 'svelte/store';
 
 import { deleteBinaryFile, uploadBinaryFile } from '../api/client';
-import type { ArmoryFile, HydratedBootstrapState, NoticeTone } from '../api/contracts';
+import type {
+  ArmoryFile,
+  HydratedBootstrapState,
+  MetricsResponse,
+  NoticeTone,
+} from '../api/contracts';
+import { recordActivity } from './activity';
 import { withOptimisticBootstrap } from './bootstrapCache';
 
 const ARMORY_BINARY_NAME = 'payload.bin';
 
 /** Files currently reported by the device armory snapshot. */
 export const armoryFiles = writable<ArmoryFile[]>([]);
+
+/** Latest bounded runtime and storage metrics reported by the firmware. */
+export const armoryMetrics = writable<MetricsResponse>({
+  last_run_code: 'none',
+  littlefs_free_bytes: 0,
+  staged_binary_bytes: 0,
+  upload_bytes: 0,
+  upload_duration_ms: 0,
+});
 
 /** XHR upload progress 0–100. */
 export const uploadProgress = writable(0);
@@ -38,7 +53,7 @@ export function setArmoryNotice(message: string, tone: NoticeTone = 'quiet') {
   armoryNotice.set({ message, tone, visible: Boolean(message) });
 }
 
-export function applyArmoryState(data: Pick<HydratedBootstrapState, 'files'>) {
+export function applyArmoryState(data: Pick<HydratedBootstrapState, 'files' | 'metrics'>) {
   const files = data.files || [];
   armoryFiles.set(
     files.map((file) => ({
@@ -52,6 +67,7 @@ export function applyArmoryState(data: Pick<HydratedBootstrapState, 'files'>) {
           : file.path || `/api/armory/${encodeURIComponent(file.name)}`,
     })),
   );
+  if (data.metrics) armoryMetrics.set(data.metrics);
 }
 
 /**
@@ -77,9 +93,11 @@ export async function uploadBinary(file: File) {
       },
       () => uploadBinaryFile(file, (percent) => uploadProgress.set(percent)),
     );
+    recordActivity('armory_upload_complete', true);
     setArmoryNotice(data.message || 'Upload complete.', data.notice || 'success');
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Upload failed.';
+    recordActivity('armory_upload_failed', false);
     setArmoryNotice(message, 'error');
   } finally {
     uploadingBinary.set(false);
@@ -95,9 +113,11 @@ export async function deleteBinary(filename: string) {
       },
       () => deleteBinaryFile(filename),
     );
+    recordActivity('armory_delete_complete', true);
     setArmoryNotice(data.message || 'File removed from flash.', data.notice || 'success');
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Delete failed.';
+    recordActivity('armory_delete_failed', false);
     setArmoryNotice(message, 'error');
   }
 }

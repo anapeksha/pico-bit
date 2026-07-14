@@ -1,6 +1,6 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { validation } from '../stores/editor';
+import { editorNavigation, validation } from '../stores/editor';
 import { validationModalOpen } from '../stores/ui';
 import ValidationModal from './ValidationModal.svelte';
 
@@ -96,6 +96,18 @@ describe('ValidationModal', () => {
     validation.set(makeValidation({ diagnostics: [ERROR_DIAGNOSTIC] }));
     render(ValidationModal);
     expect(screen.getByText('Line 3, column 1')).toBeInTheDocument();
+  });
+
+  it('requests editor navigation when a diagnostic is selected', async () => {
+    validationModalOpen.set(true);
+    validation.set(makeValidation({ diagnostics: [ERROR_DIAGNOSTIC] }));
+    render(ValidationModal);
+
+    await fireEvent.click(screen.getByRole('button', { name: /Unknown command: TYPO/ }));
+
+    const { get } = await import('svelte/store');
+    expect(get(editorNavigation)).toMatchObject({ line: 3, column: 1 });
+    expect(get(validationModalOpen)).toBe(false);
   });
 
   it('renders hint text when present', () => {

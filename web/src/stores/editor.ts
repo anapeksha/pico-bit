@@ -14,6 +14,7 @@ import type {
   RequestFailure,
   ValidationState,
 } from '../api/contracts';
+import { recordActivity } from './activity';
 import { refreshBootstrapSource } from './bootstrapCache';
 import { showNotice, validationModalOpen } from './ui';
 
@@ -31,6 +32,21 @@ export const saving = writable(false);
 
 /** `true` while a run request is in flight. */
 export const running = writable(false);
+
+/** Latest validation diagnostic position requested by the user. */
+export const editorNavigation = writable({ column: 1, line: 1, sequence: 0 });
+
+let editorNavigationSequence = 0;
+
+/** Requests that the editor focus and reveal a one-based line and column. */
+export function navigateToEditorPosition(line: number, column: number) {
+  editorNavigationSequence += 1;
+  editorNavigation.set({
+    column: Math.max(1, column),
+    line: Math.max(1, line),
+    sequence: editorNavigationSequence,
+  });
+}
 
 /** `true` when a save request can be submitted. Save performs validation server-side. */
 export const canSave = derived([saving, running], ([$saving, $running]) => !$saving && !$running);
@@ -85,6 +101,7 @@ export async function savePayload() {
 
     if (!data.success) {
       applyValidationFailure(data);
+      recordActivity('payload_save_failed', false);
       showNotice(data.message || 'Syntax validation failed.', 'error');
       return;
     }
@@ -92,12 +109,14 @@ export async function savePayload() {
     validation.set(null);
     payloadState.set('Saved on device');
     await refreshBootstrapSource();
+    recordActivity('payload_saved', true);
     showNotice(data.message || 'Payload saved to payload.dd.', 'success');
   } catch (error: unknown) {
     const failure = error as RequestFailure;
     if (failure.data) {
       applyValidationFailure(failure.data as PayloadMutationResponse);
     }
+    recordActivity('payload_save_failed', false);
     showNotice(error instanceof Error ? error.message : 'Save failed.', 'error');
   } finally {
     saving.set(false);
@@ -113,6 +132,7 @@ export async function runPayload() {
 
     if (!saved.success) {
       applyValidationFailure(saved);
+      recordActivity('payload_run_failed', false);
       showNotice(saved.message || 'Syntax validation failed.', 'error');
       return;
     }
@@ -121,6 +141,7 @@ export async function runPayload() {
 
     if (!data.success) {
       applyValidationFailure(data);
+      recordActivity('payload_run_failed', false);
       showNotice(data.message || 'Syntax validation failed.', 'error');
       return;
     }
@@ -128,12 +149,14 @@ export async function runPayload() {
     validation.set(null);
     payloadState.set('Saved on device');
     await refreshBootstrapSource();
+    recordActivity('payload_run_requested', true);
     showNotice(data.message || 'Payload run started.', 'success');
   } catch (error: unknown) {
     const failure = error as RequestFailure;
     if (failure.data) {
       applyValidationFailure(failure.data as PayloadRunResponse);
     }
+    recordActivity('payload_run_failed', false);
     showNotice(error instanceof Error ? error.message : 'Run failed.', 'error');
   } finally {
     running.set(false);

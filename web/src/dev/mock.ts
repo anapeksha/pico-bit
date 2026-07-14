@@ -126,6 +126,7 @@ if (shouldMock) {
 
       return jsonResponse(
         {
+          code: validation.blocking ? 'validation_failed' : 'ok',
           message: validation.blocking ? validation.summary : 'payload.dd saved.',
           notice: validation.blocking ? 'error' : 'success',
           success: !validation.blocking,
@@ -148,6 +149,7 @@ if (shouldMock) {
 
       return jsonResponse(
         {
+          code: validation.blocking ? 'validation_failed' : 'ok',
           message: validation.blocking ? validation.summary : 'Mock payload run requested.',
           success: !validation.blocking,
         },
@@ -173,9 +175,21 @@ if (shouldMock) {
       });
     }
 
+    if (url === '/api/metrics' && method === 'GET') {
+      const binary = armoryFiles().find((file) => file.kind === 'asset');
+      return jsonResponse({
+        last_run_code: runs[0]?.ok === false ? 'error' : runs.length ? 'ok' : 'none',
+        littlefs_free_bytes: 1024 * 1024 - (binary?.size || 0),
+        staged_binary_bytes: binary?.size || 0,
+        upload_bytes: binary?.size || 0,
+        upload_duration_ms: 0,
+      });
+    }
+
     if (url === '/api/armory/upload' && method === 'POST') {
       staged = true;
       return jsonResponse({
+        code: 'ok',
         filename: 'payload.bin',
         has_binary: true,
         message: 'Mock binary uploaded.',
@@ -187,6 +201,7 @@ if (shouldMock) {
       if (url.endsWith('/payload.dd')) {
         return jsonResponse(
           {
+            code: 'protected_payload',
             filename: 'payload.dd',
             has_binary: staged,
             message: 'payload.dd is managed by the editor and cannot be deleted.',
@@ -198,6 +213,7 @@ if (shouldMock) {
 
       staged = false;
       return jsonResponse({
+        code: 'ok',
         filename: decodeURIComponent(url.split('/').pop() || ''),
         has_binary: false,
         message: 'Mock file deleted.',

@@ -7,7 +7,7 @@ use picoserve::routing::{PathRouter, post};
 async fn update_keyboard_target(
     Json(request): Json<service::KeyboardTargetRequest>,
 ) -> impl IntoResponse {
-    service::update_response(request)
+    service::update_response(request).await
 }
 
 pub fn build<R: PathRouter>(router: Router<R, ()>) -> Router<impl PathRouter, ()> {

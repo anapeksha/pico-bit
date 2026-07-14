@@ -14,6 +14,7 @@ import type {
   SelectOption,
 } from '../api/contracts';
 import { showNotice } from './ui';
+import { recordActivity } from './activity';
 
 type KeyboardStateSource = Partial<BootstrapState>;
 type HostHidState = { active?: boolean };
@@ -115,10 +116,16 @@ export async function changeKeyboardTarget(next: KeyboardTargetRequest) {
     return current;
   });
 
-  const response = await updateKeyboardTarget(target);
-  applyLocalKeyboardTarget({
-    layout: response.keyboard_layout || target.layout,
-    os: response.keyboard_os || target.os,
-  });
-  showNotice(response.message || 'Typing target updated.', response.notice || 'success');
+  try {
+    const response = await updateKeyboardTarget(target);
+    applyLocalKeyboardTarget({
+      layout: response.keyboard_layout || target.layout,
+      os: response.keyboard_os || target.os,
+    });
+    recordActivity('keyboard_target_changed', true);
+    showNotice(response.message || 'Typing target updated.', response.notice || 'success');
+  } catch (error: unknown) {
+    recordActivity('keyboard_target_failed', false);
+    showNotice(error instanceof Error ? error.message : 'Typing target update failed.', 'error');
+  }
 }

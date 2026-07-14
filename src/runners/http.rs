@@ -3,12 +3,15 @@ use embassy_net::Stack;
 use embassy_net::tcp::TcpSocket;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use embassy_time::{Duration, with_timeout};
+use embassy_time::{Duration, Instant, with_timeout};
 use littlefs2::fs::{File as LfsFile, FileAllocation};
 use picoserve::io::{ErrorType, Read, Socket, Write};
 use picoserve::{Config, DisconnectionInfo, EmbassyRuntime, Server, Timeouts};
 
-use crate::net::{self as app_net, AppRouter, PayloadActionResult};
+use crate::net::{
+    self as app_net, AppRouter, NcmDelivery, NcmDeliveryRoute, PayloadActionResult,
+    STAGED_BINARY_NAME, STAGED_BINARY_PATH,
+};
 use crate::status::{self as status_led, Stage};
 use crate::storage::{
     FlashDriver, LISTED_FILE_NAME_MAX, LISTED_FILE_PATH_MAX, ListedFile, StorageManager,
@@ -17,8 +20,6 @@ use crate::storage::{
 /// Bytes read up front to classify browser startup requests safely.
 pub(super) const HTTP_PREFLIGHT_BYTES: usize = 64;
 const HTTP_PREFLIGHT_TIMEOUT_MS: u64 = 300;
-const ARMORY_BINARY_NAME: &str = "payload.bin";
-const ARMORY_BINARY_PATH: &str = "/armory/payload.bin";
 const ARMORY_DIR: &str = "/armory";
 const ARMORY_PREFIX: &str = "/armory/";
 const ARMORY_UPLOAD_LIMIT: usize = 750 * 1024;
@@ -173,6 +174,13 @@ pub async fn http_task(
                 }
                 continue;
             }
+            StartupRequest::Metrics => {
+                info!("[{} Worker] Serving metrics.", link);
+                if let Err(e) = serve_metrics(&mut socket).await {
+                    warn!("[{} Worker] Metrics response failed: {:?}", link, e);
+                }
+                continue;
+            }
             StartupRequest::IgnoredBrowserProbe => {
                 info!("[{} Worker] Serving browser probe.", link);
                 if let Err(e) = serve_empty_not_found(&mut socket).await {
@@ -241,10 +249,18 @@ impl HttpSurface {
     fn allows(self, request: StartupRequest) -> bool {
         match self {
             Self::Portal => true,
-            Self::Ncm => matches!(
-                request,
-                StartupRequest::Armory | StartupRequest::ArmoryAsset | StartupRequest::Options
-            ),
+            Self::Ncm => {
+                if matches!(request, StartupRequest::Options) {
+                    return true;
+                }
+
+                let route = match request {
+                    StartupRequest::Armory => NcmDeliveryRoute::Metadata,
+                    StartupRequest::ArmoryAsset => NcmDeliveryRoute::BinaryDownload,
+                    _ => NcmDeliveryRoute::Other,
+                };
+                NcmDelivery::allows(route)
+            }
         }
     }
 }
@@ -261,6 +277,7 @@ enum StartupRequest {
     PayloadSave,
     PayloadRun,
     Runs,
+    Metrics,
     IgnoredBrowserProbe,
     OtherGet,
     Options,
@@ -309,6 +326,10 @@ fn classify_startup_request(bytes: &[u8]) -> StartupRequest {
 
     if request_starts_with(bytes, b"GET /api/runs ") {
         return StartupRequest::Runs;
+    }
+
+    if request_starts_with(bytes, b"GET /api/metrics ") {
+        return StartupRequest::Metrics;
     }
 
     if request_starts_with(bytes, b"GET /favicon.ico ")
@@ -586,6 +607,13 @@ enum PayloadBodyError {
 }
 
 impl PayloadBodyError {
+    fn code(self) -> &'static str {
+        match self {
+            Self::TooLarge => "payload_too_large",
+            _ => "invalid_request",
+        }
+    }
+
     fn message(self) -> &'static str {
         match self {
             Self::MissingCode => "Missing payload code.",
@@ -619,7 +647,7 @@ pub(super) async fn serve_keyboard_target(
     let (current_os, current_layout) = app_net::active_keyboard_target_codes();
     let os = keyboard_os_from_body(body).unwrap_or(current_os);
     let layout = keyboard_layout_from_body(body).unwrap_or(current_layout);
-    let ok = app_net::update_keyboard_target_codes(os, layout);
+    let ok = app_net::update_keyboard_target_codes(os, layout).await;
 
     let (response_os, response_layout) = app_net::active_keyboard_target_codes();
 
@@ -775,6 +803,32 @@ pub(super) async fn serve_runs(socket: &mut TcpSocket<'_>) -> Result<(), embassy
     write_final_chunk(socket).await
 }
 
+/// Serves the compact runtime metrics snapshot as fixed-length JSON.
+pub(super) async fn serve_metrics(
+    socket: &mut TcpSocket<'_>,
+) -> Result<(), embassy_net::tcp::Error> {
+    let metrics = app_net::runtime_metrics().await;
+    let mut body = FixedBody::<256>::new();
+
+    body.raw(b"{\"last_run_code\":");
+    body.json_string(metrics.last_run_code().as_bytes());
+    body.raw(b",\"littlefs_free_bytes\":");
+    body.usize_value(metrics.littlefs_free_bytes());
+    body.raw(b",\"staged_binary_bytes\":");
+    body.usize_value(metrics.staged_binary_bytes());
+    body.raw(b",\"upload_bytes\":");
+    body.usize_value(metrics.upload_bytes() as usize);
+    body.raw(b",\"upload_duration_ms\":");
+    body.usize_value(metrics.upload_duration_ms() as usize);
+    body.raw(b"}");
+
+    if body.overflowed() {
+        return serve_empty_internal_error(socket).await;
+    }
+
+    write_fixed_json_response(socket, body.bytes()).await
+}
+
 /// Streams the current `payload.dd` editor contents as JSON.
 ///
 /// `socket` is the accepted TCP connection and `storage` is the shared LittleFS
@@ -818,7 +872,13 @@ pub(super) async fn serve_payload_save(
     let result = match decode_payload_code(body, &mut code) {
         Ok(code) => app_net::save_payload_code(code).await,
         Err(error) => {
-            return write_payload_error_response(socket, error.message(), error.status()).await;
+            return write_payload_error_response(
+                socket,
+                error.code(),
+                error.message(),
+                error.status(),
+            )
+            .await;
         }
     };
 
@@ -864,16 +924,19 @@ pub(super) async fn serve_armory(
     write_http_chunk(socket, b"{\"files\":[").await?;
 
     for index in 0..file_count {
-        let (name, size, is_payload, valid) = {
+        let (name, size, is_payload, valid, ncm_visible) = {
             let files = STARTUP_LISTED_FILES.lock().await;
             let file = files[index];
             let name = file.name();
             let path = file.path();
+            let is_payload = path == "/payload.dd";
+            let is_armory_asset = path.starts_with(ARMORY_PREFIX);
             (
                 StringCopy::<64>::from(name),
                 file.size(),
-                name == "payload.dd" || path == "/payload.dd",
-                !name.is_empty(),
+                is_payload,
+                !name.is_empty() && (is_payload || is_armory_asset),
+                NcmDelivery::exposes_path(path),
             )
         };
 
@@ -881,7 +944,7 @@ pub(super) async fn serve_armory(
             continue;
         }
 
-        if surface == HttpSurface::Ncm && is_payload {
+        if surface == HttpSurface::Ncm && !ncm_visible {
             continue;
         }
 
@@ -932,7 +995,7 @@ pub(super) async fn serve_armory_asset(
         return serve_empty_not_found(socket).await;
     };
 
-    if surface == HttpSurface::Ncm && target.is_payload() {
+    if surface == HttpSurface::Ncm && !NcmDelivery::exposes_path(target.path()) {
         return serve_empty_not_found(socket).await;
     }
 
@@ -982,6 +1045,7 @@ pub(super) async fn serve_armory_delete(
         return write_armory_mutation_response(
             socket,
             HttpStatus::BadRequest,
+            "invalid_filename",
             b"",
             "Invalid filename.",
             "error",
@@ -994,6 +1058,7 @@ pub(super) async fn serve_armory_delete(
         return write_armory_mutation_response(
             socket,
             HttpStatus::Forbidden,
+            "protected_payload",
             filename.as_bytes(),
             "payload.dd is managed by the editor and cannot be deleted.",
             "error",
@@ -1006,6 +1071,7 @@ pub(super) async fn serve_armory_delete(
         return write_armory_mutation_response(
             socket,
             HttpStatus::BadRequest,
+            "invalid_filename",
             filename.as_bytes(),
             "Invalid filename.",
             "error",
@@ -1023,6 +1089,7 @@ pub(super) async fn serve_armory_delete(
         write_armory_mutation_response(
             socket,
             HttpStatus::Ok,
+            "ok",
             filename.as_bytes(),
             "File removed from flash.",
             "success",
@@ -1033,6 +1100,7 @@ pub(super) async fn serve_armory_delete(
         write_armory_mutation_response(
             socket,
             HttpStatus::InternalServerError,
+            "storage_error",
             filename.as_bytes(),
             "littlefs2 storage operation failed.",
             "error",
@@ -1052,12 +1120,15 @@ pub(super) async fn serve_armory_upload(
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
     prefix: &[u8],
 ) -> Result<(), embassy_net::tcp::Error> {
+    let upload_started = Instant::now();
     let mut request = [0u8; 1024];
     let request_len = socket_read_prefetched_headers(socket, prefix, &mut request).await;
     let Some(header_end) = header_end_index(&request[..request_len]) else {
+        record_upload_metrics(upload_started, 0);
         return write_armory_upload_response(
             socket,
             HttpStatus::BadRequest,
+            "invalid_request",
             "Invalid upload request.",
             "error",
             false,
@@ -1067,10 +1138,12 @@ pub(super) async fn serve_armory_upload(
 
     let content_length = content_length(&request[..header_end]).unwrap_or(0);
     if content_length > ARMORY_UPLOAD_LIMIT {
+        record_upload_metrics(upload_started, 0);
         status_led::show(Stage::BinaryInjectFailed);
         return write_armory_upload_response(
             socket,
             HttpStatus::PayloadTooLarge,
+            "too_large",
             "Upload exceeds 750 KB capacity limit.",
             "error",
             false,
@@ -1083,10 +1156,12 @@ pub(super) async fn serve_armory_upload(
 
     if prepare_armory_upload(&storage_guard).is_err() {
         drop(storage_guard);
+        record_upload_metrics(upload_started, 0);
         status_led::show(Stage::BinaryInjectFailed);
         return write_armory_upload_response(
             socket,
             HttpStatus::InternalServerError,
+            "storage_error",
             "littlefs2 storage operation failed.",
             "error",
             false,
@@ -1095,14 +1170,16 @@ pub(super) async fn serve_armory_upload(
     }
 
     let mut file_alloc = FileAllocation::<FlashDriver>::new();
-    let file = match storage_guard.open_write_truncate(ARMORY_BINARY_PATH, &mut file_alloc) {
+    let file = match storage_guard.open_write_truncate(STAGED_BINARY_PATH, &mut file_alloc) {
         Ok(file) => file,
         Err(_) => {
             drop(storage_guard);
+            record_upload_metrics(upload_started, 0);
             status_led::show(Stage::BinaryInjectFailed);
             return write_armory_upload_response(
                 socket,
                 HttpStatus::InternalServerError,
+                "storage_error",
                 "littlefs2 storage operation failed.",
                 "error",
                 false,
@@ -1148,12 +1225,14 @@ pub(super) async fn serve_armory_upload(
     let close_failed = unsafe { file.close() }.is_err();
 
     if failed || received != content_length {
-        let _ = storage_guard.erase(ARMORY_BINARY_PATH);
+        let _ = storage_guard.erase(STAGED_BINARY_PATH);
         drop(storage_guard);
+        record_upload_metrics(upload_started, received);
         status_led::show(Stage::BinaryInjectFailed);
         return write_armory_upload_response(
             socket,
             HttpStatus::InternalServerError,
+            "storage_error",
             "littlefs2 storage operation failed.",
             "error",
             false,
@@ -1162,12 +1241,14 @@ pub(super) async fn serve_armory_upload(
     }
 
     if close_failed {
-        let _ = storage_guard.erase(ARMORY_BINARY_PATH);
+        let _ = storage_guard.erase(STAGED_BINARY_PATH);
         drop(storage_guard);
+        record_upload_metrics(upload_started, received);
         status_led::show(Stage::BinaryInjectFailed);
         return write_armory_upload_response(
             socket,
             HttpStatus::InternalServerError,
+            "storage_error",
             "littlefs2 storage operation failed.",
             "error",
             false,
@@ -1176,15 +1257,21 @@ pub(super) async fn serve_armory_upload(
     }
 
     drop(storage_guard);
+    record_upload_metrics(upload_started, received);
     status_led::show(Stage::LootImported);
     write_armory_upload_response(
         socket,
         HttpStatus::Ok,
+        "ok",
         "Upload committed to flash.",
         "success",
         true,
     )
     .await
+}
+
+fn record_upload_metrics(started: Instant, bytes: usize) {
+    app_net::record_armory_upload_metrics(bytes, started.elapsed().as_millis());
 }
 
 struct StringCopy<const N: usize> {
@@ -1241,6 +1328,7 @@ impl HttpStatus {
 async fn write_armory_upload_response(
     socket: &mut TcpSocket<'_>,
     status: HttpStatus,
+    code: &'static str,
     message: &'static str,
     notice: &'static str,
     has_binary: bool,
@@ -1248,7 +1336,8 @@ async fn write_armory_upload_response(
     write_armory_mutation_response(
         socket,
         status,
-        ARMORY_BINARY_NAME.as_bytes(),
+        code,
+        STAGED_BINARY_NAME.as_bytes(),
         message,
         notice,
         has_binary,
@@ -1264,6 +1353,7 @@ async fn write_armory_upload_response(
 async fn write_armory_mutation_response(
     socket: &mut TcpSocket<'_>,
     status: HttpStatus,
+    code: &'static str,
     filename: &[u8],
     message: &'static str,
     notice: &'static str,
@@ -1271,7 +1361,9 @@ async fn write_armory_mutation_response(
 ) -> Result<(), embassy_net::tcp::Error> {
     let mut body = FixedBody::<256>::new();
 
-    body.raw(b"{\"filename\":");
+    body.raw(b"{\"code\":");
+    body.json_string(code.as_bytes());
+    body.raw(b",\"filename\":");
     body.json_string(filename);
     body.raw(b",\"has_binary\":");
     body.raw(if has_binary { b"true" } else { b"false" });
@@ -1294,7 +1386,9 @@ async fn write_payload_action_response(
 ) -> Result<(), embassy_net::tcp::Error> {
     let mut body = FixedBody::<384>::new();
 
-    body.raw(b"{\"success\":");
+    body.raw(b"{\"code\":");
+    body.json_string(result.code().as_bytes());
+    body.raw(b",\"success\":");
     body.raw(if result.success() { b"true" } else { b"false" });
     body.raw(b",\"message\":");
     body.json_string(result.message().as_bytes());
@@ -1314,6 +1408,7 @@ async fn write_payload_action_response(
     if body.overflowed() {
         return write_payload_error_response(
             socket,
+            "response_overflow",
             "Payload response exceeded fixed response buffer.",
             HttpStatus::InternalServerError,
         )
@@ -1325,12 +1420,15 @@ async fn write_payload_action_response(
 
 async fn write_payload_error_response(
     socket: &mut TcpSocket<'_>,
+    code: &'static str,
     message: &'static str,
     status: HttpStatus,
 ) -> Result<(), embassy_net::tcp::Error> {
     let mut body = FixedBody::<256>::new();
 
-    body.raw(b"{\"success\":false,\"message\":");
+    body.raw(b"{\"code\":");
+    body.json_string(code.as_bytes());
+    body.raw(b",\"success\":false,\"message\":");
     body.json_string(message.as_bytes());
     body.raw(b",\"error_line\":null}");
 
@@ -1694,16 +1792,11 @@ fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
 
 struct ArmoryAssetTarget {
     path: StringCopy<LISTED_FILE_PATH_MAX>,
-    payload: bool,
 }
 
 impl ArmoryAssetTarget {
     fn path(&self) -> &str {
         self.path.as_str()
-    }
-
-    fn is_payload(&self) -> bool {
-        self.payload
     }
 }
 
@@ -1724,10 +1817,7 @@ fn armory_asset_target(request: &[u8]) -> Option<ArmoryAssetTarget> {
         armory_storage_path(filename.as_str())?
     };
 
-    Some(ArmoryAssetTarget {
-        path: storage_path,
-        payload,
-    })
+    Some(ArmoryAssetTarget { path: storage_path })
 }
 
 /// Extracts and decodes the filename from a DELETE Armory request.
@@ -1869,7 +1959,7 @@ fn remove_existing_armory_files(storage: &StorageManager) -> Result<(), ()> {
 }
 
 fn armory_storage_path(filename: &str) -> Option<StringCopy<LISTED_FILE_PATH_MAX>> {
-    if filename != ARMORY_BINARY_NAME {
+    if filename != STAGED_BINARY_NAME {
         return None;
     }
 

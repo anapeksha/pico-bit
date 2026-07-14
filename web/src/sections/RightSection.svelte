@@ -1,4 +1,6 @@
 <script lang="ts">
+  import type { ActivityCode } from '../stores/activity';
+  import { activity } from '../stores/activity';
   import { changeKeyboardTarget, keyboard } from '../stores/keyboard';
   import { runHistory } from '../stores/run';
 
@@ -7,6 +9,19 @@
   const labelClass = 'text-[11px] font-medium text-(--text-3)';
   const selectClass =
     'w-full appearance-none rounded-lg border border-(--border-strong) bg-(--surface) px-3 py-2 text-[13px] leading-none text-(--text) outline-none focus:border-(--text)';
+
+  const activityLabels: Record<ActivityCode, string> = {
+    armory_delete_complete: 'Binary deleted',
+    armory_delete_failed: 'Delete failed',
+    armory_upload_complete: 'Binary uploaded',
+    armory_upload_failed: 'Upload failed',
+    keyboard_target_changed: 'Keyboard target changed',
+    keyboard_target_failed: 'Keyboard change failed',
+    payload_run_failed: 'Payload run failed',
+    payload_run_requested: 'Payload run requested',
+    payload_save_failed: 'Payload save failed',
+    payload_saved: 'Payload saved',
+  };
 </script>
 
 <div class="lg:order-2 xl:order-0">
@@ -54,6 +69,32 @@
       <p class="m-0 mt-3 text-[11px] leading-relaxed text-(--text-4)">
         {$keyboard.hint}
       </p>
+    </div>
+
+    <div class={panelClass}>
+      <p class={titleClass}>Activity</p>
+      <div class="flex max-h-48 flex-col gap-1 overflow-y-auto" aria-live="polite">
+        {#if $activity.length}
+          {#each $activity as item (item.sequence)}
+            <div
+              class="flex min-w-0 items-center gap-2 rounded-lg border border-(--border) bg-(--surface-2) px-2 py-1.5"
+            >
+              <span class="shrink-0 font-mono text-[11px] font-semibold text-(--text-4)">
+                #{item.sequence}
+              </span>
+              <span class="min-w-0 flex-1 truncate text-xs text-(--text-2)">
+                {activityLabels[item.code]}
+              </span>
+              <span
+                class={`size-1.5 shrink-0 rounded-full ${item.ok ? 'bg-(--success)' : 'bg-(--danger)'}`}
+                aria-label={item.ok ? 'Succeeded' : 'Failed'}
+              ></span>
+            </div>
+          {/each}
+        {:else}
+          <p class="m-0 text-xs leading-relaxed text-(--text-3)">No actions this session.</p>
+        {/if}
+      </div>
     </div>
 
     <div class={panelClass}>

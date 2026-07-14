@@ -9,18 +9,20 @@
 
 `pico-bit` is an open source Rust Embassy firmware for the Raspberry Pi Pico 2 W. It combines a USB Host HID DuckyScript runtime, USB NCM file delivery, LittleFS-backed storage, and a Wi-Fi-hosted dashboard for authorized security research, lab automation, and defensive validation.
 
-Current release: `v0.1.3`
+Current release: `v0.2.0`
 
 ## What Works
 
 - Single-file dashboard served at `http://192.168.4.1`
 - Boot-time and on-demand execution of the saved `payload.dd`
 - Browser editor with firmware-backed save, validation, and run actions
-- Host typing target selection by operating system and keyboard layout
+- Host typing target selection by operating system and keyboard layout, persisted in LittleFS
 - Host HID and NCM link state surfaced in the dashboard
 - Binary Armory upload, download, copy-link, and delete operations over LittleFS
 - Protected `payload.dd` file: visible in the file table, downloadable, but not deletable
 - Recent boot/manual run history for the current boot session
+- Compact runtime metrics for storage, staged binary, payload execution, and upload state
+- Session-local action timeline and line-addressable validation diagnostics
 - Single replaceable Armory binary with a 750 KB upload limit enforced in both frontend and firmware
 - On-board status LED patterns for boot, network, HID, payload, Armory, and error states
 - Single gzipped Svelte 5 + Tailwind v4 dashboard artifact embedded into firmware flash
@@ -45,7 +47,7 @@ Current release: `v0.1.3`
 | NCM file root | `http://192.168.7.1` |
 | NCM staged binary | `http://192.168.7.1/api/armory/payload.bin` |
 
-The dashboard has no portal login in `v0.1.3`. AP credentials are firmware build-time values.
+The dashboard has no portal login in `v0.2.0`. AP credentials are firmware build-time values.
 
 ## Dashboard Scope
 
@@ -56,9 +58,12 @@ The UI is intentionally small and operational:
 - Save validates and writes the editor text to LittleFS.
 - Run saves the current editor text first, then triggers Host HID execution.
 - Validation failures open the validation modal and do not trigger execution.
+- Selecting a validation diagnostic focuses the matching editor line and column.
 - Binary Armory lists `payload.dd` and the single staged binary, supports upload/download/copy-link/delete, and blocks deletion of `payload.dd`.
-- Layout controls update the firmware keyboard target immediately.
+- Binary state shows exact size, NCM accessibility, and the direct NCM URL.
+- Layout controls update the firmware keyboard target immediately and persist it across reboots.
 - Recent runs show compact current-session run metadata.
+- Activity shows the six most recent resolved portal actions without retaining verbose logs.
 
 ## API Surface
 
@@ -76,8 +81,9 @@ The frontend uses only these endpoints:
 | `POST` | `/api/payload/run` | Validate saved `payload.dd` and trigger Host HID execution |
 | `POST` | `/api/keyboard/layout` | Update keyboard OS/layout codes |
 | `GET` | `/api/runs` | Current-session run history |
+| `GET` | `/api/metrics` | Bounded storage, staged binary, run, and upload metrics |
 
-There is no status API, auth API, login/logout route, or browser-storage startup restore flow in `v0.1.3`.
+There is no status API, auth API, login/logout route, or browser-storage startup restore flow in `v0.2.0`.
 The NCM surface exposes only the Armory list and staged binary download; `payload.dd` downloads remain portal-only.
 
 ## Storage Model
@@ -85,6 +91,7 @@ The NCM surface exposes only the Armory list and staged binary download; `payloa
 - LittleFS is mounted at boot.
 - `/armory` is created automatically.
 - `payload.dd` is created automatically if missing.
+- `/keyboard.cfg` stores the active OS/layout target and is hidden from Armory listing and deletion.
 - The editor always overwrites `payload.dd`.
 - Armory stores one replaceable binary at `/armory/payload.bin`; a new upload removes previous Armory files, opens `payload.bin` once, then writes request chunks.
 - File listings are bounded and serialized without heap allocation.
@@ -144,7 +151,7 @@ Install the local flash/debug tool once:
 cargo install cargo-embed --locked
 ```
 
-Flash and run on a connected RP2350 board. The project `cargo run` path now routes directly through [`Embed.toml`](/Users/anapeksha/Documents/Projects/pico-bit/Embed.toml:1) and opens the default RTT session through `cargo-embed`:
+Flash and run on a connected RP2350 board. The project `cargo run` path routes through [`Embed.toml`](Embed.toml) and opens the default RTT session through `cargo-embed`:
 
 ```sh
 cargo run
@@ -161,8 +168,8 @@ Build release firmware:
 ```sh
 npm --prefix web run build
 cargo build --release --target thumbv8m.main-none-eabihf
-cp target/thumbv8m.main-none-eabihf/release/pico-bit firmware-v0.1.3.elf
-elf2uf2-rs firmware-v0.1.3.elf firmware-v0.1.3.uf2
+cp target/thumbv8m.main-none-eabihf/release/pico-bit firmware-v0.2.0.elf
+elf2uf2-rs firmware-v0.2.0.elf firmware-v0.2.0.uf2
 ```
 
 ## Verification
@@ -211,17 +218,17 @@ The release workflow runs when a GitHub release is published with a tag matching
 v*.*.*
 ```
 
-For `v0.1.3`, publish a GitHub release tagged:
+For `v0.2.0`, publish a GitHub release tagged:
 
 ```text
-v0.1.3
+v0.2.0
 ```
 
-The workflow builds the web dashboard, compiles release firmware, converts the ELF to UF2, uploads a workflow artifact, and attaches:
+The workflow builds the web dashboard, compiles and signs the firmware, verifies the release artifacts, enforces the 2 MiB programmed-flash budget, and attaches:
 
-- `firmware-v0.1.3.uf2`
-- `firmware-v0.1.3.elf`
+- `firmware-v0.2.0.uf2`
+- `firmware-v0.2.0.elf`
 
 ## Current Completion State
 
-`v0.1.3` is complete for the current UI scope. All frontend API calls are backed by firmware handlers, and the remaining dynamic dashboard state is sourced from runtime state or LittleFS.
+`v0.2.0` is complete for the current UI scope. Device configuration is firmware-owned, transport responsibilities are explicit, and dynamic dashboard state is sourced from bounded runtime state or LittleFS.

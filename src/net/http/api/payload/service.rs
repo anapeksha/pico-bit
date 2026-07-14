@@ -21,12 +21,17 @@ pub(crate) fn consume_run_trigger() -> bool {
 
 #[derive(Serialize)]
 pub(super) struct ValidationResponse {
+    code: &'static str,
     success: bool,
     error_line: Option<usize>,
     message: Option<&'static str>,
 }
 
 impl ValidationResponse {
+    pub(crate) fn code(&self) -> &'static str {
+        self.code
+    }
+
     pub(super) fn is_error(&self) -> bool {
         !self.success
     }
@@ -46,12 +51,17 @@ impl ValidationResponse {
 
 #[derive(Serialize)]
 pub(super) struct RunResponse {
+    code: &'static str,
     success: bool,
     message: &'static str,
     error_line: Option<usize>,
 }
 
 impl RunResponse {
+    pub(crate) fn code(&self) -> &'static str {
+        self.code
+    }
+
     pub(super) fn is_error(&self) -> bool {
         !self.success
     }
@@ -371,6 +381,7 @@ pub(super) async fn save_staged() -> ValidationResponse {
     if let Err((error_line, _)) = validate_staged_buffer() {
         status_led::error(Fault::ScriptError);
         return ValidationResponse {
+            code: "validation_failed",
             success: false,
             error_line,
             message: Some("Syntax validation failed. Flash update aborted."),
@@ -390,6 +401,7 @@ pub(super) async fn save_staged() -> ValidationResponse {
 
     match write_result {
         Ok(_) => ValidationResponse {
+            code: "ok",
             success: true,
             error_line: None,
             message: Some("Payload updated successfully."),
@@ -397,6 +409,7 @@ pub(super) async fn save_staged() -> ValidationResponse {
         Err(_) => {
             status_led::error(Fault::PayloadReadFailed);
             ValidationResponse {
+                code: "storage_error",
                 success: false,
                 error_line: None,
                 message: Some("Error: Hardware flash partition write execution failed."),
@@ -416,6 +429,7 @@ pub(super) async fn trigger_run() -> RunResponse {
     if let Err((error_line, message)) = validation {
         status_led::error(Fault::ScriptError);
         return RunResponse {
+            code: "validation_failed",
             success: false,
             message,
             error_line,
@@ -425,6 +439,7 @@ pub(super) async fn trigger_run() -> RunResponse {
     TRIGGER_RUN.store(true, Ordering::Release);
     status_led::show(Stage::PayloadRunning);
     RunResponse {
+        code: "ok",
         success: true,
         message: "Payload injection sequence initialized.",
         error_line: None,
