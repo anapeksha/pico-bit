@@ -1,8 +1,10 @@
 [
   {
-    "label": "Start DAP Server",
+    "label": "Start probe-rs DAP Server",
     "command": "probe-rs",
-    "args": ["dap-server", "--port", "50000"],
+    "args": ["dap-server", "--port", "50001"],
     "use_new_terminal": true,
-  },
+    "allow_concurrent_runs": false,
+    "reveal": "always"
+  }
 ]

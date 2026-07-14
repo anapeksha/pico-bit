@@ -2,6 +2,10 @@
 # Sets the default logging level for your terminal output
 DEFMT_LOG = "debug,cyw43=info,embassy_net=info"
 
+[alias]
+# Opens a cargo-embed GDB server using the committed gdb profile.
+embed-debug = "embed gdb"
+
 [build]
 # Forces Cargo to compile for the Cortex-M33 in the RP2350 by default
 target = "thumbv8m.main-none-eabihf"
@@ -10,8 +14,8 @@ target = "thumbv8m.main-none-eabihf"
 # Route binary generation through flip-link before it hits the runner
 linker = "flip-link"
 
-# Specifies the modern probe-rs runner for flashing and debugging
-runner = "probe-rs run --chip rp235x"
+# Route the built ELF directly through cargo-embed.
+runner = "cargo embed --path"
 
 # MANDATORY: These flags tell the compiler how to physically pack the hardware binary
 rustflags = [

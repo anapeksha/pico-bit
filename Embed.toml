@@ -1,10 +1,44 @@
 [default.general]
-chip = "RP2350"
+chip = "RP235x"
+log_level = "WARN"
+connect_under_reset = false
+
+[default.flashing]
+enabled = true
+restore_unwritten_bytes = false
+do_chip_erase = false
+
+[default.reset]
+enabled = true
+halt_afterwards = false
 
 [default.rtt]
-# Whether or not an RTTUI should be opened after flashing.
 enabled = true
+timeout = 3000
+up_channels = [
+  { channel = 0, name = "defmt", format = "Defmt" },
+]
 
 [default.gdb]
-# Whether or not a GDB server should be opened after flashing.
 enabled = false
+
+[gdb.general]
+chip = "RP235x"
+log_level = "WARN"
+connect_under_reset = false
+
+[gdb.flashing]
+enabled = true
+restore_unwritten_bytes = false
+do_chip_erase = false
+
+[gdb.reset]
+enabled = true
+halt_afterwards = true
+
+[gdb.rtt]
+enabled = false
+
+[gdb.gdb]
+enabled = true
+gdb_connection_string = "127.0.0.1:1337"

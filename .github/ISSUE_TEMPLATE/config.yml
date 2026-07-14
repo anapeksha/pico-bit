@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Project documentation
+    url: https://github.com/anapeksha/pico-bit/blob/main/README.md
+    about: Check the README for setup, limits, API surface, and release workflow details.
+  - name: Project architecture guide
+    url: https://github.com/anapeksha/pico-bit/blob/main/AGENTS.md
+    about: Check AGENTS.md for firmware constraints, routing rules, and architectural boundaries.

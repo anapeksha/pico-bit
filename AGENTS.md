@@ -16,6 +16,7 @@ This file provides strict architectural context, constraints, and learned patter
 * **Concurrency:** `embassy_sync` (`Mutex<CriticalSectionRawMutex, RefCell<T>>`, `AtomicBool`).
 * **Serialization:** `serde` with `heapless` integrations.
 * **Frontend:** Svelte, bundled as a single gzipped dashboard artifact embedded into flash.
+* **Default Local Flash/Debug Tool:** `cargo-embed`, configured by the committed `Embed.toml`.
 
 ---
 
@@ -110,6 +111,7 @@ This file provides strict architectural context, constraints, and learned patter
 * **Straightforward Startup:** Dashboard startup should be explicit and boring: load `/`, then hydrate through the frontend client. Do not add hidden browser-storage restore flows that call mutation APIs during startup. The HTTP worker owns the bounded startup responses listed above because this is the hardware-stable path.
 * **Build Ordering:** `cargo check`/`cargo build` include `dist/index.html.gz`. Run `npm --prefix web run build` first when the artifact may be missing or stale.
 * **CI Cargo Builds:** GitHub Actions use normal Cargo commands for firmware validation and release builds.
+* **Local Runner Ownership:** `.cargo/config.toml` routes `cargo run` directly through `cargo embed --path` using the committed `Embed.toml`. Let `cargo-embed` own probe attach, flashing, RTT, and GDB profiles.
 * **Small Bootstrap Required:** `/api/bootstrap` must stay a small fixed contract and direct fixed-length JSON response. Do not add LittleFS reads, payload text, file tables, run history, validation, or other variable-sized fields back into bootstrap.
 * **Chunk Only Variable Startup Data:** The gzipped dashboard asset, Armory listing/downloads, payload text, and runs may be chunked. Bootstrap should not be chunked. Do not use chunked transfer for small mutation responses.
 * **Static Asset Writes:** Keep dashboard write slices below the TCP tx buffer size. If the HTTP worker tx buffer in `src/runners/http.rs` changes, verify the static dashboard chunk size remains safely smaller.
