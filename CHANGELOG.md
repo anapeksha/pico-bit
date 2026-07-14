@@ -22,7 +22,6 @@ All notable changes to Pico Bit are documented in this file.
 - Armory upload, delete, and payload save/run responses now expose short machine-readable result codes.
 - Dashboard transport state now distinguishes Wi-Fi control, Host HID execution, and NCM binary delivery.
 - Editor actions remain visible in a sticky toolbar and show the active OS/layout target beside the script.
-- Release packaging now verifies signed ELF and UF2 artifacts, reports package and programmed flash sizes, and enforces the 2 MiB firmware flash budget from `memory.x`.
 
 ### Fixed
 

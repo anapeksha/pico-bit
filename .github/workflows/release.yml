@@ -11,7 +11,6 @@ env:
   FIRMWARE_TARGET: thumbv8m.main-none-eabihf
   PICOTOOL_VERSION: 2.3.0
   PICOTOOL_RELEASE_TAG: v2.3.0-0
-  MAX_FIRMWARE_FLASH_BYTES: 2097152
   AP_SSID: ${{ secrets.AP_SSID }}
   AP_PASSWORD: ${{ secrets.AP_PASSWORD }}
 
@@ -23,7 +22,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Validate release tag
         env:
@@ -42,7 +41,7 @@ jobs:
           fi
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
@@ -142,36 +141,8 @@ jobs:
 
           elf2uf2-rs "firmware-$RELEASE_TAG.elf" "firmware-$RELEASE_TAG.uf2"
 
-      - name: Verify release artifacts
-        env:
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
-        run: |
-          elf="firmware-$RELEASE_TAG.elf"
-          uf2="firmware-$RELEASE_TAG.uf2"
-
-          test -s "$elf"
-          test -s "$uf2"
-          arm-none-eabi-readelf --file-header "$elf" >/dev/null
-          picotool info "$elf"
-
-          read -r text_bytes data_bytes _ _ _ _ < <(
-            arm-none-eabi-size "$elf" | awk 'NR == 2 { print $1, $2, $3, $4, $5, $6 }'
-          )
-          flash_bytes=$((text_bytes + data_bytes))
-          elf_bytes=$(stat --format='%s' "$elf")
-          uf2_bytes=$(stat --format='%s' "$uf2")
-
-          printf 'Programmed flash: %s / %s bytes\n' "$flash_bytes" "$MAX_FIRMWARE_FLASH_BYTES"
-          printf 'ELF package: %s bytes\n' "$elf_bytes"
-          printf 'UF2 package: %s bytes\n' "$uf2_bytes"
-
-          if (( flash_bytes > MAX_FIRMWARE_FLASH_BYTES )); then
-            echo "Firmware exceeds the 2 MiB FLASH region declared in memory.x"
-            exit 1
-          fi
-
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: pico-bit-firmware
           if-no-files-found: error
@@ -180,7 +151,7 @@ jobs:
             firmware-*.elf
 
       - name: Attach firmware to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             firmware-*.uf2

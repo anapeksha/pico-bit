@@ -224,7 +224,7 @@ For `v0.2.0`, publish a GitHub release tagged:
 v0.2.0
 ```
 
-The workflow builds the web dashboard, compiles and signs the firmware, verifies the release artifacts, enforces the 2 MiB programmed-flash budget, and attaches:
+The workflow builds the web dashboard, compiles and signs the firmware, converts the signed ELF to UF2, and attaches:
 
 - `firmware-v0.2.0.uf2`
 - `firmware-v0.2.0.elf`
