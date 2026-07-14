@@ -120,7 +120,6 @@ This file provides strict architectural context, constraints, and learned patter
 * **Local Runner Ownership:** `.cargo/config.toml` routes `cargo run` directly through `cargo embed --path` using the committed `Embed.toml`. Let `cargo-embed` own probe attach, flashing, RTT, and GDB profiles.
 * **Small Bootstrap Required:** `/api/bootstrap` must stay a small fixed contract and direct fixed-length JSON response. Do not add LittleFS reads, payload text, file tables, run history, validation, or other variable-sized fields back into bootstrap.
 * **Chunk Only Variable Startup Data:** The gzipped dashboard asset, Armory listing/downloads, payload text, and runs may be chunked. Bootstrap and metrics should use fixed-length bounded JSON. Do not use chunked transfer for small mutation responses.
-* **Release Artifact Budget:** Release packaging must verify non-empty signed ELF and UF2 artifacts and reject a programmed flash footprint above the 2 MiB `FLASH` region declared in `memory.x`. Report ELF/UF2 package sizes separately from programmed flash bytes.
 * **Static Asset Writes:** Keep dashboard write slices below the TCP tx buffer size. If the HTTP worker tx buffer in `src/runners/http.rs` changes, verify the static dashboard chunk size remains safely smaller.
 
 ---
