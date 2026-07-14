@@ -1,0 +1,27 @@
+changelog:
+  exclude:
+    labels:
+      - skip-changelog
+  categories:
+    - title: Firmware
+      labels:
+        - firmware
+        - usb
+        - hid
+        - ncm
+        - wifi
+        - storage
+    - title: Frontend
+      labels:
+        - frontend
+        - ui
+        - api
+    - title: Tooling and Release
+      labels:
+        - ci
+        - release
+        - tooling
+        - docs
+    - title: Other Changes
+      labels:
+        - "*"

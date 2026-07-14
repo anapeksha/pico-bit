@@ -1,16 +1,17 @@
 [
   {
-    "label": "Launch probe-rs debugging",
+    "label": "Debug RP2350 via probe-rs DAP",
     "adapter": "probe-rs",
     "request": "launch",
     "chip": "rp235x",
     "cwd": "$ZED_WORKTREE_ROOT",
-    "server": "127.0.0.1:50000",
+    "server": "127.0.0.1:50001",
+    "build": "Start probe-rs DAP Server",
     "coreConfigs": [
       {
         "coreIndex": 0,
-        "programBinary": "target/thumbv8m.main-none-eabihf/debug/vigilante",
-      },
-    ],
-  },
+        "programBinary": "$ZED_WORKTREE_ROOT/target/thumbv8m.main-none-eabihf/debug/pico-bit"
+      }
+    ]
+  }
 ]

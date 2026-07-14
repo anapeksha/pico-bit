@@ -1,0 +1,116 @@
+name: Bug report
+description: Report a firmware, frontend, storage, or hardware regression.
+title: "fix: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for reproducible bugs in the Pico Bit firmware, dashboard, or release workflow.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Pick the primary area affected.
+      options:
+        - Firmware runtime
+        - Frontend dashboard
+        - HTTP / API
+        - LittleFS / storage
+        - USB HID
+        - USB NCM
+        - Wi-Fi / AP
+        - Status LED
+        - CI / release
+    validations:
+      required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: State the bug clearly and concretely.
+      placeholder: The Armory upload API hard-faults the firmware after the first request chunk.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Provide a deterministic sequence.
+      placeholder: |
+        1. Flash debug firmware with `cargo run`
+        2. Connect to AP `PicoBit`
+        3. Open `http://192.168.4.1`
+        4. Upload a 600 KB binary through Binary Armory
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / traces
+      description: Paste `defmt`, browser console, or CI logs if available.
+      render: text
+
+  - type: input
+    id: firmware_version
+    attributes:
+      label: Firmware version
+      placeholder: v0.1.3
+
+  - type: input
+    id: board
+    attributes:
+      label: Board
+      placeholder: Raspberry Pi Pico 2 W
+
+  - type: input
+    id: probe
+    attributes:
+      label: Debug probe
+      placeholder: CMSIS-DAP / DAPLink / J-Link
+
+  - type: input
+    id: host_os
+    attributes:
+      label: Host OS
+      placeholder: macOS 15 arm64 / Ubuntu 24.04 / Windows 11
+
+  - type: dropdown
+    id: reproduced_on_hardware
+    attributes:
+      label: Reproduced on real hardware
+      options:
+        - "Yes"
+        - "No"
+        - "Not tested"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched for an existing issue first.
+          required: true
+        - label: I included enough detail to reproduce the problem.
+          required: true

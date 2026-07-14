@@ -4,9 +4,9 @@
       "initialization_options": {
         "check": {
           "allTargets": false,
-          "targets": ["thumbv8m.main-none-eabihf"],
-        },
-      },
-    },
-  },
+          "targets": ["thumbv8m.main-none-eabihf"]
+        }
+      }
+    }
+  }
 }

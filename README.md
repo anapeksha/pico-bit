@@ -24,6 +24,7 @@ Current release: `v0.1.3`
 - Single replaceable Armory binary with a 750 KB upload limit enforced in both frontend and firmware
 - On-board status LED patterns for boot, network, HID, payload, Armory, and error states
 - Single gzipped Svelte 5 + Tailwind v4 dashboard artifact embedded into firmware flash
+- `cargo-embed` as the default local flash, RTT, and debug toolchain
 - Release workflow that builds and attaches `firmware-{version tag}.uf2` and `firmware-{version tag}.elf`
 
 ## Hardware
@@ -137,10 +138,22 @@ npm --prefix web run build
 cargo check --target thumbv8m.main-none-eabihf
 ```
 
-Flash and run on a connected RP2350 board:
+Install the local flash/debug tool once:
+
+```sh
+cargo install cargo-embed --locked
+```
+
+Flash and run on a connected RP2350 board. The project `cargo run` path now routes directly through [`Embed.toml`](/Users/anapeksha/Documents/Projects/pico-bit/Embed.toml:1) and opens the default RTT session through `cargo-embed`:
 
 ```sh
 cargo run
+```
+
+Open the GDB server profile:
+
+```sh
+cargo embed gdb
 ```
 
 Build release firmware:
@@ -182,6 +195,12 @@ On macOS without a Linux cross-linker, use the native host target for local test
 
 ```sh
 cargo test --lib --no-default-features --target aarch64-apple-darwin
+```
+
+For local hardware smoke testing with the committed `cargo-embed` configuration:
+
+```sh
+cargo run
 ```
 
 ## Release

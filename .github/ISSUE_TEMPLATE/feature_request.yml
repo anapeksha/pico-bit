@@ -1,0 +1,77 @@
+name: Feature request
+description: Request a product, firmware, or workflow improvement.
+title: "feat: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for bounded, concrete feature work. Keep the request specific.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Firmware runtime
+        - Frontend dashboard
+        - HTTP / API
+        - LittleFS / storage
+        - USB HID
+        - USB NCM
+        - Wi-Fi / AP
+        - Status LED
+        - CI / release
+        - Docs
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem
+      description: What real limitation exists today?
+      placeholder: The dashboard cannot distinguish between Wi-Fi Armory delivery and NCM delivery state.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Describe the expected behavior or contract.
+    validations:
+      required: true
+
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints
+      description: Mention memory, no-heap, API, UX, or hardware constraints.
+      placeholder: Must remain `no_std`, avoid dynamic allocation, and fit the current bootstrap contract.
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+
+  - type: dropdown
+    id: breaking_change
+    attributes:
+      label: Would this change contracts or behavior?
+      options:
+        - "No"
+        - "Yes, API contract"
+        - "Yes, frontend behavior"
+        - "Yes, storage/runtime behavior"
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: This request is scoped enough to implement without broad product guesswork.
+          required: true
