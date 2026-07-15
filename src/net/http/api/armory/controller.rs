@@ -6,7 +6,7 @@ use picoserve::routing::{PathRouter, get, parse_path_segment, post_service};
 use super::service;
 
 async fn list_armory() -> impl IntoResponse {
-    service::list_response().await
+    service::list_response()
 }
 
 async fn delete_armory(filename: String<64>) -> impl IntoResponse {

@@ -5,12 +5,12 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_time::{Duration, Instant, with_timeout};
 use littlefs2::fs::{File as LfsFile, FileAllocation};
-use picoserve::io::{ErrorType, Read, Socket, Write};
-use picoserve::{Config, DisconnectionInfo, EmbassyRuntime, Server, Timeouts};
+use picoserve::io::Write;
+use picoserve::{Config, DisconnectionInfo, Server, Timeouts};
 
 use crate::net::{
-    self as app_net, AppRouter, NcmDelivery, NcmDeliveryRoute, PayloadActionResult,
-    STAGED_BINARY_NAME, STAGED_BINARY_PATH,
+    self as app_net, AppRouter, NcmDelivery, PayloadActionResult, STAGED_BINARY_NAME,
+    STAGED_BINARY_PATH,
 };
 use crate::status::{self as status_led, Stage};
 use crate::storage::{
@@ -25,15 +25,14 @@ const ARMORY_PREFIX: &str = "/armory/";
 const ARMORY_UPLOAD_LIMIT: usize = 750 * 1024;
 const ARMORY_STREAM_CHUNK_SIZE: usize = 4096;
 
-/// Accepts HTTP sockets for either the Wi-Fi portal or restricted NCM surface.
-#[embassy_executor::task(pool_size = 2)]
-pub async fn http_task(
-    link: &'static str,
-    surface: HttpSurface,
+/// Accepts HTTP sockets for the Wi-Fi portal.
+#[embassy_executor::task]
+pub async fn portal_http_task(
     stack: &'static Stack<'static>,
     router: &'static AppRouter,
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
 ) {
+    let link = "Wi-Fi";
     let config = Config::new(Timeouts {
         write: picoserve::time::Duration::from_secs(10),
         ..Timeouts::default()
@@ -61,7 +60,7 @@ pub async fn http_task(
         let mut prefix = [0u8; HTTP_PREFLIGHT_BYTES];
         let prefix_len = match with_timeout(
             Duration::from_millis(HTTP_PREFLIGHT_TIMEOUT_MS),
-            socket.read(&mut prefix),
+            peek_http_prefix(&mut socket, &mut prefix),
         )
         .await
         {
@@ -89,11 +88,10 @@ pub async fn http_task(
         }
 
         let request = classify_startup_request(&prefix[..prefix_len]);
-        if !surface.allows(request) {
-            info!("[{} Worker] Route is not enabled on this surface.", link);
-            if let Err(e) = serve_empty_not_found(&mut socket).await {
-                warn!("[{} Worker] Disabled route response failed: {:?}", link, e);
-            }
+        if !uses_picoserve(request)
+            && let Err(e) = consume_http_prefix(&mut socket, prefix_len).await
+        {
+            warn!("[{} Worker] HTTP preflight consume failed: {:?}", link, e);
             continue;
         }
 
@@ -114,7 +112,7 @@ pub async fn http_task(
             }
             StartupRequest::Armory => {
                 info!("[{} Worker] Serving armory.", link);
-                if let Err(e) = serve_armory(&mut socket, storage, surface).await {
+                if let Err(e) = serve_armory(&mut socket, storage, HttpSurface::Portal).await {
                     warn!("[{} Worker] Armory response failed: {:?}", link, e);
                 }
                 continue;
@@ -130,8 +128,13 @@ pub async fn http_task(
             }
             StartupRequest::ArmoryAsset => {
                 info!("[{} Worker] Serving armory asset.", link);
-                if let Err(e) =
-                    serve_armory_asset(&mut socket, storage, surface, &prefix[..prefix_len]).await
+                if let Err(e) = serve_armory_asset(
+                    &mut socket,
+                    storage,
+                    HttpSurface::Portal,
+                    &prefix[..prefix_len],
+                )
+                .await
                 {
                     warn!("[{} Worker] Armory asset response failed: {:?}", link, e);
                 }
@@ -212,8 +215,6 @@ pub async fn http_task(
             StartupRequest::Other => {}
         }
 
-        let socket = PrefilteredSocket::new(socket, prefix, prefix_len);
-
         info!("[{} Worker] Starting HTTP serve...", link);
         match Server::new(&router, &config, &mut picoserve_buffer)
             .serve(socket)
@@ -236,6 +237,87 @@ pub async fn http_task(
     }
 }
 
+/// Accepts HTTP sockets for the restricted USB NCM delivery surface.
+#[embassy_executor::task]
+pub async fn ncm_http_task(
+    stack: &'static Stack<'static>,
+    storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
+) {
+    let link = "NCM";
+    let mut rx_buffer = [0u8; 1024];
+    let mut tx_buffer = [0u8; 1024];
+
+    info!("{} HTTP worker initialised...", link);
+
+    loop {
+        let mut socket = TcpSocket::new(*stack, &mut rx_buffer, &mut tx_buffer);
+
+        if let Err(e) = socket.accept(80).await {
+            warn!("[{} Worker] Accept failed: {:?}", link, e);
+            continue;
+        }
+
+        info!(
+            "[{} Worker] Connected to {}",
+            link,
+            socket.remote_endpoint()
+        );
+
+        let mut prefix = [0u8; HTTP_PREFLIGHT_BYTES];
+        let prefix_len = match with_timeout(
+            Duration::from_millis(HTTP_PREFLIGHT_TIMEOUT_MS),
+            socket.read(&mut prefix),
+        )
+        .await
+        {
+            Ok(Ok(0)) => continue,
+            Ok(Ok(len)) => len,
+            Ok(Err(e)) => {
+                warn!("[{} Worker] HTTP preflight read failed: {:?}", link, e);
+                continue;
+            }
+            Err(_) => continue,
+        };
+
+        if !looks_like_http_request(&prefix[..prefix_len]) {
+            warn!("[{} Worker] Non-HTTP preflight rejected.", link);
+            continue;
+        }
+
+        match classify_startup_request(&prefix[..prefix_len]) {
+            StartupRequest::Armory => {
+                info!("[{} Worker] Serving armory.", link);
+                if let Err(e) = serve_armory(&mut socket, storage, HttpSurface::Ncm).await {
+                    warn!("[{} Worker] Armory response failed: {:?}", link, e);
+                }
+            }
+            StartupRequest::ArmoryAsset => {
+                info!("[{} Worker] Serving armory asset.", link);
+                if let Err(e) = serve_armory_asset(
+                    &mut socket,
+                    storage,
+                    HttpSurface::Ncm,
+                    &prefix[..prefix_len],
+                )
+                .await
+                {
+                    warn!("[{} Worker] Armory asset response failed: {:?}", link, e);
+                }
+            }
+            StartupRequest::Options => {
+                if let Err(e) = serve_no_content(&mut socket).await {
+                    warn!("[{} Worker] OPTIONS response failed: {:?}", link, e);
+                }
+            }
+            _ => {
+                if let Err(e) = serve_empty_not_found(&mut socket).await {
+                    warn!("[{} Worker] Disabled route response failed: {:?}", link, e);
+                }
+            }
+        }
+    }
+}
+
 /// HTTP route surface enabled for a worker instance.
 #[derive(Clone, Copy, PartialEq)]
 pub enum HttpSurface {
@@ -243,26 +325,6 @@ pub enum HttpSurface {
     Portal,
     /// USB NCM surface restricted to Armory binary delivery.
     Ncm,
-}
-
-impl HttpSurface {
-    fn allows(self, request: StartupRequest) -> bool {
-        match self {
-            Self::Portal => true,
-            Self::Ncm => {
-                if matches!(request, StartupRequest::Options) {
-                    return true;
-                }
-
-                let route = match request {
-                    StartupRequest::Armory => NcmDeliveryRoute::Metadata,
-                    StartupRequest::ArmoryAsset => NcmDeliveryRoute::BinaryDownload,
-                    _ => NcmDeliveryRoute::Other,
-                };
-                NcmDelivery::allows(route)
-            }
-        }
-    }
 }
 
 #[derive(Clone, Copy)]
@@ -283,6 +345,10 @@ enum StartupRequest {
     Options,
     KeyboardTarget,
     Other,
+}
+
+fn uses_picoserve(request: StartupRequest) -> bool {
+    matches!(request, StartupRequest::Other)
 }
 
 fn classify_startup_request(bytes: &[u8]) -> StartupRequest {
@@ -1994,105 +2060,33 @@ fn armory_storage_path_unrestricted(filename: &str) -> Option<StringCopy<LISTED_
     Some(path)
 }
 
-struct PrefilteredSocket<'socket> {
-    socket: TcpSocket<'socket>,
-    prefix: [u8; HTTP_PREFLIGHT_BYTES],
+async fn peek_http_prefix(
+    socket: &mut TcpSocket<'_>,
+    prefix: &mut [u8],
+) -> Result<usize, embassy_net::tcp::Error> {
+    socket
+        .read_with(|available| {
+            let count = available.len().min(prefix.len());
+            prefix[..count].copy_from_slice(&available[..count]);
+            (0, count)
+        })
+        .await
+}
+
+async fn consume_http_prefix(
+    socket: &mut TcpSocket<'_>,
     prefix_len: usize,
-}
+) -> Result<(), embassy_net::tcp::Error> {
+    let mut consumed = 0usize;
+    let mut discard = [0u8; HTTP_PREFLIGHT_BYTES];
 
-impl<'socket> PrefilteredSocket<'socket> {
-    fn new(
-        socket: TcpSocket<'socket>,
-        prefix: [u8; HTTP_PREFLIGHT_BYTES],
-        prefix_len: usize,
-    ) -> Self {
-        Self {
-            socket,
-            prefix,
-            prefix_len,
+    while consumed < prefix_len {
+        let read = socket.read(&mut discard[..prefix_len - consumed]).await?;
+        if read == 0 {
+            break;
         }
-    }
-}
-
-struct PrefilteredReader<'a, R> {
-    inner: R,
-    prefix: &'a [u8],
-    position: usize,
-}
-
-struct PrefilteredWriter<W> {
-    inner: W,
-}
-
-impl<R: ErrorType> ErrorType for PrefilteredReader<'_, R> {
-    type Error = R::Error;
-}
-
-impl<R: Read> Read for PrefilteredReader<'_, R> {
-    async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
-        if self.position < self.prefix.len() {
-            let available = self.prefix.len() - self.position;
-            let count = available.min(buf.len());
-            buf[..count].copy_from_slice(&self.prefix[self.position..self.position + count]);
-            self.position += count;
-            return Ok(count);
-        }
-
-        self.inner.read(buf).await
-    }
-}
-
-impl<W: ErrorType> ErrorType for PrefilteredWriter<W> {
-    type Error = W::Error;
-}
-
-impl<W: Write> Write for PrefilteredWriter<W> {
-    async fn write(&mut self, buf: &[u8]) -> Result<usize, Self::Error> {
-        self.inner.write(buf).await
+        consumed += read;
     }
 
-    async fn flush(&mut self) -> Result<(), Self::Error> {
-        self.inner.flush().await
-    }
-}
-
-impl<'socket> Socket<EmbassyRuntime> for PrefilteredSocket<'socket> {
-    type Error = embassy_net::tcp::Error;
-    type ReadHalf<'a>
-        = PrefilteredReader<'a, embassy_net::tcp::TcpReader<'a>>
-    where
-        'socket: 'a;
-    type WriteHalf<'a>
-        = PrefilteredWriter<embassy_net::tcp::TcpWriter<'a>>
-    where
-        'socket: 'a;
-
-    fn split(&mut self) -> (Self::ReadHalf<'_>, Self::WriteHalf<'_>) {
-        let (reader, writer) = self.socket.split();
-
-        (
-            PrefilteredReader {
-                inner: reader,
-                prefix: &self.prefix[..self.prefix_len],
-                position: 0,
-            },
-            PrefilteredWriter { inner: writer },
-        )
-    }
-
-    async fn abort<T: picoserve::time::Timer<EmbassyRuntime>>(
-        self,
-        timeouts: &Timeouts,
-        timer: &mut T,
-    ) -> Result<(), picoserve::Error<Self::Error>> {
-        Socket::<EmbassyRuntime>::abort(self.socket, timeouts, timer).await
-    }
-
-    async fn shutdown<T: picoserve::time::Timer<EmbassyRuntime>>(
-        self,
-        timeouts: &Timeouts,
-        timer: &mut T,
-    ) -> Result<(), picoserve::Error<Self::Error>> {
-        Socket::<EmbassyRuntime>::shutdown(self.socket, timeouts, timer).await
-    }
+    Ok(())
 }
