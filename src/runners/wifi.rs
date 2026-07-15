@@ -15,7 +15,7 @@ use crate::net::{AppRouter, init_wifi_dhcp, init_wifi_network};
 use crate::status::{self as status_led, Fault, LED_SIGNAL, Stage};
 use crate::storage::StorageManager;
 
-use super::http::{HttpSurface, http_task};
+use super::http::portal_http_task;
 
 static FW_BUF: &Aligned<A4, [u8]> = aligned_bytes!("../../firmware/43439A0.bin");
 static CLM_BUF: &Aligned<A4, [u8]> = aligned_bytes!("../../firmware/43439A0_clm.bin");
@@ -109,13 +109,7 @@ pub async fn wifi_task(
         return;
     }
     if spawner
-        .spawn(http_task(
-            "Wi-Fi",
-            HttpSurface::Portal,
-            wifi_net_stack,
-            router,
-            storage,
-        ))
+        .spawn(portal_http_task(wifi_net_stack, router, storage))
         .is_err()
     {
         status_led::error(Fault::SetupServerFailed);

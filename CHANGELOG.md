@@ -4,6 +4,20 @@ All notable changes to Pico Bit are documented in this file.
 
 ## Unreleased
 
+## v0.2.1 - 2026-07-15
+
+### Changed
+
+- Split the Wi-Fi portal and USB NCM HTTP workers so the restricted NCM delivery task no longer carries the portal router future or portal-sized buffers.
+- Reworked the picoserve Armory list response as bounded chunked JSON with non-blocking LittleFS snapshot refreshes.
+- Replaced the custom picoserve prefix-replay socket with explicit preflight inspection and consumption for bounded worker routes.
+
+### Fixed
+
+- Reduced firmware static RAM use by about 54 KB by sizing the NCM worker for its restricted delivery contract.
+- Prevented Armory response generation from suspending inside picoserve while waiting for LittleFS or listing scratch locks.
+- Retained the hardware-verified bounded port-80 Armory path after confirming that preflight-to-picoserve socket handoff remains unstable on RP2350.
+
 ## v0.2.0 - 2026-07-15
 
 ### Added

@@ -33,9 +33,7 @@ use defmt_rtt as _;
 
 use net::{AppRouter, init_usb_dhcp, init_usb_network, restore_keyboard_target};
 use pio::PioManager;
-use runners::{
-    HttpSurface, dhcp_task, hid_task, http_task, ncm_task, net_task, usb_task, wifi_task,
-};
+use runners::{dhcp_task, hid_task, ncm_http_task, ncm_task, net_task, usb_task, wifi_task};
 use static_cell::StaticCell;
 use storage::{FlashDriver, StorageManager};
 use usb::UsbManager;
@@ -132,13 +130,7 @@ async fn main(spawner: Spawner) {
     spawner.spawn(ncm_task(usb_manager.net_runner)).unwrap();
     spawner.spawn(net_task(usb_net_runner)).unwrap();
     spawner
-        .spawn(http_task(
-            "NCM",
-            HttpSurface::Ncm,
-            usb_net_stack,
-            app_router,
-            storage_manager,
-        ))
+        .spawn(ncm_http_task(usb_net_stack, storage_manager))
         .unwrap();
     spawner
         .spawn(hid_task(usb_manager.hid, storage_manager))

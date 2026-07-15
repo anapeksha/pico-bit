@@ -4,9 +4,7 @@ mod network;
 
 pub use dhcp::{init_usb_dhcp, init_wifi_dhcp};
 pub use http::AppRouter;
-pub(crate) use http::delivery::{
-    NcmDelivery, NcmDeliveryRoute, STAGED_BINARY_NAME, STAGED_BINARY_PATH,
-};
+pub(crate) use http::delivery::{NcmDelivery, STAGED_BINARY_NAME, STAGED_BINARY_PATH};
 pub(crate) use http::{
     PayloadActionResult, RunSource, active_keyboard_layout, active_keyboard_os,
     active_keyboard_target_codes, compressed_index_html, consume_payload_run_trigger,

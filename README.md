@@ -9,7 +9,7 @@
 
 `pico-bit` is an open source Rust Embassy firmware for the Raspberry Pi Pico 2 W. It combines a USB Host HID DuckyScript runtime, USB NCM file delivery, LittleFS-backed storage, and a Wi-Fi-hosted dashboard for authorized security research, lab automation, and defensive validation.
 
-Current release: `v0.2.0`
+Current release: `v0.2.1`
 
 ## What Works
 
@@ -47,7 +47,7 @@ Current release: `v0.2.0`
 | NCM file root | `http://192.168.7.1` |
 | NCM staged binary | `http://192.168.7.1/api/armory/payload.bin` |
 
-The dashboard has no portal login in `v0.2.0`. AP credentials are firmware build-time values.
+The dashboard has no portal login in `v0.2.1`. AP credentials are firmware build-time values.
 
 ## Dashboard Scope
 
@@ -83,7 +83,7 @@ The frontend uses only these endpoints:
 | `GET` | `/api/runs` | Current-session run history |
 | `GET` | `/api/metrics` | Bounded storage, staged binary, run, and upload metrics |
 
-There is no status API, auth API, login/logout route, or browser-storage startup restore flow in `v0.2.0`.
+There is no status API, auth API, login/logout route, or browser-storage startup restore flow in `v0.2.1`.
 The NCM surface exposes only the Armory list and staged binary download; `payload.dd` downloads remain portal-only.
 
 ## Storage Model
@@ -168,8 +168,8 @@ Build release firmware:
 ```sh
 npm --prefix web run build
 cargo build --release --target thumbv8m.main-none-eabihf
-cp target/thumbv8m.main-none-eabihf/release/pico-bit firmware-v0.2.0.elf
-elf2uf2-rs firmware-v0.2.0.elf firmware-v0.2.0.uf2
+cp target/thumbv8m.main-none-eabihf/release/pico-bit firmware-v0.2.1.elf
+elf2uf2-rs firmware-v0.2.1.elf firmware-v0.2.1.uf2
 ```
 
 ## Verification
@@ -218,17 +218,21 @@ The release workflow runs when a GitHub release is published with a tag matching
 v*.*.*
 ```
 
-For `v0.2.0`, publish a GitHub release tagged:
+For `v0.2.1`, publish a GitHub release tagged:
 
 ```text
-v0.2.0
+v0.2.1
 ```
 
 The workflow builds the web dashboard, compiles and signs the firmware, converts the signed ELF to UF2, and attaches:
 
-- `firmware-v0.2.0.uf2`
-- `firmware-v0.2.0.elf`
+- `firmware-v0.2.1.uf2`
+- `firmware-v0.2.1.elf`
+
+## License
+
+Pico Bit source code is MIT licensed. The bundled CYW43 Wi-Fi blobs retain their separate third-party terms documented in [`firmware/THIRD_PARTY_LICENSE.md`](firmware/THIRD_PARTY_LICENSE.md).
 
 ## Current Completion State
 
-`v0.2.0` is complete for the current UI scope. Device configuration is firmware-owned, transport responsibilities are explicit, and dynamic dashboard state is sourced from bounded runtime state or LittleFS.
+`v0.2.1` is complete for the current UI scope. Device configuration is firmware-owned, transport responsibilities are explicit, and dynamic dashboard state is sourced from bounded runtime state or LittleFS.
