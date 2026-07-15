@@ -229,6 +229,10 @@ The workflow builds the web dashboard, compiles and signs the firmware, converts
 - `firmware-v0.2.0.uf2`
 - `firmware-v0.2.0.elf`
 
+## License
+
+Pico Bit source code is MIT licensed. The bundled CYW43 Wi-Fi blobs retain their separate third-party terms documented in [`firmware/THIRD_PARTY_LICENSE.md`](firmware/THIRD_PARTY_LICENSE.md).
+
 ## Current Completion State
 
 `v0.2.0` is complete for the current UI scope. Device configuration is firmware-owned, transport responsibilities are explicit, and dynamic dashboard state is sourced from bounded runtime state or LittleFS.
