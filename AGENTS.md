@@ -17,6 +17,7 @@ This file provides strict architectural context, constraints, and learned patter
 * **Serialization:** `serde` with `heapless` integrations.
 * **Frontend:** Svelte, bundled as a single gzipped dashboard artifact embedded into flash.
 * **Default Local Flash/Debug Tool:** `cargo-embed`, configured by the committed `Embed.toml`.
+* **Wi-Fi AP Security:** WPA2/WPA3 transition mode with AES. The local `cyw43` patch is sourced from upstream merge commit `5763f62d945576afcb0442bfec433e853809cf5f` and should be removed after upgrading to a crates.io release containing that change.
 
 ---
 
