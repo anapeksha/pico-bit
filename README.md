@@ -11,6 +11,12 @@
 
 Current release: `v0.2.2`
 
+## Project History
+
+Pico Bit began as a private MicroPython prototype in August 2025. That version established the device workflow and exposed timing and USB NCM constraints that motivated a `no_std` Rust implementation. Development of the Rust firmware started in April/May 2026, and the public repository begins with the first working baseline that matched the prototype's scope.
+
+Since that initial publication, development has continued through focused changes, tagged releases, CI validation, and testing on a Raspberry Pi Pico 2 W with a hardware debug probe. Work on CYW43 WPA3 SoftAP support was also contributed upstream and merged into [Embassy PR #6529](https://github.com/embassy-rs/embassy/pull/6529).
+
 ## What Works
 
 - Single-file dashboard served at `http://192.168.4.1`
@@ -237,4 +243,6 @@ Pico Bit source code is MIT licensed. The bundled CYW43 Wi-Fi blobs retain their
 
 ## Current Completion State
 
-`v0.2.2` is complete for the current UI scope. Device configuration is firmware-owned, transport responsibilities are explicit, and dynamic dashboard state is sourced from bounded runtime state or LittleFS.
+`v0.2.2` is complete for the documented UI and firmware scope. Device configuration is firmware-owned, transport responsibilities are explicit, and dynamic dashboard state is sourced from bounded runtime state or LittleFS.
+
+Pico Bit is experimental embedded firmware intended for authorized labs, education, and continued development. Releases are exercised on physical Pico 2 W hardware, but the project has not undergone an independent security audit or product certification.
