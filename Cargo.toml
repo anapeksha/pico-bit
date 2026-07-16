@@ -1,7 +1,7 @@
 [package]
 name = "pico-bit"
 resolver = "2"
-version = "0.2.1"
+version = "0.2.2"
 edition = "2024"
 
 [features]
@@ -69,6 +69,9 @@ cyw43 = { version = "0.7.0", features = ["defmt"], optional = true }
 picoserve = { version = "0.18.0", features = ["defmt", "embassy", "json"], optional = true }
 serde = { version = "1.0.228", default-features = false, features = ["derive"], optional = true }
 littlefs2 = { version = "0.7.2", optional = true }
+
+[patch.crates-io]
+cyw43 = { path = "vendor/cyw43" }
 
 [dev-dependencies]
 serde_json = "1.0"

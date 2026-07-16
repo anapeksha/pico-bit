@@ -47,7 +47,7 @@ pub async fn init_wifi_network<D: Driver + 'static>(
     seed: u64,
 ) -> (&'static Stack<'static>, Runner<'static, D>) {
     control
-        .start_ap_wpa2(wifi_ap_ssid(), wifi_ap_password(), 6)
+        .start_ap_wpa2_wpa3(wifi_ap_ssid(), wifi_ap_password(), 6)
         .await;
 
     let config = Config::ipv4_static(StaticConfigV4 {

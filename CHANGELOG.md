@@ -4,6 +4,18 @@ All notable changes to Pico Bit are documented in this file.
 
 ## Unreleased
 
+## v0.2.2 - 2026-07-16
+
+### Added
+
+- WPA2/WPA3 transition-mode security for the Pico Bit Wi-Fi access point, allowing WPA3-capable clients to use SAE while retaining WPA2 compatibility.
+- A narrow local `cyw43` 0.7.0 patch containing the upstream SoftAP WPA3 work merged in `embassy-rs/embassy#6529`.
+
+### Changed
+
+- Access-point management-frame protection is now capable in transition mode, and AP encryption remains AES-only.
+- Vendored CYW43 source records its upstream merge provenance and retains the upstream MIT OR Apache-2.0 license files.
+
 ## v0.2.1 - 2026-07-15
 
 ### Changed
