@@ -2,6 +2,7 @@
 #![no_main]
 #![recursion_limit = "256"]
 
+mod debug;
 mod ducky;
 mod net;
 mod pio;
@@ -13,27 +14,25 @@ mod usb;
 use core::sync::atomic::Ordering;
 use defmt::info;
 use embassy_executor::Spawner;
+use embassy_rp::bind_interrupts;
 use embassy_rp::block::ImageDef;
 use embassy_rp::clocks::RoscRng;
 use embassy_rp::dma::InterruptHandler as DmaInterruptHandler;
 use embassy_rp::flash::Flash;
-use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, PIO0, USB};
+use embassy_rp::peripherals::{DMA_CH0, DMA_CH1, DMA_CH2, PIO0, USB};
 use embassy_rp::pio::InterruptHandler as PioInterruptHandler;
+use embassy_rp::uart::{Config, UartTx};
 use embassy_rp::usb::InterruptHandler as UsbInterruptHandler;
-use embassy_rp::{self as hal, bind_interrupts};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-
 use littlefs2::fs::Allocation;
 
 // Panic Handler
 use panic_probe as _;
 // Defmt Logging
-#[cfg(feature = "defmt-rtt")]
 use defmt_rtt as _;
-#[cfg(feature = "defmt-serial")]
-use defmt_serial as _;
 
+use debug::DebugManager;
 use net::{AppRouter, init_usb_dhcp, init_usb_network, restore_keyboard_target};
 use pio::PioManager;
 use runners::{dhcp_task, hid_task, ncm_http_task, ncm_task, net_task, usb_task, wifi_task};
@@ -41,16 +40,18 @@ use static_cell::StaticCell;
 use storage::{FlashDriver, StorageManager};
 use usb::UsbManager;
 
+use crate::runners::debug_task;
+
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
     PIO0_IRQ_0 => PioInterruptHandler<PIO0>;
-    DMA_IRQ_0 => DmaInterruptHandler<DMA_CH0>, DmaInterruptHandler<DMA_CH1>;
+    DMA_IRQ_0 => DmaInterruptHandler<DMA_CH0>, DmaInterruptHandler<DMA_CH1>, DmaInterruptHandler<DMA_CH2>;
 });
 
 /// Tell the Boot ROM about our application
 #[unsafe(link_section = ".start_block")]
 #[used]
-pub static IMAGE_DEF: ImageDef = hal::block::ImageDef::secure_exe();
+pub static IMAGE_DEF: ImageDef = embassy_rp::block::ImageDef::secure_exe();
 
 static LFS_ALLOCATION: StaticCell<Allocation<FlashDriver>> = StaticCell::new();
 static LFS_DRIVER: StaticCell<FlashDriver> = StaticCell::new();
@@ -101,14 +102,19 @@ async fn main(spawner: Spawner) {
     let pio_manager = PioManager::new(
         pio_driver, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, Irqs,
     );
+    let uart_tx = UartTx::new(p.UART0, p.PIN_0, p.DMA_CH2, Irqs, Config::default());
 
     // LFS Driver
     let flash = Flash::new(p.FLASH, p.DMA_CH1, Irqs);
+
     let lfs_alloc = LFS_ALLOCATION.init(Allocation::new());
     let lfs_driver = LFS_DRIVER.init(FlashDriver { flash });
     let storage_manager =
         STORAGE_MANAGER.init(Mutex::new(StorageManager::new(lfs_driver, lfs_alloc)));
     let app_router = APP_ROUTER.init(AppRouter);
+
+    // Debug Manager
+    let debug_manager = DebugManager::new(uart_tx);
 
     storage::GLOBAL_STORAGE.store(storage_manager as *mut _, Ordering::Release);
     restore_keyboard_target().await;
@@ -119,6 +125,7 @@ async fn main(spawner: Spawner) {
 
     status::show(status::Stage::Boot);
 
+    spawner.spawn(debug_task(debug_manager)).unwrap();
     spawner
         .spawn(wifi_task(
             pio_manager.spi,
@@ -142,3 +149,13 @@ async fn main(spawner: Spawner) {
         .spawn(dhcp_task(usb_dhcp_server, usb_net_stack))
         .unwrap();
 }
+
+// PICOTOOL entries
+#[unsafe(link_section = ".bi_entries")]
+#[used]
+pub static PICOTOOL_ENTRIES: [embassy_rp::binary_info::EntryAddr; 4] = [
+    embassy_rp::binary_info::rp_program_name!(c"Pico Bit"),
+    embassy_rp::binary_info::rp_program_description!(c"USB HID Payload Device"),
+    embassy_rp::binary_info::rp_cargo_version!(),
+    embassy_rp::binary_info::rp_program_build_attribute!(),
+];

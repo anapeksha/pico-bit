@@ -438,18 +438,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "defmt-serial"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "fa627199c01a06acbb371404ab386224a9f7180a256c704a6f4673fbf897701d"
-dependencies = [
- "critical-section",
- "defmt 1.1.1",
- "embedded-io 0.7.1",
- "portable-atomic",
-]
-
-[[package]]
 name = "delog"
 version = "0.1.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1356,7 +1344,6 @@ dependencies = [
  "cyw43-pio",
  "defmt 1.1.1",
  "defmt-rtt",
- "defmt-serial",
  "embassy-executor",
  "embassy-futures",
  "embassy-net",
