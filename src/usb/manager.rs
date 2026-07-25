@@ -89,8 +89,8 @@ impl UsbManager {
         let chip_id = get_chipid().unwrap();
         let serial_number = USB_SERIAL_NUMBER.init(UsbSerialNumber::new(chip_id));
 
-        usb_config.manufacturer = Some("Pico Bit");
-        usb_config.product = Some("Pico Bit Ecosystem");
+        usb_config.manufacturer = Some("Pico Bit Ecosystem");
+        usb_config.product = Some("Pico Bit");
         usb_config.serial_number = Some(serial_number.as_str());
         usb_config.device_class = 0xEF; // Miscellaneous Device Class
         usb_config.device_sub_class = 0x02; // Common Class
