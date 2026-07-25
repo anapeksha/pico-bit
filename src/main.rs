@@ -29,7 +29,10 @@ use littlefs2::fs::Allocation;
 // Panic Handler
 use panic_probe as _;
 // Defmt Logging
+#[cfg(feature = "defmt-rtt")]
 use defmt_rtt as _;
+#[cfg(feature = "defmt-serial")]
+use defmt_serial as _;
 
 use net::{AppRouter, init_usb_dhcp, init_usb_network, restore_keyboard_target};
 use pio::PioManager;
