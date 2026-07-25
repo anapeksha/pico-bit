@@ -1,15 +1,16 @@
 import js from '@eslint/js';
+import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 import svelte from 'eslint-plugin-svelte';
 import prettier from 'eslint-config-prettier';
 import globals from 'globals';
 
-export default tseslint.config(
+export default defineConfig([
   js.configs.recommended,
-  tseslint.configs.recommended,
-  svelte.configs['flat/recommended'],
+  ...tseslint.configs.recommended,
+  ...svelte.configs['flat/recommended'],
   prettier,
-  svelte.configs['flat/prettier'],
+  ...svelte.configs['flat/prettier'],
   {
     files: ['**/*.svelte', '**/*.svelte.ts', '**/*.svelte.js'],
     languageOptions: {
@@ -30,7 +31,10 @@ export default tseslint.config(
     rules: {
       'no-console': 'error',
       '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+      '@typescript-eslint/no-unused-vars': [
+        'error',
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
+      ],
       'svelte/no-at-html-tags': 'error',
       'svelte/no-unused-svelte-ignore': 'error',
       'svelte/require-each-key': 'error',
@@ -40,6 +44,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['dist/**', 'node_modules/**'],
+    ignores: ['dist/**', 'node_modules/**', '.svelte-kit/**'],
   },
-);
+]);
