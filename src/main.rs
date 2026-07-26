@@ -32,15 +32,14 @@ use panic_probe as _;
 // Defmt Logging
 use defmt_rtt as _;
 
-use debug::DebugManager;
 use net::{AppRouter, init_usb_dhcp, init_usb_network, restore_keyboard_target};
 use pio::PioManager;
-use runners::{dhcp_task, hid_task, ncm_http_task, ncm_task, net_task, usb_task, wifi_task};
+use runners::{
+    debug_task, dhcp_task, hid_task, ncm_http_task, ncm_task, net_task, usb_task, wifi_task,
+};
 use static_cell::StaticCell;
 use storage::{FlashDriver, StorageManager};
 use usb::UsbManager;
-
-use crate::runners::debug_task;
 
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => UsbInterruptHandler<USB>;
@@ -97,12 +96,16 @@ async fn main(spawner: Spawner) {
     let (usb_net_stack, usb_net_runner) = init_usb_network(usb_manager.net_device, usb_seed);
     let usb_dhcp_server = init_usb_dhcp();
 
+    // UART config
+    let mut uart_config = Config::default();
+    uart_config.baudrate = 921600;
+    let uart_tx = UartTx::new(p.UART0, p.PIN_0, p.DMA_CH2, Irqs, uart_config);
+
     // PIO Driver
     let pio_driver = embassy_rp::pio::Pio::new(p.PIO0, Irqs);
     let pio_manager = PioManager::new(
         pio_driver, p.PIN_23, p.PIN_24, p.PIN_25, p.PIN_29, p.DMA_CH0, Irqs,
     );
-    let uart_tx = UartTx::new(p.UART0, p.PIN_0, p.DMA_CH2, Irqs, Config::default());
 
     // LFS Driver
     let flash = Flash::new(p.FLASH, p.DMA_CH1, Irqs);
@@ -113,9 +116,6 @@ async fn main(spawner: Spawner) {
         STORAGE_MANAGER.init(Mutex::new(StorageManager::new(lfs_driver, lfs_alloc)));
     let app_router = APP_ROUTER.init(AppRouter);
 
-    // Debug Manager
-    let debug_manager = DebugManager::new(uart_tx);
-
     storage::GLOBAL_STORAGE.store(storage_manager as *mut _, Ordering::Release);
     restore_keyboard_target().await;
 
@@ -125,7 +125,7 @@ async fn main(spawner: Spawner) {
 
     status::show(status::Stage::Boot);
 
-    spawner.spawn(debug_task(debug_manager)).unwrap();
+    spawner.spawn(debug_task(uart_tx)).unwrap();
     spawner
         .spawn(wifi_task(
             pio_manager.spi,

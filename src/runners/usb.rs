@@ -12,6 +12,7 @@ use leasehund::DhcpServer;
 use littlefs2::io::Error;
 use usbd_hid::descriptor::KeyboardReport;
 
+use crate::debug_log;
 use crate::ducky::{DuckyError, DuckyExecutor, DuckyParser, StatefulWriter};
 use crate::net::{
     RunSource, active_keyboard_layout, active_keyboard_os, consume_payload_run_trigger,
@@ -75,6 +76,7 @@ pub async fn hid_task(
                 RunSource::Manual,
                 run_script_payload(&mut hardware_writer, storage, &mut content_buffer).await,
             );
+            debug_log!("[RUN] Payload executed");
         }
 
         Timer::after_millis(100).await;

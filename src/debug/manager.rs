@@ -1,5 +1,6 @@
 use defmt::error;
 use embassy_rp::uart::{Async, UartTx};
+use heapless::String;
 
 pub struct DebugManager {
     uart_tx: UartTx<'static, Async>,
@@ -10,8 +11,8 @@ impl DebugManager {
         Self { uart_tx }
     }
 
-    pub async fn log(&mut self, data: &[u8]) {
-        let written = self.uart_tx.write(data).await;
+    pub async fn log(&mut self, data: String<64>) {
+        let written = self.uart_tx.write(data.as_bytes()).await;
         match written {
             Ok(_) => {}
             Err(e) => error!("Failed to write: {}", e),

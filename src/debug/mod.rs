@@ -1,5 +1,7 @@
-mod channel;
+mod logger;
 mod manager;
 
-pub use channel::LOG_CHANNEL;
+pub use logger::LOG_CHANNEL;
 pub use manager::DebugManager;
+
+pub(crate) use logger::DebugLogger;
