@@ -115,6 +115,30 @@ The NCM surface exposes only the Armory list and staged binary download; `payloa
 | Run history | 6 entries |
 | Dashboard artifact | `dist/index.html.gz` |
 
+### SPI Field Logging
+
+The firmware mirrors important boot, Wi-Fi, USB, HTTP mutation, Armory, keyboard, and payload execution events to the existing TX-only SPI debug task. This provides field diagnostics without requiring an RTT probe.
+
+| Signal | Pico GPIO | Direction |
+|--------|-----------|-----------|
+| SPI0 SCK | GP2 | Pico output |
+| SPI0 MOSI | GP3 | Pico output |
+| Ground | GND | Shared reference |
+
+Capture the stream with a 3.3 V-compatible SPI receiver or logic analyzer configured for the firmware SPI0 defaults at 31.25 MHz. The stream is TX-only with no chip-select signal; records are ASCII text terminated by `\r\n`. It is not UART-compatible.
+
+Representative records:
+
+```text
+[BOOT] Pico Bit v0.2.2 starting
+[WIFI] portal ready at http://192.168.4.1
+[HID] host ready
+[ARMORY] upload committed bytes=4096 duration_ms=28
+[PAYLOAD] execution source=run result=ok
+```
+
+Logging uses a fixed, non-blocking queue. If the receiver is absent or the queue is briefly saturated, firmware work continues and excess records may be dropped rather than delaying USB, networking, or flash operations. AP passwords and payload contents are never written to this stream.
+
 ### Status LED
 
 | State | Pattern |

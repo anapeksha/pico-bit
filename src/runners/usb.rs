@@ -26,6 +26,7 @@ use super::MTU;
 /// Runs the composite USB device.
 #[embassy_executor::task]
 pub async fn usb_task(mut usb: UsbDevice<'static, Driver<'static, USB>>) {
+    debug_log!("[USB] composite HID/NCM device started");
     usb.run().await;
 }
 
@@ -34,12 +35,14 @@ pub async fn usb_task(mut usb: UsbDevice<'static, Driver<'static, USB>>) {
 pub async fn ncm_task(runner: NcmRunner<'static, Driver<'static, USB>, MTU>) {
     set_ncm_active(true);
     status_led::show(Stage::UsbAgentMounted);
+    debug_log!("[NCM] USB class active; device ip=192.168.7.1");
     runner.run().await;
 }
 
 /// Runs the Embassy network stack for USB NCM.
 #[embassy_executor::task]
 pub async fn net_task(mut runner: NetRunner<'static, Device<'static, MTU>>) {
+    debug_log!("[NCM] network stack started");
     runner.run().await;
 }
 
@@ -50,21 +53,25 @@ pub async fn hid_task(
     storage: &'static Mutex<CriticalSectionRawMutex, StorageManager>,
 ) {
     info!("Waiting for USB HID execution layer readiness...");
+    debug_log!("[HID] waiting for host enumeration");
     status_led::show(Stage::HidConstructed);
     if with_timeout(Duration::from_secs(30), hid.ready())
         .await
         .is_err()
     {
         status_led::error(Fault::UsbEnumTimeout);
+        debug_log!("[HID] WARN enumeration timeout after 30s; still waiting");
         hid.ready().await;
     }
     set_host_hid_active(true);
     status_led::show(Stage::UsbEnumerated);
     info!("USB HID Connected! Initializing runner loop...");
+    debug_log!("[HID] host ready");
 
     let mut content_buffer = [0u8; 2048];
     let mut hardware_writer = EmbassyUsbWriter { writer: &mut hid };
 
+    debug_log!("[PAYLOAD] boot execution starting");
     record_execution_result(
         RunSource::Boot,
         run_script_payload(&mut hardware_writer, storage, &mut content_buffer).await,
@@ -72,11 +79,11 @@ pub async fn hid_task(
 
     loop {
         if consume_payload_run_trigger() {
+            debug_log!("[PAYLOAD] manual execution starting");
             record_execution_result(
                 RunSource::Manual,
                 run_script_payload(&mut hardware_writer, storage, &mut content_buffer).await,
             );
-            debug_log!("[RUN] Payload executed");
         }
 
         Timer::after_millis(100).await;
@@ -86,6 +93,7 @@ pub async fn hid_task(
 /// Runs a DHCP server for a prepared network stack.
 #[embassy_executor::task]
 pub async fn dhcp_task(mut server: DhcpServer<32, 4>, stack: &'static Stack<'static>) {
+    debug_log!("[NCM] DHCP ready; host lease=192.168.7.2");
     server.run(*stack).await;
 }
 
@@ -140,13 +148,24 @@ fn record_execution_result(source: RunSource, result: Result<PayloadExecution, D
     match result {
         Ok(execution) => {
             if matches!(source, RunSource::Boot) && !execution.has_content {
+                debug_log!("[PAYLOAD] boot payload empty; execution skipped");
                 return;
             }
 
             record_payload_run(source, execution.ok, execution.preview.as_str());
+            debug_log!(
+                "[PAYLOAD] execution source={} result={}",
+                source.as_str(),
+                if execution.ok { "ok" } else { "error" }
+            );
         }
         Err(error) => {
             error!("Script execution failed: {:?}", error);
+            debug_log!(
+                "[PAYLOAD] ERROR execution source={} failed: {:?}",
+                source.as_str(),
+                error
+            );
             status_led::error(Fault::ScriptError);
             record_payload_run(source, false, "payload.dd");
         }
@@ -180,9 +199,13 @@ async fn run_script_payload(
     let bytes_written_len = {
         let storage_guard = storage.lock().await;
         match storage_guard.read("payload.dd", content_buffer) {
-            Ok(bytes) => bytes.len(),
+            Ok(bytes) => {
+                debug_log!("[PAYLOAD] loaded payload.dd bytes={}", bytes.len());
+                bytes.len()
+            }
             Err(Error::NO_SUCH_ENTRY) => {
                 warn!("payload.dd not found in storage. Executing fallback...");
+                debug_log!("[PAYLOAD] WARN payload.dd missing; using fallback");
                 status_led::error(Fault::PayloadMissing);
                 let fallback = b"REM Stateless Fallback\nDELAY 500\n";
                 content_buffer[..fallback.len()].copy_from_slice(fallback);
@@ -190,6 +213,7 @@ async fn run_script_payload(
             }
             Err(_) => {
                 error!("Storage read failed due to an unexpected driver error.");
+                debug_log!("[PAYLOAD] ERROR LittleFS read failed");
                 status_led::error(Fault::PayloadReadFailed);
                 return Err(DuckyError::UnknownCommand);
             }
@@ -224,12 +248,18 @@ async fn run_script_payload(
                     ok = false;
                     status_led::error(Fault::ScriptError);
                     error!("Line {} Exec Error: {:?}", current_line_idx, e);
+                    debug_log!(
+                        "[PAYLOAD] ERROR execute line={} reason={:?}",
+                        current_line_idx,
+                        e
+                    );
                 }
             }
         } else {
             ok = false;
             status_led::error(Fault::ScriptError);
             error!("Line {} Parse Error", current_line_idx);
+            debug_log!("[PAYLOAD] ERROR parse line={}", current_line_idx);
         }
         current_line_idx += 1;
     }

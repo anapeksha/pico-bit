@@ -1,3 +1,4 @@
+use crate::debug_log;
 use crate::ducky::{DuckyParser, ErrorDiagnostic};
 use crate::net::active_keyboard_os;
 use crate::status::{self as status_led, Fault, Stage};
@@ -380,6 +381,11 @@ fn json_unicode_escape(byte: u8) -> [u8; 6] {
 pub(super) async fn save_staged() -> ValidationResponse {
     if let Err((error_line, _)) = validate_staged_buffer() {
         status_led::error(Fault::ScriptError);
+        if let Some(line) = error_line {
+            debug_log!("[PAYLOAD] save rejected: validation line={}", line);
+        } else {
+            debug_log!("[PAYLOAD] save rejected: validation failed");
+        }
         return ValidationResponse {
             code: "validation_failed",
             success: false,
@@ -390,6 +396,7 @@ pub(super) async fn save_staged() -> ValidationResponse {
 
     let storage = storage();
     let storage_guard = storage.lock().await;
+    let staged_len = STAGING_BUFFER.lock(|cell| cell.borrow().len);
 
     let write_result = STAGING_BUFFER.lock(|cell| {
         let mut staging = cell.borrow_mut();
@@ -400,14 +407,18 @@ pub(super) async fn save_staged() -> ValidationResponse {
     });
 
     match write_result {
-        Ok(_) => ValidationResponse {
-            code: "ok",
-            success: true,
-            error_line: None,
-            message: Some("Payload updated successfully."),
-        },
+        Ok(_) => {
+            debug_log!("[PAYLOAD] saved payload.dd bytes={}", staged_len);
+            ValidationResponse {
+                code: "ok",
+                success: true,
+                error_line: None,
+                message: Some("Payload updated successfully."),
+            }
+        }
         Err(_) => {
             status_led::error(Fault::PayloadReadFailed);
+            debug_log!("[PAYLOAD] ERROR save failed: LittleFS write");
             ValidationResponse {
                 code: "storage_error",
                 success: false,
@@ -428,6 +439,11 @@ pub(super) async fn trigger_run() -> RunResponse {
 
     if let Err((error_line, message)) = validation {
         status_led::error(Fault::ScriptError);
+        if let Some(line) = error_line {
+            debug_log!("[PAYLOAD] run rejected: validation line={}", line);
+        } else {
+            debug_log!("[PAYLOAD] run rejected: validation failed");
+        }
         return RunResponse {
             code: "validation_failed",
             success: false,
@@ -438,6 +454,7 @@ pub(super) async fn trigger_run() -> RunResponse {
 
     TRIGGER_RUN.store(true, Ordering::Release);
     status_led::show(Stage::PayloadRunning);
+    debug_log!("[PAYLOAD] manual run armed");
     RunResponse {
         code: "ok",
         success: true,

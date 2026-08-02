@@ -4,6 +4,15 @@ All notable changes to Pico Bit are documented in this file.
 
 ## Unreleased
 
+### Added
+
+- Bounded SPI field logging for firmware startup, Wi-Fi and USB readiness, HTTP mutations, Armory transfers, keyboard target changes, and payload validation/execution results.
+- SPI capture wiring and stream configuration documentation for probe-free field diagnostics.
+
+### Changed
+
+- Made SPI log enqueueing non-blocking so unavailable or slow field logging cannot delay USB, networking, or flash operations.
+
 ## v0.2.2 - 2026-07-16
 
 ### Added
