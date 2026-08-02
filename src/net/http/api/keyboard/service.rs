@@ -1,3 +1,4 @@
+use crate::debug_log;
 use crate::ducky::{KeyboardLayout, KeyboardOs};
 use crate::status::{self as status_led, Stage};
 use crate::storage::{GLOBAL_STORAGE, SharedStorage};
@@ -212,9 +213,11 @@ pub(crate) fn active_target_codes() -> (&'static str, &'static str) {
 /// Updates the active target from compact API codes.
 pub(crate) async fn update_target_codes(os_code_value: &str, layout_code_value: &str) -> bool {
     let Some(os) = os_from_code(os_code_value) else {
+        debug_log!("[KEYBOARD] rejected OS code={}", os_code_value);
         return false;
     };
     let Some(layout) = layout_from_code(layout_code_value) else {
+        debug_log!("[KEYBOARD] rejected layout code={}", layout_code_value);
         return false;
     };
 
@@ -224,9 +227,15 @@ pub(crate) async fn update_target_codes(os_code_value: &str, layout_code_value: 
 
     if persist_target(os, layout).await {
         status_led::show(Stage::KeyboardLayoutChanged);
+        debug_log!(
+            "[KEYBOARD] target saved os={} layout={}",
+            os_code(os),
+            layout_code(layout)
+        );
         true
     } else {
         set_target(previous_os, previous_layout);
+        debug_log!("[KEYBOARD] ERROR target persistence failed");
         false
     }
 }
@@ -269,10 +278,21 @@ pub(crate) async fn restore_target() {
     drop(guard);
 
     match restored {
-        Some((os, layout)) => set_target(os, layout),
+        Some((os, layout)) => {
+            set_target(os, layout);
+            debug_log!(
+                "[KEYBOARD] restored os={} layout={}",
+                os_code(os),
+                layout_code(layout)
+            );
+        }
         None => {
             set_target(default_os, default_layout);
-            let _ = persist_target(default_os, default_layout).await;
+            if persist_target(default_os, default_layout).await {
+                debug_log!("[KEYBOARD] initialized default target WIN/US");
+            } else {
+                debug_log!("[KEYBOARD] ERROR default target persistence failed");
+            }
         }
     }
 }
