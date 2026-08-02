@@ -8,6 +8,7 @@ use littlefs2::fs::{File as LfsFile, FileAllocation};
 use picoserve::io::Write;
 use picoserve::{Config, DisconnectionInfo, Server, Timeouts};
 
+use crate::debug_log;
 use crate::net::{
     self as app_net, AppRouter, NcmDelivery, PayloadActionResult, STAGED_BINARY_NAME,
     STAGED_BINARY_PATH,
@@ -45,12 +46,14 @@ pub async fn portal_http_task(
     let mut picoserve_buffer = [0u8; 2048];
 
     info!("{} HTTP worker initialised...", link);
+    debug_log!("[HTTP] Wi-Fi portal worker listening on port 80");
 
     loop {
         let mut socket = TcpSocket::new(*stack, &mut rx_buffer, &mut tx_buffer);
 
         if let Err(e) = socket.accept(80).await {
             warn!("[{} Worker] Accept failed: {:?}", link, e);
+            debug_log!("[HTTP] WARN Wi-Fi accept failed");
             continue;
         }
 
@@ -231,6 +234,7 @@ pub async fn portal_http_task(
             }
             Err(err) => {
                 error!("{} picoserve processing error: {:?}", link, err);
+                debug_log!("[HTTP] ERROR picoserve request failed");
             }
         }
         info!("[{} Worker] HTTP serve returned.", link);
@@ -248,12 +252,14 @@ pub async fn ncm_http_task(
     let mut tx_buffer = [0u8; 1024];
 
     info!("{} HTTP worker initialised...", link);
+    debug_log!("[HTTP] NCM delivery worker listening on port 80");
 
     loop {
         let mut socket = TcpSocket::new(*stack, &mut rx_buffer, &mut tx_buffer);
 
         if let Err(e) = socket.accept(80).await {
             warn!("[{} Worker] Accept failed: {:?}", link, e);
+            debug_log!("[HTTP] WARN NCM accept failed");
             continue;
         }
 
@@ -325,6 +331,15 @@ pub enum HttpSurface {
     Portal,
     /// USB NCM surface restricted to Armory binary delivery.
     Ncm,
+}
+
+impl HttpSurface {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Portal => "portal",
+            Self::Ncm => "ncm",
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -714,6 +729,13 @@ pub(super) async fn serve_keyboard_target(
     let os = keyboard_os_from_body(body).unwrap_or(current_os);
     let layout = keyboard_layout_from_body(body).unwrap_or(current_layout);
     let ok = app_net::update_keyboard_target_codes(os, layout).await;
+    if !ok {
+        debug_log!(
+            "[KEYBOARD] update request failed os={} layout={}",
+            os,
+            layout
+        );
+    }
 
     let (response_os, response_layout) = app_net::active_keyboard_target_codes();
 
@@ -938,6 +960,7 @@ pub(super) async fn serve_payload_save(
     let result = match decode_payload_code(body, &mut code) {
         Ok(code) => app_net::save_payload_code(code).await,
         Err(error) => {
+            debug_log!("[PAYLOAD] save request rejected code={}", error.code());
             return write_payload_error_response(
                 socket,
                 error.code(),
@@ -1070,6 +1093,11 @@ pub(super) async fn serve_armory_asset(
 
     match read_armory_asset_chunk(storage, &target, offset, &mut buffer).await {
         Ok(0) => {
+            debug_log!(
+                "[ARMORY] download surface={} path={} bytes=0",
+                surface.as_str(),
+                target.path()
+            );
             write_binary_headers(socket).await?;
             write_final_chunk(socket).await
         }
@@ -1089,9 +1117,22 @@ pub(super) async fn serve_armory_asset(
                 }
             }
 
+            debug_log!(
+                "[ARMORY] download surface={} path={} bytes={}",
+                surface.as_str(),
+                target.path(),
+                offset
+            );
             write_final_chunk(socket).await
         }
-        Err(()) => serve_empty_not_found(socket).await,
+        Err(()) => {
+            debug_log!(
+                "[ARMORY] WARN download missing surface={} path={}",
+                surface.as_str(),
+                target.path()
+            );
+            serve_empty_not_found(socket).await
+        }
     }
 }
 
@@ -1108,6 +1149,7 @@ pub(super) async fn serve_armory_delete(
     let mut request = [0u8; 512];
     let request_len = socket_read_prefetched_headers(socket, prefix, &mut request).await;
     let Some(filename) = armory_delete_filename(&request[..request_len]) else {
+        debug_log!("[ARMORY] delete rejected: invalid filename");
         return write_armory_mutation_response(
             socket,
             HttpStatus::BadRequest,
@@ -1121,6 +1163,7 @@ pub(super) async fn serve_armory_delete(
     };
 
     if filename.as_bytes() == b"payload.dd" {
+        debug_log!("[ARMORY] delete rejected: payload.dd is protected");
         return write_armory_mutation_response(
             socket,
             HttpStatus::Forbidden,
@@ -1134,6 +1177,7 @@ pub(super) async fn serve_armory_delete(
     }
 
     let Some(path) = armory_storage_path_unrestricted(filename.as_str()) else {
+        debug_log!("[ARMORY] delete rejected filename={}", filename.as_str());
         return write_armory_mutation_response(
             socket,
             HttpStatus::BadRequest,
@@ -1152,6 +1196,7 @@ pub(super) async fn serve_armory_delete(
     };
 
     if deleted {
+        debug_log!("[ARMORY] deleted filename={}", filename.as_str());
         write_armory_mutation_response(
             socket,
             HttpStatus::Ok,
@@ -1163,6 +1208,10 @@ pub(super) async fn serve_armory_delete(
         )
         .await
     } else {
+        debug_log!(
+            "[ARMORY] ERROR delete failed filename={}",
+            filename.as_str()
+        );
         write_armory_mutation_response(
             socket,
             HttpStatus::InternalServerError,
@@ -1191,6 +1240,7 @@ pub(super) async fn serve_armory_upload(
     let request_len = socket_read_prefetched_headers(socket, prefix, &mut request).await;
     let Some(header_end) = header_end_index(&request[..request_len]) else {
         record_upload_metrics(upload_started, 0);
+        debug_log!("[ARMORY] upload rejected: invalid request headers");
         return write_armory_upload_response(
             socket,
             HttpStatus::BadRequest,
@@ -1206,6 +1256,11 @@ pub(super) async fn serve_armory_upload(
     if content_length > ARMORY_UPLOAD_LIMIT {
         record_upload_metrics(upload_started, 0);
         status_led::show(Stage::BinaryInjectFailed);
+        debug_log!(
+            "[ARMORY] upload rejected bytes={} limit={}",
+            content_length,
+            ARMORY_UPLOAD_LIMIT
+        );
         return write_armory_upload_response(
             socket,
             HttpStatus::PayloadTooLarge,
@@ -1218,12 +1273,14 @@ pub(super) async fn serve_armory_upload(
     }
 
     status_led::show(Stage::BinaryInjecting);
+    debug_log!("[ARMORY] upload starting bytes={}", content_length);
     let storage_guard = storage.lock().await;
 
     if prepare_armory_upload(&storage_guard).is_err() {
         drop(storage_guard);
         record_upload_metrics(upload_started, 0);
         status_led::show(Stage::BinaryInjectFailed);
+        debug_log!("[ARMORY] ERROR upload preparation failed");
         return write_armory_upload_response(
             socket,
             HttpStatus::InternalServerError,
@@ -1242,6 +1299,7 @@ pub(super) async fn serve_armory_upload(
             drop(storage_guard);
             record_upload_metrics(upload_started, 0);
             status_led::show(Stage::BinaryInjectFailed);
+            debug_log!("[ARMORY] ERROR payload.bin open failed");
             return write_armory_upload_response(
                 socket,
                 HttpStatus::InternalServerError,
@@ -1295,6 +1353,11 @@ pub(super) async fn serve_armory_upload(
         drop(storage_guard);
         record_upload_metrics(upload_started, received);
         status_led::show(Stage::BinaryInjectFailed);
+        debug_log!(
+            "[ARMORY] ERROR upload transfer failed received={} expected={}",
+            received,
+            content_length
+        );
         return write_armory_upload_response(
             socket,
             HttpStatus::InternalServerError,
@@ -1311,6 +1374,7 @@ pub(super) async fn serve_armory_upload(
         drop(storage_guard);
         record_upload_metrics(upload_started, received);
         status_led::show(Stage::BinaryInjectFailed);
+        debug_log!("[ARMORY] ERROR payload.bin close failed bytes={}", received);
         return write_armory_upload_response(
             socket,
             HttpStatus::InternalServerError,
@@ -1325,6 +1389,11 @@ pub(super) async fn serve_armory_upload(
     drop(storage_guard);
     record_upload_metrics(upload_started, received);
     status_led::show(Stage::LootImported);
+    debug_log!(
+        "[ARMORY] upload committed bytes={} duration_ms={}",
+        received,
+        upload_started.elapsed().as_millis()
+    );
     write_armory_upload_response(
         socket,
         HttpStatus::Ok,

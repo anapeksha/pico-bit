@@ -4,4 +4,4 @@ mod manager;
 pub use logger::LOG_CHANNEL;
 pub use manager::DebugManager;
 
-pub(crate) use logger::DebugLogger;
+pub(crate) use logger::{DebugLogger, DebugMessage};

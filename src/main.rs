@@ -36,7 +36,10 @@ use panic_probe as _;
 // Defmt Logging
 use defmt_rtt as _;
 
-use net::{AppRouter, init_usb_dhcp, init_usb_network, restore_keyboard_target};
+use net::{
+    AppRouter, active_keyboard_target_codes, init_usb_dhcp, init_usb_network,
+    restore_keyboard_target,
+};
 use pio::PioManager;
 use runners::{
     debug_task, dhcp_task, hid_task, ncm_http_task, ncm_task, net_task, usb_task, wifi_task,
@@ -126,10 +129,16 @@ async fn main(spawner: Spawner) {
     info!("Spawning services...");
 
     spawner.spawn(status::task()).unwrap();
-
     status::show(status::Stage::Boot);
 
     spawner.spawn(debug_task(spi_tx)).unwrap();
+    debug_log!("[BOOT] Pico Bit v{} starting", env!("CARGO_PKG_VERSION"));
+    let (keyboard_os, keyboard_layout) = active_keyboard_target_codes();
+    debug_log!(
+        "[STORAGE] LittleFS ready; keyboard={}/{}",
+        keyboard_os,
+        keyboard_layout
+    );
     spawner
         .spawn(wifi_task(
             pio_manager.spi,
@@ -152,6 +161,8 @@ async fn main(spawner: Spawner) {
     spawner
         .spawn(dhcp_task(usb_dhcp_server, usb_net_stack))
         .unwrap();
+
+    debug_log!("[BOOT] firmware tasks spawned");
 }
 
 // PICOTOOL entries

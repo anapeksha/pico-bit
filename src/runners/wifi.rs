@@ -11,7 +11,8 @@ use embassy_sync::mutex::Mutex;
 use leasehund::DhcpServer;
 use static_cell::StaticCell;
 
-use crate::net::{AppRouter, init_wifi_dhcp, init_wifi_network};
+use crate::debug_log;
+use crate::net::{AppRouter, init_wifi_dhcp, init_wifi_network, wifi_ap_ssid};
 use crate::status::{self as status_led, Fault, LED_SIGNAL, Stage};
 use crate::storage::StorageManager;
 
@@ -65,6 +66,7 @@ pub async fn wifi_task(
 ) {
     status_led::show(Stage::SetupEntered);
     status_led::show(Stage::SetupApStarting);
+    debug_log!("[WIFI] CYW43 setup starting");
     let state = STATE_STATIC.init(cyw43::State::new());
     let (wifi_device, mut control, wifi_runner) =
         cyw43::new(state, pwr, spi, FW_BUF, NVRAM_BUF).await;
@@ -72,6 +74,7 @@ pub async fn wifi_task(
     if spawner.spawn(raw_wifi_runner(wifi_runner)).is_err() {
         status_led::error(Fault::SetupApFailed);
         error!("Failed to spawn CYW43 runner.");
+        debug_log!("[WIFI] ERROR CYW43 runner spawn failed");
         return;
     }
 
@@ -82,6 +85,7 @@ pub async fn wifi_task(
 
     if spawner.spawn(led_task(control_mutex)).is_err() {
         error!("Failed to spawn LED task.");
+        debug_log!("[WIFI] ERROR LED task spawn failed");
         return;
     };
 
@@ -92,12 +96,14 @@ pub async fn wifi_task(
     };
     let wifi_dhcp = init_wifi_dhcp();
     status_led::show(Stage::SetupApReady);
+    debug_log!("[WIFI] AP ready ssid={} ip=192.168.4.1", wifi_ap_ssid());
 
     info!("Starting network loops...");
 
     if spawner.spawn(wifi_net_task(wifi_net_runner)).is_err() {
         status_led::error(Fault::SetupApFailed);
         error!("Failed to spawn Wi-Fi network task.");
+        debug_log!("[WIFI] ERROR network task spawn failed");
         return;
     }
     if spawner
@@ -106,6 +112,7 @@ pub async fn wifi_task(
     {
         status_led::error(Fault::SetupServerFailed);
         error!("Failed to spawn Wi-Fi DHCP task.");
+        debug_log!("[WIFI] ERROR DHCP task spawn failed");
         return;
     }
     if spawner
@@ -114,7 +121,9 @@ pub async fn wifi_task(
     {
         status_led::error(Fault::SetupServerFailed);
         error!("Failed to spawn Wi-Fi HTTP task.");
+        debug_log!("[WIFI] ERROR portal HTTP task spawn failed");
         return;
     }
     status_led::show(Stage::SetupServerReady);
+    debug_log!("[WIFI] portal ready at http://192.168.4.1");
 }
